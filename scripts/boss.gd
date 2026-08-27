@@ -97,6 +97,8 @@ func apply_difficulty() -> void:
 	for st in _stars:
 		var mat := st.material_override as StandardMaterial3D
 		if mat != null:
+			# 星点材质是 unshaded：emission 不参与着色，必须用 albedo_color 乘到贴图上才看得见
+			mat.albedo_color = col
 			mat.emission = col
 	_refresh_labels()
 
