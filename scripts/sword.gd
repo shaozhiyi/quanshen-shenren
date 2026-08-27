@@ -1,0 +1,313 @@
+extends Node3D
+## 第一人称佩剑（X 键戳击）：挥砍动作来自免费 CC0 动捕角色动画
+## （Poly Pizza "Sword Slash"，assets/character/king.glb，AnimationPlayer）。
+## 原理：隐藏的动画骨架挂在相机下，剑每帧跟随其右手腕骨（Wrist.R）的世界姿态，
+## 因此得到真实、流畅的挥砍轨迹；待机时跟随 Idle_Sword 自然呼吸。
+## 动态模糊：挥砍期间按延迟显示 3 片剑身残影（记录剑的历史姿态，越旧越淡）。
+## slash_hit 信号在挥砍动画 35% 进度处发出，供后续命中判定。
+
+signal slash_hit
+
+const KNIGHT_SCENE := preload("res://assets/character/king.glb")
+const SLASH_ANIM := "CharacterArmature|Sword_Slash"
+const IDLE_ANIM := "CharacterArmature|Idle_Sword"
+const HAND_BONE := "Wrist.R"
+
+# 骨架相对相机的摆放（让右手落在视野右下）
+const RIG_POS := Vector3(0.10, -1.32, -0.72)
+const RIG_ROT_DEG := Vector3(0, 150, 0)
+# 手腕骨 → 剑柄坐标系的手性修正（由腕骨探针姿态标定：使刃朝前上、护手水平）
+var HAND_CORRECTION := Transform3D(
+	Basis(
+		Vector3(0.148, 0.065, 0.987),
+		Vector3(0.046, -0.997, 0.059),
+		Vector3(0.988, 0.036, -0.151)
+	),
+	Vector3(0, 0.02, -0.04)
+)
+
+const TRAIL_COUNT := 3
+const TRAIL_DELAY := 0.045
+
+# 动作夸张化：以待机腕骨姿态为基准，挥砍偏移的转角/位移增益
+const ROT_GAIN := 2.2
+const POS_GAIN := 1.4
+
+var _attacking := false
+var _hit_emitted := false
+var active := true                 # 主武器（默认持剑），Z 切换时由 player 关闭
+var _rig: Node
+var _anim_player: AnimationPlayer
+var _hand_attach: BoneAttachment3D
+var _ref_local := Transform3D.IDENTITY   # 腕骨相对骨架的待机基准姿态
+var _has_ref := false
+var _trails: Array[MeshInstance3D] = []
+var _hist: Array[Transform3D] = []
+
+
+func _ready() -> void:
+	_build_grip()
+	_build_blade()
+	_build_trails()
+	_setup_rig()
+
+
+# ---- 动画骨架：隐藏模型，只取右手腕骨姿态 ----
+func _setup_rig() -> void:
+	_rig = KNIGHT_SCENE.instantiate()
+	_rig.position = RIG_POS
+	_rig.rotation_degrees = RIG_ROT_DEG
+	get_parent().add_child.call_deferred(_rig)
+	await get_tree().process_frame
+	# 隐藏全部皮肤网格（保留骨架更新）
+	for mi in _find_nodes(_rig, "MeshInstance3D"):
+		(mi as MeshInstance3D).visible = false
+	var skel := _find_node(_rig, "Skeleton3D") as Skeleton3D
+	_anim_player = _find_node(_rig, "AnimationPlayer") as AnimationPlayer
+	if skel == null or _anim_player == null:
+		push_warning("Sword: 角色骨架/动画播放器缺失，挥砍退化为静止")
+		return
+	var bone_idx := skel.find_bone(HAND_BONE)
+	if bone_idx < 0:
+		push_warning("Sword: 找不到骨骼 " + HAND_BONE)
+		return
+	_hand_attach = BoneAttachment3D.new()
+	_hand_attach.bone_idx = bone_idx
+	skel.add_child(_hand_attach)
+	# 待机动画循环
+	var idle: Animation = _anim_player.get_animation(IDLE_ANIM)
+	if idle != null:
+		idle.loop_mode = Animation.LOOP_LINEAR
+	_anim_player.animation_finished.connect(_on_anim_finished)
+	_anim_player.play(IDLE_ANIM)
+	# 等动画真正求值后再取基准姿态（否则拿到的是 T-pose，会把差值也放大）
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_anim_player.advance(0.0)
+	var ref: Transform3D = _rig.global_transform.affine_inverse() * _hand_attach.global_transform
+	_ref_local = Transform3D(_norm_basis(ref.basis), ref.origin)
+	_has_ref = true
+
+
+static func _norm_basis(b: Basis) -> Basis:
+	return Basis(b.x.normalized(), b.y.normalized(), b.z.normalized())
+
+
+func _on_anim_finished(_name: String) -> void:
+	if _anim_player == null:
+		return
+	_anim_player.play(IDLE_ANIM)
+	_attacking = false
+	_hit_emitted = false
+	for t in _trails:
+		t.visible = false
+	_hist.clear()
+
+
+func attack() -> void:
+	if _attacking or _anim_player == null:
+		return
+	_attacking = true
+	_hit_emitted = false
+	_hist.clear()
+	_anim_player.play(SLASH_ANIM)
+
+
+# ---- 剑柄组件 ----
+func _build_grip() -> void:
+	var leather := StandardMaterial3D.new()
+	leather.albedo_color = Color(0.22, 0.13, 0.07)
+	leather.roughness = 0.8
+	var brass := StandardMaterial3D.new()
+	brass.albedo_color = Color(0.75, 0.58, 0.25)
+	brass.metallic = 0.8
+	brass.roughness = 0.35
+
+	var guard := MeshInstance3D.new()
+	var gm := BoxMesh.new()
+	gm.size = Vector3(0.17, 0.028, 0.035)
+	guard.mesh = gm
+	guard.material_override = brass
+	guard.position = Vector3(0, 0, -0.075)
+	guard.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(guard)
+
+	var grip := MeshInstance3D.new()
+	var cgm := CylinderMesh.new()
+	cgm.top_radius = 0.019
+	cgm.bottom_radius = 0.021
+	cgm.height = 0.17
+	grip.mesh = cgm
+	grip.material_override = leather
+	grip.position = Vector3(0, 0, 0.03)
+	grip.rotation_degrees = Vector3(90, 0, 0)
+	grip.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(grip)
+
+	var pommel := MeshInstance3D.new()
+	var pm := SphereMesh.new()
+	pm.radius = 0.028
+	pm.height = 0.056
+	pommel.mesh = pm
+	pommel.material_override = brass
+	pommel.position = Vector3(0, 0, 0.12)
+	pommel.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(pommel)
+
+
+# ---- 剑刃组件（沿 -Z 前向） ----
+func _build_blade() -> void:
+	var steel := StandardMaterial3D.new()
+	steel.albedo_color = Color(0.78, 0.80, 0.85)
+	steel.metallic = 0.9
+	steel.roughness = 0.22
+	var fuller_mat := StandardMaterial3D.new()
+	fuller_mat.albedo_color = Color(0.45, 0.47, 0.52)
+	fuller_mat.metallic = 0.9
+	fuller_mat.roughness = 0.4
+
+	var blade := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.05, 0.014, 0.62)
+	blade.mesh = bm
+	blade.material_override = steel
+	blade.position = Vector3(0, 0, -0.40)
+	blade.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(blade)
+
+	var fuller := MeshInstance3D.new()
+	var fm := BoxMesh.new()
+	fm.size = Vector3(0.016, 0.016, 0.50)
+	fuller.mesh = fm
+	fuller.material_override = fuller_mat
+	fuller.position = Vector3(0, 0, -0.38)
+	fuller.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(fuller)
+
+	var tip := MeshInstance3D.new()
+	var tm := BoxMesh.new()
+	tm.size = Vector3(0.05, 0.014, 0.09)
+	tip.mesh = tm
+	tip.material_override = steel
+	tip.position = Vector3(0, 0, -0.74)
+	tip.rotation_degrees = Vector3(0, 45, 0)
+	tip.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(tip)
+
+
+# ---- 残影（动态模糊）：挂在相机下（剑的父节点），按历史姿态显示 ----
+func _build_trails() -> void:
+	var parent := get_parent()
+	for i in TRAIL_COUNT:
+		var t := MeshInstance3D.new()
+		var bm := BoxMesh.new()
+		bm.size = Vector3(0.055, 0.02, 0.66)
+		t.mesh = bm
+		var mat := StandardMaterial3D.new()
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.albedo_color = Color(0.65, 0.78, 1.0, 0.30 - 0.08 * i)
+		mat.emission_enabled = true
+		mat.emission = Color(0.45, 0.62, 1.0)
+		mat.emission_energy_multiplier = 1.5 - 0.4 * i
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		t.material_override = mat
+		t.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		t.visible = false
+		parent.add_child.call_deferred(t)
+		_trails.append(t)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not active:
+		return
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_X:
+		attack()
+
+
+func set_active(a: bool) -> void:
+	active = a
+	visible = a
+	if not a:
+		_attacking = false
+		for t in _trails:
+			t.visible = false
+		_hist.clear()
+
+
+func _process(delta: float) -> void:
+	if _hand_attach == null:
+		return
+	# 腕骨当前姿态（骨架局部）→ 相对待机的增量 → 增益放大 → 回到相机空间
+	var cur_local: Transform3D = _rig.global_transform.affine_inverse() * _hand_attach.global_transform
+	if _has_ref:
+		# 位移：绕待机手位放大；旋转：增量转成轴角，角度乘增益（带上限）后叠加基准
+		var rp := _ref_local.origin
+		var new_pos := rp + (cur_local.origin - rp) * POS_GAIN
+		var cur_b := _norm_basis(cur_local.basis)
+		var d := Transform3D(cur_b * _ref_local.basis.inverse(), Vector3.ZERO)
+		var q := d.basis.get_rotation_quaternion()
+		var half := acos(clampf(absf(q.w), 0.0, 1.0))
+		var ang := half * 2.0
+		var new_basis: Basis
+		if ang < 0.001:
+			new_basis = _ref_local.basis
+		else:
+			var ax := (Vector3(q.x, q.y, q.z) / sin(half)).normalized()
+			new_basis = Basis(ax, minf(ang * ROT_GAIN, 3.0)) * _ref_local.basis
+		cur_local = Transform3D(new_basis, new_pos)
+	var hb := cur_local.basis
+	hb = Basis(hb.x.normalized(), hb.y.normalized(), hb.z.normalized())
+	global_transform = Transform3D(hb, cur_local.origin) * HAND_CORRECTION
+	global_transform = _rig.global_transform * global_transform
+	if _attacking:
+		_record_and_draw_trails(delta)
+		_check_hit_timing()
+
+
+func _check_hit_timing() -> void:
+	if _hit_emitted or _anim_player == null:
+		return
+	var cur := _anim_player.current_animation
+	if cur != SLASH_ANIM:
+		return
+	var anim: Animation = _anim_player.get_animation(SLASH_ANIM)
+	if anim == null:
+		return
+	if _anim_player.get_current_animation_position() >= anim.length * 0.35:
+		_hit_emitted = true
+		slash_hit.emit()
+
+
+func _record_and_draw_trails(delta: float) -> void:
+	# 记录剑相对相机的局部姿态（视角旋转不影响残影贴合）
+	_hist.push_front(transform)
+	if _hist.size() > 60:
+		_hist.resize(60)
+	var fps_mult: float = maxf(1.0, 1.0 / maxf(delta, 0.0005))
+	for i in TRAIL_COUNT:
+		var lag_frames: int = int(round(float(i + 1) * TRAIL_DELAY * fps_mult))
+		lag_frames = clampi(lag_frames, 1, _hist.size() - 1)
+		var tr: Transform3D = _hist[lag_frames]
+		# 残影中心对齐刃身中点（刃相对剑柄 -0.31~-0.40）
+		_trails[i].transform = Transform3D(tr.basis, tr.origin + tr.basis * Vector3(0, 0, -0.36))
+		_trails[i].visible = true
+
+
+func _find_node(n: Node, cls: String) -> Node:
+	for c in n.get_children():
+		if c.get_class() == cls:
+			return c
+		var r := _find_node(c, cls)
+		if r != null:
+			return r
+	return null
+
+
+func _find_nodes(n: Node, cls: String) -> Array[Node]:
+	var out: Array[Node] = []
+	for c in n.get_children():
+		if c.get_class() == cls:
+			out.append(c)
+		out.append_array(_find_nodes(c, cls))
+	return out

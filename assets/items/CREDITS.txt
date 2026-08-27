@@ -1,0 +1,15 @@
+背包/装备系统素材来源
+====================
+
+物品图标（assets/items/*.svg）—— game-icons.net，CC-BY 4.0：
+  sword.svg   ancient-sword  by Delapouite
+  bow.svg     bow-arrow      by Delapouite
+  armor.svg   breastplate    by Lorc
+  chest.svg   open-chest     by skoll      （掉落箱广告牌图标）
+  dogmilk.png 复用 BOSS 的 2D 贴图 assets/props/dogmilk/front.png（野生狗奶物品图标）
+  原始 SVG 为黑底白图，本仓库已剥离背景仅保留白色剪影并着色。
+  图标仓库：https://github.com/game-icons/icons
+
+背包数据模型（addons/grid_inventory/）—— Grid Inventory Lite (c) GodotForge，MIT：
+  来源 Godot 官方素材库 https://godotengine.org/asset-library/asset/5285
+  使用其 Inventory / InvItem 类作为背包与物品数据结构。

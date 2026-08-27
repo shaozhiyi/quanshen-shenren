@@ -1,0 +1,8 @@
+武器模型素材来源（均为 CC0 公共领域，可商用免署名）：
+
+- bow.glb   — "Bow" by Zsky, Poly Pizza (https://poly.pizza/m/XkJVO6cACA), CC0
+              原始 Google Poly 资源，经 Poly Pizza 重新分发。
+- arrow.glb — "Arrow" by Quaternius (Ultimate RPG Pack), Poly Pizza
+              (https://poly.pizza/m/6pMBOmBFxGt), CC0
+
+许可证文本见 https://creativecommons.org/publicdomain/zero/1.0/deed.zh-hans

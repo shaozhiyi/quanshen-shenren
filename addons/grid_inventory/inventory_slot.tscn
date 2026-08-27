@@ -1,0 +1,31 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://addons/grid_inventory/inventory_slot.gd" id="1"]
+
+[node name="InventorySlot" type="Panel"]
+custom_minimum_size = Vector2(56, 56)
+script = ExtResource("1")
+
+[node name="Placeholder" type="ColorRect" parent="."]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 6.0
+offset_top = 6.0
+offset_right = -6.0
+offset_bottom = -6.0
+mouse_filter = 2
+
+[node name="Icon" type="TextureRect" parent="."]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 4.0
+offset_top = 4.0
+offset_right = -4.0
+offset_bottom = -4.0
+expand_mode = 1
+stretch_mode = 5
+mouse_filter = 2
