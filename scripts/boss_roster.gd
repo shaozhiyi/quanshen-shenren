@@ -27,32 +27,8 @@ const DEFS := {
 		"band": [35.0, 65.0],
 		"song": "res://assets/audio/song.mp3",
 	},
-	# 冰镇狗奶：同一套贴图调成冷色 + 放大一圈，血厚但光环更绵长
-	"frozen": {
-		"name": "冰镇狗奶",
-		"face_dir": "res://assets/props/dogmilk/",
-		"tint": Color(0.62, 0.82, 1.15),
-		"scale": 30.0,
-		"base_hp": 1600.0,
-		"aura": 0.25,
-		"reward": "dogmilk",
-		"reward_counts": [3, 4, 5],
-		"band": [60.0, 95.0],
-		"song": "",
-	},
-	# 麻辣狗奶：更小更快攻，血量低但光环烧得狠
-	"spicy": {
-		"name": "麻辣狗奶",
-		"face_dir": "res://assets/props/dogmilk/",
-		"tint": Color(1.25, 0.55, 0.42),
-		"scale": 20.0,
-		"base_hp": 800.0,
-		"aura": 0.55,
-		"reward": "dogmilk",
-		"reward_counts": [2, 4, 6],
-		"band": [80.0, 120.0],
-		"song": "",
-	},
+	# 下一只 BOSS 照抄一条写在这里即可（换 face_dir 用新贴图，
+	# 或先用 tint 着色区分），boss.gd / 玩家 / HUD 都不用改。
 }
 
 
