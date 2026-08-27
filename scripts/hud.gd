@@ -26,7 +26,6 @@ var _charge_bar: Control
 var _cross: Control
 var _sword: Node
 var _bow: Node
-var _boss: Node
 var _toast_text := ""
 var _toast_t := 0.0
 
@@ -115,7 +114,6 @@ func _ready() -> void:
 	# ---- 武器 UI：提示文字 / 蓄力条 / 准星 ----
 	_sword = get_node_or_null("../Player/Camera3D/Sword")
 	_bow = get_node_or_null("../Player/Camera3D/Bow")
-	_boss = get_node_or_null("../Boss")
 
 	_weapon_label = Label.new()
 	_weapon_label.position = coord_position + Vector2(0, 24)
@@ -233,25 +231,30 @@ func _process(delta: float) -> void:
 		if _map_bg != null:
 			_map_bg.visible = not in_arena
 			_map_rect.visible = not in_arena
+		var boss: Node = _player.call("current_boss") if _player.has_method("current_boss") else null
 		if in_arena:
 			_hint_label.visible = true
-			if _boss != null and _boss.call("is_attacking"):
-				_hint_label.text = "BOSS 腾空 · 日月倒悬 —— 持续失血！"
+			var bname := "BOSS"
+			if boss != null:
+				bname = String(boss.get("boss_name"))
+			if boss != null and boss.call("is_attacking"):
+				_hint_label.text = "%s 腾空 · 日月倒悬 —— 持续失血！" % bname
 				_hint_label.add_theme_color_override("font_color", Color(1, 0.35, 0.3, 1))
 			else:
-				if _boss != null:
-					_hint_label.text = "—— BOSS 空间 · %s难度 ——（按 E 离开）" % String(_boss.call("difficulty_name"))
+				if boss != null:
+					_hint_label.text = "—— %s 空间 · %s难度 ——（按 E 离开）" % [
+						bname, String(boss.call("difficulty_name"))]
 				else:
 					_hint_label.text = "—— BOSS 空间 ——（按 E 离开）"
 				_hint_label.add_theme_color_override("font_color", Color(1, 0.98, 0.8, 1))
-		elif _player.call("near_boss"):
+		elif _player.call("near_boss") and boss != null:
 			_hint_label.visible = true
 			_hint_label.add_theme_color_override("font_color", Color(1, 0.98, 0.8, 1))
-			if _boss != null and _boss.call("can_adjust_difficulty"):
-				_hint_label.text = "野生狗奶 · %s难度（HP %d）—— 按 E 开战 ｜ R 切换难度" % [
-					String(_boss.call("difficulty_name")), int(_boss.get("max_hp"))]
-			elif _boss != null:
-				_hint_label.text = "靠近野生狗奶 —— 按 E 挑战（先赢一次才能切换难度）"
+			if boss.call("can_adjust_difficulty"):
+				_hint_label.text = "%s · %s难度（HP %d）—— 按 E 开战 ｜ R 切换难度" % [
+					String(boss.get("boss_name")), String(boss.call("difficulty_name")), int(boss.get("max_hp"))]
+			else:
+				_hint_label.text = "靠近 %s —— 按 E 挑战（先赢一次才能切换难度）" % String(boss.get("boss_name"))
 		else:
 			_hint_label.visible = false
 

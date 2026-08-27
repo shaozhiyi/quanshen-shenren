@@ -18,14 +18,16 @@ var _sword: Node
 var _bow: Node
 var _weapon := 0        # 0=主武器剑 1=副武器弓
 var _has := [true, true]  # 装备栏：[剑, 弓] 是否已装备
-var armor_factor := 1.0   # 护甲减伤系数（穿上防具=0.5，光环伤害减半）
+var armor_factor := 1.0   # 护甲减伤系数（穿上防具=0.7，即受到的伤害 ×0.7 后向下取整）
+var _dmg_carry := 0.0     # 防具取整后剩下的小数伤害，累计到下一次（否则 0.21/跳会被抹成 0）
 var _invincible := false
 var _invincible_t := 0.0
 var _invincible_dur := 0.0
 signal invincibility_changed(active: bool, duration: float)
 var _inv: Node            # 背包/装备覆盖层（HUD/Inventory）
 var _hud: Node            # HUD 画布层（屏幕 toast 提示）
-var _boss: Node
+var _arena_boss: Node     # 当前正在交手的那只 BOSS
+var _field: Node          # BossField：按名册生成多只 BOSS
 var _arena: Node
 var _in_arena := false
 var _saved_pos := Vector3.ZERO
@@ -49,23 +51,55 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	hp = max_hp
 	connect("died", _on_died)
-	_boss = get_node_or_null("../Boss")
 	_spawn_pos = _find_spawn()
 	global_position = _spawn_pos
-	# 本局地形随机后，让 BOSS 在出生点附近的环形带里另挑一处平缓落点
-	if _boss != null and _boss.has_method("place_near"):
-		_boss.call("place_near", _spawn_pos, get_node_or_null("../Ground"))
-	if _boss != null:
-		_boss.connect("died", _on_boss_died)
+	_field = get_node_or_null("../BossField")
+	if _field != null and _field.has_method("spawn_all"):
+		_field.call("spawn_all", _spawn_pos)
+	_arena = get_node_or_null("../Arena")
+	_watch_bosses()
 	_sword = get_node_or_null("Camera3D/Sword")
 	if _sword != null:
 		_sword.connect("slash_hit", _on_slash_hit)
 	_bow = get_node_or_null("Camera3D/Bow")
 	if _bow != null:
 		_bow.set_active(false)
-	_arena = get_node_or_null("../Arena")
 	_inv = get_node_or_null("../HUD/Inventory")
 	_hud = get_node_or_null("../HUD")
+
+
+# ---- 多 BOSS：按名册生成后，用"最近的那只"作为交互目标 ----
+func bosses() -> Array:
+	## 场上所有 BOSS 实体（"boss" 组只放碰撞体，供剑/箭射线命中判定）
+	return get_tree().get_nodes_in_group("boss_unit")
+
+
+func _watch_bosses() -> void:
+	## 给场上每只 BOSS 的 died 信号连一次结算（新增 BOSS 后重复调用即可，不会重复连）
+	for b in bosses():
+		if b is Node and not b.is_connected("died", _on_boss_died):
+			b.connect("died", _on_boss_died)
+
+
+func nearest_boss() -> Node:
+	## 大地图上离玩家最近且存活的 BOSS；超出交互半径则返回 null
+	var best: Node = null
+	var best_d := BOSS_INTERACT_DIST
+	for b in bosses():
+		if not (b is Node) or not is_instance_valid(b):
+			continue
+		if bool(b.call("is_dead")):
+			continue
+		var d: float = global_position.distance_to(b.global_position)
+		if d <= best_d:
+			best_d = d
+			best = b
+	return best
+
+
+func current_boss() -> Node:
+	## HUD/交互统一入口：空间内用正在打的那只，大地图上用最近的存活 BOSS
+	return _arena_boss if _in_arena else nearest_boss()
 
 
 func in_arena() -> bool:
@@ -73,10 +107,8 @@ func in_arena() -> bool:
 
 
 func near_boss() -> bool:
-	## 大地图上靠近存活 BOSS 且未持弓蓄力时，HUD 显示按 E 提示
-	if _in_arena or _boss == null or _boss.is_dead():
-		return false
-	return global_position.distance_to(_boss.global_position) <= BOSS_INTERACT_DIST
+	## 大地图上靠近某只存活 BOSS 时，HUD 显示按 E 提示
+	return not _in_arena and nearest_boss() != null
 
 
 func _try_interact_boss() -> void:
@@ -87,7 +119,11 @@ func _try_interact_boss() -> void:
 
 
 func _enter_arena() -> void:
-	## 进入 BOSS 空间：隐藏大地图视觉，切到超平坦白色空间，BOSS 传送就位
+	## 进入 BOSS 空间：隐藏大地图视觉，切到超平坦白色空间，目标 BOSS 传送就位
+	var b := nearest_boss()
+	if b == null:
+		return
+	_arena_boss = b
 	_saved_pos = global_position
 	_saved_yaw = rotation.y
 	var cam := get_node_or_null("Camera3D") as Camera3D
@@ -103,8 +139,8 @@ func _enter_arena() -> void:
 		owe.environment = _arena.arena_env
 	_arena.set_active(true)
 	var center: Vector3 = _arena.ARENA_CENTER
-	_boss.teleport_to(center + Vector3(0, 0, -10))
-	_boss.set_arena_mode(true)
+	_arena_boss.teleport_to(center + Vector3(0, 0, -10))
+	_arena_boss.set_arena_mode(true)
 	global_position = center + Vector3(0, 1.05, 6)
 	velocity = Vector3.ZERO
 	rotation.y = 0.0
@@ -116,9 +152,10 @@ func _enter_arena() -> void:
 func _exit_arena() -> void:
 	## 离开 BOSS 空间：恢复大地图与 BOSS 原位、玩家位姿
 	_in_arena = false
-	if _boss != null:
-		_boss.set_arena_mode(false)
-		_boss.go_home()
+	if _arena_boss != null and is_instance_valid(_arena_boss):
+		_arena_boss.set_arena_mode(false)
+		_arena_boss.go_home()
+	_arena_boss = null
 	if _arena != null:
 		_arena.set_active(false)
 	for npath in ["../Ground", "../GroundDetails", "../SkyDome", "../Sun"]:
@@ -135,35 +172,40 @@ func _exit_arena() -> void:
 		cam.rotation.x = _saved_pitch
 
 
-func _on_boss_died() -> void:
-	## BOSS 在空间中被击败：按难度发放野生狗奶，等沉地动画播完后自动送回大地图（BOSS 复活）
-	var n := 2
-	var dname := "普通"
-	if _boss != null:
-		n = int(_boss.call("reward_count"))
-		dname = String(_boss.call("difficulty_name"))
+func _on_boss_died(b: Node = null) -> void:
+	## 某只 BOSS 在空间中被击败：按它名册里的档位掉落发奖，沉地动画播完后自动回大地图
+	if b == null or not is_instance_valid(b):
+		b = _arena_boss
+	if b == null:
+		return
+	var item := String(b.call("get_reward_item"))
+	var n := int(b.call("reward_count"))
+	var dname := String(b.call("difficulty_name"))
 	if _inv != null and _inv.has_method("add_item"):
-		if _inv.call("add_item", "dogmilk", n):
-			_toast("缴获野生狗奶 ×%d（%s难度）" % [n, dname])
+		if _inv.call("add_item", item, n):
+			_toast("缴获 %s ×%d（%s·%s难度）" % [String(_inv.call("item_name", item)), n, String(b.get("boss_name")), dname])
 		else:
-			_toast("背包已满，野生狗奶未能全部收走")
+			_toast("背包已满，掉落未能全部收走")
 	if not _in_arena:
 		return
 	get_tree().create_timer(3.0).timeout.connect(_exit_arena)
 
 
 func _try_cycle_difficulty() -> void:
-	## 大地图上靠近 BOSS 时按 R：切到下一档挑战难度（击败过一次后解锁）
-	if _boss == null or _in_arena or not near_boss():
+	## 大地图上靠近某只 BOSS 时按 R：切到下一档挑战难度（击败过一次后解锁）
+	if _in_arena:
 		return
-	if not _boss.call("can_adjust_difficulty"):
-		_toast("先击败野生狗奶一次，才能调节难度")
+	var b := nearest_boss()
+	if b == null:
 		return
-	_boss.call("cycle_difficulty")
-	var hp_max := int(_boss.get("max_hp"))
-	var mult: float = float(_boss.call("aura_damage")) / 0.3
-	_toast("难度 %s ｜ HP %d ｜ 光环伤害 ×%.1f ｜ 掉落 ×%d" % [
-		String(_boss.call("difficulty_name")), hp_max, mult, int(_boss.call("reward_count"))])
+	if not b.call("can_adjust_difficulty"):
+		_toast("先击败 %s 一次，才能调节它的难度" % String(b.get("boss_name")))
+		return
+	b.call("cycle_difficulty")
+	var hp_max := int(b.get("max_hp"))
+	var mult: float = float(b.call("aura_damage")) / maxf(float(b.call("aura_base")), 0.001)
+	_toast("%s 难度 %s ｜ HP %d ｜ 光环 ×%.1f ｜ 掉落 ×%d" % [
+		String(b.get("boss_name")), String(b.call("difficulty_name")), hp_max, mult, int(b.call("reward_count"))])
 
 
 func _toast(text: String) -> void:
@@ -251,7 +293,10 @@ func set_equipment(weapon_id: String, sub_id: String, armor_id: String) -> void:
 	## 由背包/装备栏调用：同步已装备状态与护甲减伤；当前武器被卸下则自动改用另一把
 	_has[0] = (weapon_id == "sword")
 	_has[1] = (sub_id == "bow")
-	armor_factor = 0.5 if armor_id != "" else 1.0
+	var new_factor := 0.7 if armor_id != "" else 1.0
+	if new_factor != armor_factor:
+		armor_factor = new_factor
+		_dmg_carry = 0.0      # 穿/脱防具时清空取整余数
 	if _has[_weapon]:
 		_equip(_weapon)
 	else:
@@ -309,10 +354,20 @@ func _find_spawn() -> Vector3:
 
 
 func take_damage(amount: float) -> void:
-	## 受到伤害：按护甲减伤系数扣血并发出 hp_changed，血量归零时发出 died（支持小数伤害）
+	## 受到伤害并发出 hp_changed，血量归零时发出 died（支持小数伤害）
+	## 穿防具：伤害 ×0.7 后向下取整；取整剩下的小数累积到下一次，
+	## 否则 BOSS 光环 0.3/跳 ×0.7=0.21 会被取整成 0，等于完全免疫
 	if amount <= 0.0 or _invincible:
 		return
-	hp = clampf(hp - amount * armor_factor, 0.0, max_hp)
+	var raw := amount * armor_factor
+	var dealt := raw
+	if armor_factor != 1.0:
+		_dmg_carry += raw
+		dealt = floorf(_dmg_carry)
+		_dmg_carry -= dealt
+	if dealt <= 0.0:
+		return
+	hp = clampf(hp - dealt, 0.0, max_hp)
 	hp_changed.emit(hp, max_hp)
 	if hp <= 0.0:
 		died.emit()

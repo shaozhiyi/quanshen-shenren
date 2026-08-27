@@ -22,7 +22,7 @@ const DB := {
 	"bow":    {"name": "弓箭", "slot": K_SUB, "icon": "res://assets/items/bow.svg", "tint": Color(0.95, 0.80, 0.62),
 		"desc": "副武器 · 攻击力 12~50\n按住左键蓄力 3 秒满，满蓄扣 50\n弹道射程由物理引擎决定，每箭冷却 0.5 秒"},
 	"armor":  {"name": "防具", "slot": K_ARMOR, "icon": "res://assets/items/armor.svg", "tint": Color(1.00, 0.85, 0.40),
-		"desc": "护甲 · 受到的所有伤害减半\nBOSS 光环 3 血/秒 → 1.5 血/秒"},
+		"desc": "护甲 · 受到的伤害 ×0.7 后向下取整\nBOSS 光环 3 血/秒 → 约 2.1 血/秒\n（不足 1 点的零头会累计到之后扣）"},
 	"dogmilk": {"name": "野生狗奶", "slot": -1, "icon": "res://assets/items/dogmilk.png", "tint": Color(1, 1, 1),
 		"desc": "消耗品 · 双击饮用\n获得 10 秒无敌（免疫伤害），血条常显\n10 秒后解除并恢复满血",
 		"use": "invincible", "dur": 10.0},

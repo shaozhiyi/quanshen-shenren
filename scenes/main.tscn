@@ -8,7 +8,7 @@
 [ext_resource type="Script" path="res://scripts/sky_dome.gd" id="8_sky_dome"]
 [ext_resource type="Script" path="res://scripts/hud.gd" id="9_hud"]
 [ext_resource type="Script" path="res://scripts/sword.gd" id="10_sword"]
-[ext_resource type="Script" path="res://scripts/boss.gd" id="11_boss"]
+[ext_resource type="Script" path="res://scripts/boss_field.gd" id="15_bossfield"]
 [ext_resource type="Script" path="res://scripts/bow.gd" id="12_bow"]
 [ext_resource type="Script" path="res://scripts/arena.gd" id="13_arena"]
 [ext_resource type="Script" path="res://scripts/game_inventory.gd" id="14_ginventory"]
@@ -52,8 +52,8 @@ script = ExtResource("5_terrain")
 [node name="GroundDetails" type="Node3D" parent="."]
 script = ExtResource("6_ground_detail")
 
-[node name="Boss" type="Node3D" parent="."]
-script = ExtResource("11_boss")
+[node name="BossField" type="Node3D" parent="."]
+script = ExtResource("15_bossfield")
 
 [node name="Arena" type="Node3D" parent="."]
 script = ExtResource("13_arena")

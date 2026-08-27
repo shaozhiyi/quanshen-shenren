@@ -1,34 +1,44 @@
 extends Node3D
-## 野生狗奶 BOSS：巨型梗奶盒（Godot 内 SurfaceTool 程序化六面贴图盒，不依赖外部 glb）。
+## 野生狗奶等 BOSS 的通用实体：巨型贴图盒（Godot 内 SurfaceTool 程序化六面贴图盒）。
+## 数值/外观全部来自 scripts/boss_roster.gd 名册（按 def_id 取），加新 BOSS 不用改本文件。
 ## 大地图无敌；按 E 进入 BOSS 空间后可战。空间内循环：
 ## 待机 → 前摇（配乐乐句A + 星点渐多环绕蓄力）→ 攻击（飞天 + 场景日月交替 + 玩家掉血）→ 落地。
-## 时间轴按公开歌词时间戳标定；完整歌曲置于 assets/audio/song.mp3 即自动配音（缺失则静默同轴）。
+## 时间轴按公开歌词时间戳标定；配乐路径由名册 song 字段给出（缺失/为空则静默同轴）。
 ## 可重复挑战：死亡沉地 3 秒后自动离开空间即复活回原位，每次开战都从满血开始（撤退同样重置）。
 ## 难度：三档（普通/困难/噩梦），血量·光环伤害·掉落收益逐级递增；首次仅普通，击败一次后按 R 调节。
 
+const ROSTER := preload("res://scripts/boss_roster.gd")
+
+@export var def_id := "dogmilk"      # 名册 id：决定外观与数值
 @export var world_x := 18.0
 @export var world_z := 18.0
-@export var max_hp := 1000.0
-@export var scale_factor := 24.0  # 0.25m 盒 → 6m 巨物
+@export var max_hp := 1000.0         # 普通档基准血量（由名册覆盖）
+@export var scale_factor := 24.0     # 0.25m 盒 → 巨物的放大倍数（由名册覆盖）
 @export var random_spawn := true      # 每局按地形随机挑一处落脚点
-@export var spawn_min_dist := 35.0    # 距玩家出生点最近不超过…（贴脸会吓人）
-@export var spawn_max_dist := 65.0    # …也不超过，保证"不会生成太远"
+@export var spawn_min_dist := 35.0    # 距玩家出生点的距离带下界（由名册覆盖）
+@export var spawn_max_dist := 65.0    # 距离带上界：保证"不会生成太远"
 @export var spawn_max_slope := 0.93   # 地面法线 y 分量下限：坡太陡奶盒站不稳
 
-const FACE_DIR := "res://assets/props/dogmilk/"
+var boss_name := "野生狗奶"           # 显示名（头顶标签 + HUD）
+var reward_item := "dogmilk"          # 掉落物品 id
+var _def: Dictionary = {}
+var _face_dir := "res://assets/props/dogmilk/"
+var _tint := Color(1, 1, 1)
+var _aura_base := 0.3                 # 普通档光环每 0.1 秒伤害
+var _reward_counts: Array = [2, 3, 4]
+var _song_path := "res://assets/audio/song.mp3"
 
 # ---- 难度档位：每升一档血量与伤害增加，收益（狗奶掉落）同步增加 ----
 const DIFF_NAMES := ["普通", "困难", "噩梦"]
-const DIFF_HP_MULT := [1.0, 1.6, 2.4]        # 相对 max_hp（普通基准）的血量倍率
+const DIFF_HP_MULT := [1.0, 1.6, 2.4]        # 相对普通档基准血量的倍率
 const DIFF_AURA_MULT := [1.0, 1.5, 2.0]      # 光环伤害倍率
-const DIFF_REWARD := [2, 3, 4]               # 击败掉落的野生狗奶数量
 const DIFF_STAR_COLOR := [Color(1, 0.92, 0.55), Color(1, 0.55, 0.25), Color(0.78, 0.45, 1.0)]
 const RESET_HP_ON_LEAVE := true              # 撤退也重置满血（false=保留已打掉的血量）
 
 var hp := max_hp
 var difficulty := 0                 # 当前挑战难度（默认最低档）
 var _beats := 0                     # 已被击败次数：≥1 后开放难度调节
-var _base_max_hp := 1000.0          # 普通基准血量（@export 值）
+var _base_max_hp := 1000.0          # 普通基准血量（名册值）
 var _aura_dmg := 0.3                # 当前难度的光环单跳伤害
 var _dead := false
 var _t := 0.0
@@ -40,7 +50,6 @@ var _arena_mode := false          # 只有进入 BOSS 空间才可被攻击
 var _home_pos := Vector3.ZERO     # 大地图原位（进出空间时恢复）
 
 # ---- 音乐同步战斗循环（时间轴取自公开歌词元数据，音频由玩家自备） ----
-const SONG_PATH := "res://assets/audio/song.mp3"   # 完整歌曲放这里即自动启用
 const MUSIC_AT := 0.0           # 音频直接从副歌"忘你不舍"起头，故起点=0
 const WINDUP_TIME := 11.10      # 前摇时长：曲内"忘你不舍 寻你不休"唱完（下句入点）即升空
 const ATTACK_TIME := 14.18      # 攻击时长：四个乐句
@@ -49,7 +58,6 @@ const CHARGE_GAP := 8.0         # 每轮释放完后待机（秒）
 const MAX_STARS := 24           # 蓄满星点数
 const FLY_HEIGHT := 13.5        # 飞天高度（原 9.0 × 1.5）
 const WANDER_SPEED := 45.0      # 释放完后随机移动速度（单位/秒）
-const AURA_DMG := 0.3           # 普通档：攻击期每 0.1 秒对玩家造成的伤害（难度再乘倍率）
 var _phase := 0                 # 0待机 1前摇 2攻击(飞天) 3落地
 var _phase_t := 0.0
 var _stars: Array[MeshInstance3D] = []
@@ -63,7 +71,7 @@ var _music_tail := 0.0          # 攻击结束后歌曲再多播的剩余秒数
 var _wander_target := Vector3.ZERO
 var _wandering := false
 
-signal died
+signal died(target: Node)   # 多只 BOSS 同场，带上是谁死的
 
 
 func set_arena_mode(b: bool) -> void:
@@ -96,7 +104,7 @@ func apply_difficulty() -> void:
 	difficulty = clampi(difficulty, 0, DIFF_NAMES.size() - 1)
 	max_hp = _base_max_hp * float(DIFF_HP_MULT[difficulty])
 	hp = max_hp
-	_aura_dmg = AURA_DMG * float(DIFF_AURA_MULT[difficulty])
+	_aura_dmg = _aura_base * float(DIFF_AURA_MULT[difficulty])
 	var col: Color = DIFF_STAR_COLOR[difficulty]
 	for st in _stars:
 		var mat := st.material_override as StandardMaterial3D
@@ -126,12 +134,21 @@ func difficulty_name() -> String:
 
 
 func reward_count() -> int:
-	## 当前难度的掉落收益（狗奶数量）
-	return int(DIFF_REWARD[clampi(difficulty, 0, DIFF_REWARD.size() - 1)])
+	## 当前难度的掉落收益（数量由名册 reward_counts 给出）
+	var i := clampi(difficulty, 0, _reward_counts.size() - 1)
+	return int(_reward_counts[i])
 
 
 func aura_damage() -> float:
 	return _aura_dmg
+
+
+func aura_base() -> float:
+	return _aura_base
+
+
+func get_reward_item() -> String:
+	return reward_item
 
 
 func times_beaten() -> int:
@@ -176,13 +193,13 @@ func go_home() -> void:
 	position = _home_pos
 
 
-func place_near(spawn_point: Vector3, ground: Node) -> void:
-	## 随机落点：只接受离玩家出生点 spawn_min~max_dist 米、坡度平缓、离边界有安全距离的
-	## 位置（"不会生成太远"由这个环形带保证）；连续尝试失败则退回导出时的大地图坐标
-	if not random_spawn or ground == null or not ground.has_method("height_at"):
-		return
+func place_near(spawn_point: Vector3, ground: Node, avoid: Array = []) -> bool:
+	## 随机落点：只接受离玩家出生点 spawn_min~max_dist 米、坡度平缓、离边界有安全距离、
+	## 且与其他 BOSS 至少相隔 30 米的位置；连续尝试失败则退回导出时的大地图坐标
+	if ground == null or not ground.has_method("height_at"):
+		return false
 	var half := size_half(ground)
-	for i in 120:
+	for i in 160:
 		var ang := randf() * TAU
 		var dist := randf_range(spawn_min_dist, spawn_max_dist)
 		var x := spawn_point.x + cos(ang) * dist
@@ -194,6 +211,13 @@ func place_near(spawn_point: Vector3, ground: Node) -> void:
 		var y: float = ground.call("height_at", x, z)
 		if absf(y - spawn_point.y) > 26.0:
 			continue   # 别把 BOSS 甩到深谷或绝壁顶上，玩家抬头找不到
+		var clash := false
+		for a in avoid:
+			if Vector2(x, z).distance_to(Vector2(float(a.x), float(a.z))) < 30.0:
+				clash = true
+				break
+		if clash:
+			continue
 		world_x = x
 		world_z = z
 		_base_y = y
@@ -203,9 +227,10 @@ func place_near(spawn_point: Vector3, ground: Node) -> void:
 			_label.position.y = box_height() + 1.2
 		if _hp_label != null:
 			_hp_label.position.y = box_height() + 0.6
-		print("[boss] 本局落点 (%.1f, %.1f)，距出生点 %.1f 米" % [x, z, spawn_point.distance_to(position)])
-		return
-	print("[boss] 未找到合适落点，沿用默认坐标 (%.1f, %.1f)" % [world_x, world_z])
+		print("[boss] %s 落点 (%.1f, %.1f)，距出生点 %.1f 米" % [boss_name, x, z, Vector2(x - spawn_point.x, z - spawn_point.z).length()])
+		return true
+	print("[boss] %s 未找到合适落点，沿用默认坐标 (%.1f, %.1f)" % [boss_name, world_x, world_z])
+	return false
 
 
 func size_half(ground: Node) -> float:
@@ -219,9 +244,37 @@ func box_height() -> float:
 	return 0.25 * scale_factor
 
 
+var _spawn_at := Vector3.INF    # 由 boss_field 预分配的落点（无则用 world_x/world_z）
+
+
+func _load_def() -> void:
+	## 从名册取本只 BOSS 的外观与数值；名册缺项时保留脚本默认值
+	_def = ROSTER.def(def_id)
+	if _def.is_empty():
+		push_warning("boss: 名册里没有 %s，沿用脚本默认值" % def_id)
+		return
+	boss_name = String(_def.get("name", boss_name))
+	_face_dir = String(_def.get("face_dir", _face_dir))
+	_tint = _def.get("tint", _tint)
+	scale_factor = float(_def.get("scale", scale_factor))
+	max_hp = float(_def.get("base_hp", max_hp))
+	_aura_base = float(_def.get("aura", _aura_base))
+	reward_item = String(_def.get("reward", reward_item))
+	_reward_counts = _def.get("reward_counts", _reward_counts)
+	var band: Array = _def.get("band", [spawn_min_dist, spawn_max_dist])
+	spawn_min_dist = float(band[0])
+	spawn_max_dist = float(band[1])
+	_song_path = String(_def.get("song", _song_path))
+
+
 func _ready() -> void:
-	add_to_group("boss")
-	_base_max_hp = max_hp            # @export 值即"普通"基准，难度倍率在此基础上放大
+	add_to_group("boss_unit")     # 实体：玩家/HUD 按这个组找"最近的那只 BOSS"
+	_load_def()
+	if _spawn_at != Vector3.INF:
+		world_x = _spawn_at.x
+		world_z = _spawn_at.z
+	_base_max_hp = max_hp            # 名册的普通档基准，难度倍率在此基础上放大
+	apply_difficulty()               # 先按名册把血量/光环伤害/星点色算好，避免未开战时读到默认 0.3
 	var ground := get_node_or_null("../Ground")
 	if ground != null and ground.has_method("height_at"):
 		_base_y = ground.height_at(world_x, world_z)
@@ -247,7 +300,7 @@ func _ready() -> void:
 	add_child(body)
 
 	_label = Label3D.new()
-	_label.text = "野生狗奶 · BOSS"
+	_label.text = "%s · BOSS" % boss_name
 	_label.position = Vector3(0, box.size.y + 1.2, 0)
 	_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_label.font_size = 72
@@ -264,12 +317,12 @@ func _ready() -> void:
 	add_child(_hp_label)
 	_build_stars()
 	_refresh_labels()
-	# 可选战斗配乐：玩家自备 assets/audio/song.mp3（存在即启用，缺失则静默走同一时间轴）
+	# 可选战斗配乐：由名册 song 字段指定（为空或文件缺失则静默走同一时间轴）
 	_music = AudioStreamPlayer.new()
 	add_child(_music)
-	_has_music = ResourceLoader.exists(SONG_PATH)
+	_has_music = _song_path != "" and ResourceLoader.exists(_song_path)
 	if _has_music:
-		_music.stream = load(SONG_PATH)
+		_music.stream = load(_song_path)
 
 
 # ---- 蓄力星点：程序化四角星贴图 + 公告板小面片（池，蓄力时逐个点亮） ----
@@ -318,7 +371,8 @@ func _make_star_texture() -> ImageTexture:
 
 func _face_mat(tex_file: String) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
-	m.albedo_texture = load(FACE_DIR + tex_file)
+	m.albedo_texture = load(_face_dir + tex_file)
+	m.albedo_color = _tint        # 名册着色：同一套贴图换色即可做出不同 BOSS
 	m.roughness = 0.7
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return m
@@ -360,7 +414,7 @@ func _build_box_mesh() -> ArrayMesh:
 func _refresh_labels() -> void:
 	## 名称标签 = 难度，血条标签 = 当前血量/上限 + 该档掉落收益
 	if _label != null and not _dead:
-		_label.text = "野生狗奶 · %s难度" % difficulty_name()
+		_label.text = "%s · %s难度" % [boss_name, difficulty_name()]
 	if _hp_label != null:
 		_hp_label.text = "HP %d / %d ｜ 掉落 ×%d" % [int(hp), int(max_hp), reward_count()]
 
@@ -377,12 +431,12 @@ func take_damage(amount: int) -> void:
 func _die() -> void:
 	_dead = true
 	_beats += 1          # 击败一次后开放难度调节
-	_label.text = "野生狗奶 已被缴获"
+	_label.text = "%s 已被缴获" % boss_name
 	_hp_label.visible = false
 	_music_tail = 0.0
 	if _music != null and _music.playing:
 		_music.stop()
-	died.emit()          # 先记账再通知，玩家侧按 reward_count() 发奖
+	died.emit(self)          # 先记账再通知，玩家侧按 reward_count() 发奖
 
 
 func _process(delta: float) -> void:
