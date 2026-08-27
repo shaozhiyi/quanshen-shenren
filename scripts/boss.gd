@@ -10,6 +10,10 @@ extends Node3D
 @export var world_z := 18.0
 @export var max_hp := 1000.0
 @export var scale_factor := 24.0  # 0.25m 盒 → 6m 巨物
+@export var random_spawn := true      # 每局按地形随机挑一处落脚点
+@export var spawn_min_dist := 35.0    # 距玩家出生点最近不超过…（贴脸会吓人）
+@export var spawn_max_dist := 65.0    # …也不超过，保证"不会生成太远"
+@export var spawn_max_slope := 0.93   # 地面法线 y 分量下限：坡太陡奶盒站不稳
 
 const FACE_DIR := "res://assets/props/dogmilk/"
 
@@ -170,6 +174,49 @@ func teleport_to(p: Vector3) -> void:
 
 func go_home() -> void:
 	position = _home_pos
+
+
+func place_near(spawn_point: Vector3, ground: Node) -> void:
+	## 随机落点：只接受离玩家出生点 spawn_min~max_dist 米、坡度平缓、离边界有安全距离的
+	## 位置（"不会生成太远"由这个环形带保证）；连续尝试失败则退回导出时的大地图坐标
+	if not random_spawn or ground == null or not ground.has_method("height_at"):
+		return
+	var half := size_half(ground)
+	for i in 120:
+		var ang := randf() * TAU
+		var dist := randf_range(spawn_min_dist, spawn_max_dist)
+		var x := spawn_point.x + cos(ang) * dist
+		var z := spawn_point.z + sin(ang) * dist
+		if absf(x) > half or absf(z) > half:
+			continue
+		if ground.has_method("normal_at") and ground.call("normal_at", x, z).y < spawn_max_slope:
+			continue
+		var y: float = ground.call("height_at", x, z)
+		if absf(y - spawn_point.y) > 26.0:
+			continue   # 别把 BOSS 甩到深谷或绝壁顶上，玩家抬头找不到
+		world_x = x
+		world_z = z
+		_base_y = y
+		position = Vector3(x, y, z)
+		_home_pos = position
+		if _label != null:
+			_label.position.y = box_height() + 1.2
+		if _hp_label != null:
+			_hp_label.position.y = box_height() + 0.6
+		print("[boss] 本局落点 (%.1f, %.1f)，距出生点 %.1f 米" % [x, z, spawn_point.distance_to(position)])
+		return
+	print("[boss] 未找到合适落点，沿用默认坐标 (%.1f, %.1f)" % [world_x, world_z])
+
+
+func size_half(ground: Node) -> float:
+	## 可用半径：地形半宽留 55 米边距，避免贴着边界墙/掉出地形外
+	var s: float = float(ground.get("size")) if ground.get("size") != null else 500.0
+	return maxf(s * 0.5 - 55.0, 80.0)
+
+
+func box_height() -> float:
+	## 碰撞盒高度（Label 挂在盒顶上方，落点变化时同步）
+	return 0.25 * scale_factor
 
 
 func _ready() -> void:

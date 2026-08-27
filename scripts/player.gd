@@ -49,17 +49,20 @@ func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	hp = max_hp
 	connect("died", _on_died)
+	_boss = get_node_or_null("../Boss")
 	_spawn_pos = _find_spawn()
 	global_position = _spawn_pos
+	# 本局地形随机后，让 BOSS 在出生点附近的环形带里另挑一处平缓落点
+	if _boss != null and _boss.has_method("place_near"):
+		_boss.call("place_near", _spawn_pos, get_node_or_null("../Ground"))
+	if _boss != null:
+		_boss.connect("died", _on_boss_died)
 	_sword = get_node_or_null("Camera3D/Sword")
 	if _sword != null:
 		_sword.connect("slash_hit", _on_slash_hit)
 	_bow = get_node_or_null("Camera3D/Bow")
 	if _bow != null:
 		_bow.set_active(false)
-	_boss = get_node_or_null("../Boss")
-	if _boss != null:
-		_boss.connect("died", _on_boss_died)
 	_arena = get_node_or_null("../Arena")
 	_inv = get_node_or_null("../HUD/Inventory")
 	_hud = get_node_or_null("../HUD")

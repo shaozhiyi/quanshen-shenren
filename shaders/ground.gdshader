@@ -15,9 +15,13 @@ uniform sampler2D rough_tex : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform float tex_repeat = 60.0;
 
 // 地形起伏参数（与 terrain.gd 的 height_at 完全一致，保证草/碰撞对齐）
-uniform float height_amp : hint_range(0.0, 15.0) = 13.0;
+uniform float height_amp : hint_range(0.0, 20.0) = 13.0;
 uniform float frequency = 0.009;
 uniform float height_step = 3.125;
+// 噪声域偏移：由 terrain.gd 按随机种子下发，换种子即换一片山脉；默认值=原始固定地形
+uniform vec2 noise_off0 = vec2(0.0, 0.0);
+uniform vec2 noise_off2 = vec2(17.0, 3.0);
+uniform vec2 noise_off3 = vec2(7.0, 11.0);
 
 varying float v_world_y;
 varying vec2 v_world_xz;
@@ -63,9 +67,9 @@ float fbm3(vec2 p) {
 }
 
 float terrain_height(vec2 p) {
-	float n = fbm(p * frequency);
-	float n2 = fbm(p * frequency * 4.0 + vec2(17.0, 3.0));
-	float n3 = fbm(p * frequency * 6.0 + vec2(7.0, 11.0));
+	float n = fbm(p * frequency + noise_off0);
+	float n2 = fbm(p * frequency * 4.0 + noise_off2);
+	float n3 = fbm(p * frequency * 6.0 + noise_off3);
 	return (n * 0.75 + n2 * 0.25 + n3 * 0.12) * height_amp * 2.0 - height_amp;
 }
 

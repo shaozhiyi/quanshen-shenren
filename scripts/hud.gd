@@ -86,6 +86,18 @@ func _ready() -> void:
 	_coord_label.text = "X: 0.0  Y: 0.0  Z: 0.0"
 	add_child(_coord_label)
 
+	# 本局地形种子（同一种子 = 同一片地形与石头分布，可复现/分享）
+	var seed_label := Label.new()
+	seed_label.position = Vector2(24, 692)
+	seed_label.add_theme_font_size_override("font_size", 13)
+	seed_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.5))
+	seed_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	seed_label.add_theme_constant_override("outline_size", 3)
+	var gnd := get_node_or_null("../Ground")
+	var tseed: int = int(gnd.get("terrain_seed")) if gnd != null else 0
+	seed_label.text = "地形种子 %d（改 Ground.seed_value 可复现）" % tseed
+	add_child(seed_label)
+
 	# 右上角地形小地图：按海拔着色显示周围地形（深=低，浅=高），白点=玩家
 	_ground = get_node_or_null("../Ground")
 	_map_bg = ColorRect.new()

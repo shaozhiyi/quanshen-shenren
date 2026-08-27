@@ -331,13 +331,18 @@ func _paint_slot(s: Control, id: String) -> void:
 
 # ---- 开关 ----
 func _unhandled_input(event: InputEvent) -> void:
-	if not _open:
+	## Tab：关着能开、开着能关（早先写成 not _open 就 return，导致第一次按 Tab 没反应）
+	## E：仅面板打开时用于丢弃选中物品；ESC：面板打开时直接关掉（此时 Player 被禁用收键）
+	if not (event is InputEventKey) or not event.pressed or event.echo:
 		return
-	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_TAB:
-			_toggle()
-		elif event.keycode == KEY_E:
-			discard_selected()
+	if event.keycode == KEY_TAB:
+		_toggle()
+		get_viewport().set_input_as_handled()
+	elif _open and event.keycode == KEY_E:
+		discard_selected()
+	elif _open and event.keycode == KEY_ESCAPE:
+		_toggle()
+		get_viewport().set_input_as_handled()
 
 
 func _toggle() -> void:

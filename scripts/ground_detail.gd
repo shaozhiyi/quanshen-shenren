@@ -14,7 +14,10 @@ func _ready() -> void:
 
 func _build_details() -> void:
 	var rng := RandomNumberGenerator.new()
-	rng.randomize()
+	# 用本局地形种子派生：同一颗种子 → 同一片世界（含石头位置）
+	var ground := get_node_or_null("../Ground")
+	var base: int = int(ground.get("terrain_seed")) if ground != null else 0
+	rng.seed = base + 777
 	_build_rocks(rng)
 
 

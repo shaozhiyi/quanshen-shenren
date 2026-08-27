@@ -1,13 +1,25 @@
 extends Node3D
-## 程序化起伏地形：fbm 高度场生成网格；碰撞用三角网格（ConcavePolygonShape3D）贴合地形。
+## 程序化起伏地形：fbm 高度场；碰撞用三角网格（ConcavePolygonShape3D）贴合地形。
 ## 物理体必须在物理帧之后创建，场景加载期创建的碰撞体不会被物理世界接收。
+## 随机生成：randomize_terrain=true 时每局的山脊走向、疏密、起伏幅度都由 terrain_seed
+## 决定（-1 = 每次启动随机；填固定种子可复现同一片地形）。CPU 与 shader 共用同一组
+## 噪声偏移，务必保持两侧公式一致，否则视觉、碰撞、贴物会错位。
 
 @export var size := 500.0
 @export var segments := 128
 @export var height_amp := 13.0
 @export var frequency := 0.009
+@export var randomize_terrain := true    # false = 永远用上面导出的固定参数（原始那张图）
+@export var seed_value := -1             # -1 = 每次启动随机；>=0 = 固定种子
+@export var amp_range := Vector2(13.0, 17.0)        # 随机起伏幅度区间（偏好明显大起伏，不给平原）
+@export var freq_range := Vector2(0.0085, 0.0115)   # 随机山体疏密区间（偏密一点，山丘更频繁）
 
 const GROUND_SHADER := preload("res://shaders/ground.gdshader")
+
+var terrain_seed := 0                    # 本局实际生效的种子
+var noise_off0 := Vector2.ZERO           # 三层 fbm 的域偏移（与 shader 同名 uniform 一致）
+var noise_off2 := Vector2(17.0, 3.0)
+var noise_off3 := Vector2(7.0, 11.0)
 
 # 碰撞构建时缓存的高度网格（供 height_at_fast）
 var _grid: PackedFloat32Array
@@ -17,11 +29,33 @@ var _grid_cell := 1.0
 
 
 func _ready() -> void:
+	_resolve_seed()
 	# mesh 立即生成（渲染需要）；物理体延迟到第一个物理帧创建
 	_build_terrain_mesh()
 	await get_tree().physics_frame
 	_build_collision()
 	_build_boundary_walls()
+
+
+func _resolve_seed() -> void:
+	## 定种子 → 定噪声偏移/幅度/频率；同时把全局 RNG 绑到该种子，
+	## 让 BOSS 落点、技能随机游走、石子散布都能靠同一颗种子复现
+	if seed_value >= 0:
+		terrain_seed = seed_value
+	else:
+		terrain_seed = int(Time.get_unix_time_from_system()) ^ (randi() << 8)
+	seed(terrain_seed)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = terrain_seed
+	if randomize_terrain:
+		# 偏移控制在 0~26：与原固定偏移同量级，避免 float32 精度损失
+		noise_off0 = Vector2(rng.randf_range(0.0, 26.0), rng.randf_range(0.0, 26.0))
+		noise_off2 = Vector2(rng.randf_range(0.0, 26.0), rng.randf_range(0.0, 26.0))
+		noise_off3 = Vector2(rng.randf_range(0.0, 26.0), rng.randf_range(0.0, 26.0))
+		height_amp = rng.randf_range(amp_range.x, amp_range.y)
+		frequency = rng.randf_range(freq_range.x, freq_range.y)
+	print("[terrain] 地形种子=%d 起伏幅度=%.2f 频率=%.5f 随机=%s" % [
+		terrain_seed, height_amp, frequency, randomize_terrain])
 
 
 # ---- 公共高度查询：草/杂物用它贴合地表 ----
@@ -61,9 +95,11 @@ func normal_at(x: float, z: float) -> Vector3:
 
 
 func _height_at(x: float, z: float) -> float:
-	var n := _fbm(Vector2(x, z) * frequency)
-	var n2 := _fbm(Vector2(x, z) * frequency * 4.0 + Vector2(17.0, 3.0))
-	var n3 := _fbm(Vector2(x, z) * frequency * 6.0 + Vector2(7.0, 11.0))
+	## 与 ground.gdshader 的 terrain_height() 同式（含随机域偏移），改动必须两侧同步
+	var p := Vector2(x, z) * frequency
+	var n := _fbm(p + noise_off0)
+	var n2 := _fbm(p * 4.0 + noise_off2)
+	var n3 := _fbm(p * 6.0 + noise_off3)
 	return (n * 0.75 + n2 * 0.25 + n3 * 0.12) * height_amp * 2.0 - height_amp
 
 
@@ -79,6 +115,9 @@ func _build_terrain_mesh() -> void:
 	mat.shader = GROUND_SHADER
 	mat.set_shader_parameter("height_amp", height_amp)
 	mat.set_shader_parameter("frequency", frequency)
+	mat.set_shader_parameter("noise_off0", noise_off0)
+	mat.set_shader_parameter("noise_off2", noise_off2)
+	mat.set_shader_parameter("noise_off3", noise_off3)
 	mat.set_shader_parameter("height_step", size / float(segments))
 	mat.set_shader_parameter("albedo_tex", load("res://assets/ground/leafy_grass_diff_2k.jpg"))
 	mat.set_shader_parameter("normal_tex", load("res://assets/ground/leafy_grass_nor_gl_2k.jpg"))
