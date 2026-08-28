@@ -3,7 +3,8 @@ extends Control
 ## 数据层复用 Godot 素材库插件 addons/grid_inventory（MIT, GodotForge）的
 ## Inventory / InvItem 类；物品图标取自 game-icons.net（CC-BY 4.0，见 assets/items/CREDITS.txt）。
 ## 装备栏：武器 / 副武器 / 防具；背包 3 行 × 9 列。默认装备剑+弓箭+防具（防具自动穿戴）。
-## 交互：拖拽穿卸；单击选中、双击使用（消耗品生效 / 装备穿戴）；选中后按 E 丢弃→地上生成箱子。
+## 交互：拖拽穿卸；单击选中；双击武器/防具＝只强化这一件（吃 1 块强化石）；
+##       双击消耗品＝使用一次；选中后按 E 丢弃→地上生成箱子。
 
 const BAG_SIZE := 27
 const BAG_COLS := 9
@@ -20,19 +21,19 @@ const STACK_MAX := 20
 const STACKABLE := ["dogmilk", "stone"]
 
 # id -> 定义：名称/可装备去处(-1=不可装备)/图标/着色/属性说明/[use]
+# 可强化的对象 = 所有能装备的物件（slot >= 0），等级由玩家身上的 enhance_levels 保管
 const DB := {
 	"sword":  {"name": "剑", "slot": K_WEAPON, "icon": "res://assets/items/sword.svg", "tint": Color(0.88, 0.92, 0.98),
-		"desc": "主武器 · 攻击力 +50\n按 X 挥砍，命中即扣 50"},
+		"desc": "主武器 · 基础攻击 50，按 X 挥砍\n双击：花 1 块强化石 → 只有剑 +1 级\n每级攻击力 +10%（最高 +10）"},
 	"bow":    {"name": "弓箭", "slot": K_SUB, "icon": "res://assets/items/bow.svg", "tint": Color(0.95, 0.80, 0.62),
-		"desc": "副武器 · 攻击力 12~50\n按住左键蓄力 3 秒满，满蓄扣 50\n弹道射程由物理引擎决定，每箭冷却 0.5 秒"},
+		"desc": "副武器 · 蓄力 3 秒满，攻击 12~50\n按住左键蓄力，松手发射，每箭冷却 0.5 秒\n双击：花 1 块强化石 → 只有弓箭 +1 级\n每级攻击力 +10%（最高 +10）"},
 	"armor":  {"name": "防具", "slot": K_ARMOR, "icon": "res://assets/items/armor.svg", "tint": Color(1.00, 0.85, 0.40),
-		"desc": "护甲 · 受到的伤害 ×0.7 后向下取整\nBOSS 光环 3 血/秒 → 约 2.1 血/秒\n（不足 1 点的零头会累计到之后扣）"},
+		"desc": "护甲 · 受到的伤害 ×0.7 后向下取整\n双击：花 1 块强化石 → 只有防具 +1 级\n每级再减 3% 受伤（最低 ×0.4）\n（不足 1 点的零头会累计到之后扣）"},
 	"dogmilk": {"name": "野生狗奶", "slot": -1, "icon": "res://assets/items/dogmilk.png", "tint": Color(1, 1, 1),
 		"desc": "「生命惧怕时间，时间惧怕野生狗奶。」\n\n消耗品 · 双击饮用\n获得 10 秒无敌（免疫伤害），\n血条变金、数字显示「永久」\n10 秒后解除并恢复满血",
 		"use": "invincible", "dur": 10.0},
 	"stone":  {"name": "装备强化石", "slot": -1, "icon": "res://assets/items/stone.svg", "tint": Color(0.60, 0.86, 1.00),
-		"desc": "消耗品 · 双击使用\n全身装备强化 +1 级（最高 +10）\n武器攻击力 +10%/级，防具减伤再 +3%/级\n\n击杀野生狗奶必掉 1 块，\n之后以 80%、79%、78%… 逐次递减追加",
-		"use": "enhance"},
+		"desc": "强化材料 · 双击不会消耗\n拿去双击「武器 / 防具」→ 只强化那一件，本石 -1\n\n击杀野生狗奶必掉 1 块，\n之后以 4%、3.95%、3.90%… 逐次递减追加"},
 }
 
 var _bag: Inventory                 # addons/grid_inventory 的数据模型（27 格）
@@ -281,36 +282,93 @@ func select_slot(loc: Array) -> void:
 	refresh_all()
 
 
+## 该 id 当前强化等级（等级由玩家保管，取不到按 0）
+func _lv(id: String) -> int:
+	if _player != null and _player.has_method("enhance_level_of"):
+		return int(_player.call("enhance_level_of", id))
+	return 0
+
+
+## 强化封顶等级（问玩家要，取不到按 10）
+func _enh_max() -> int:
+	if _player != null and _player.has_method("enhance_max"):
+		return int(_player.call("enhance_max"))
+	return 10
+
+
+func is_enhanceable(id: String) -> bool:
+	## 能装备的就是可强化对象（剑 / 弓箭 / 防具），各自独立计级
+	return DB.has(id) and int(DB[id]["slot"]) >= 0
+
+
+func stones_held() -> int:
+	return count_of("stone")
+
+
+## 从背包里扣掉 1 块强化石（先扣尾堆，保持前排格子数字大）
+func _take_one_stone() -> bool:
+	for i in range(BAG_SIZE - 1, -1, -1):
+		if bag_get(i) == "stone":
+			var n := bag_count(i) - 1
+			bag_set(i, "stone" if n > 0 else "", maxi(n, 0))
+			return true
+	return false
+
+
+## 双击某件武器/装备：只强化这一件，并消耗 1 块强化石
+func enhance_at(loc: Array) -> bool:
+	var id := _get_at(loc)
+	if not is_enhanceable(id):
+		return false
+	if _player == null or not _player.has_method("enhance_item"):
+		flash_hint("找不到玩家，无法强化")
+		return false
+	if stones_held() <= 0:
+		flash_hint("没有装备强化石——去击败野生狗奶（必掉 1 块）")
+		return false
+	# 满级等情况玩家会返回 false，此时不吃石头
+	if not bool(_player.call("enhance_item", id)):
+		refresh_all()
+		return false
+	_take_one_stone()
+	refresh_all()
+	_sync_player()
+	var effect := ""
+	if id == "armor":
+		effect = "受伤 ×%.2f" % float(_player.get("armor_factor"))
+	else:
+		effect = "攻击 ×%.2f" % float(_player.call("damage_scale_for", id))
+	flash_hint("%s 强化到 +%d ｜ %s ｜ 强化石剩 %d 块" % [
+		item_name(id), _lv(id), effect, stones_held()])
+	return true
+
+
 func use_slot(loc: Array) -> void:
 	var id := _get_at(loc)
 	if id == "" or not DB.has(id):
 		return
+	# 装备类：双击＝强化这一件（消耗强化石），穿卸请用拖拽
+	if is_enhanceable(id):
+		enhance_at(loc)
+		return
 	var def: Dictionary = DB[id]
+	if id == "stone":
+		# 石头是材料，双击不动它，只提醒用法
+		flash_hint("持有 %d 块强化石 ｜ 双击武器或防具＝只强化那一件（剑 +%d · 弓 +%d · 甲 +%d）" % [
+			stones_held(), _lv("sword"), _lv("bow"), _lv("armor")])
+		return
 	# 消耗品：生效一次并只扣 1 个（堆叠见底才空格）
 	if def.has("use"):
 		var kind := String(def["use"])
-		var ok := true
 		if kind == "invincible" and _player != null and _player.has_method("gain_invincibility"):
 			_player.call("gain_invincibility", float(def.get("dur", 10.0)))
 			flash_hint("饮下野生狗奶：10 秒无敌（血条显示「永久」）")
-		elif kind == "enhance" and _player != null and _player.has_method("gain_enhance"):
-			ok = _player.call("gain_enhance")
-			if ok:
-				flash_hint("装备强化成功！")
-		if not ok:
-			return
 		var n := _count_at(loc) - 1
 		_set_at(loc, id if n > 0 else "", maxi(n, 0))
 		if n <= 0:
 			_selected_loc = []
 		refresh_all()
 		_sync_player()
-		return
-	# 装备：穿戴到对应栏（与当前装备交换）
-	var slot := int(def["slot"])
-	var key := _kind_to_key(slot)
-	if key != "":
-		move_item(loc, ["eq", key])
 
 
 func discard_selected() -> void:
@@ -374,7 +432,7 @@ func _build_ui() -> void:
 	title.add_theme_color_override("font_color", Color(0.95, 0.90, 0.70))
 	panel.add_child(title)
 
-	_hint_default = "Tab 关闭 · 单击选中/双击使用 · 选中后按 E 丢弃 · 拖到装备栏即穿/卸"
+	_hint_default = "Tab 关闭 · 拖到装备栏穿/卸 · 双击武器或防具＝强化这一件（耗 1 块强化石）· 双击狗奶＝喝 · 选中按 E 丢弃"
 	_hint_label = Label.new()
 	_hint_label.text = _hint_default
 	_hint_label.position = Vector2(20, 312)
@@ -423,10 +481,12 @@ func is_selected(loc: Array) -> bool:
 func _paint_slot(s: Control, id: String, n: int = 1) -> void:
 	var ic: TextureRect = s.get_meta("icon")
 	var cnt: Label = s.get_meta("count")
+	var enh: Label = s.get_meta("enh")
 	if id == "":
 		ic.visible = false
 		s.tooltip_text = ""
 		cnt.visible = false
+		enh.visible = false
 	else:
 		ic.texture = _items[id].icon
 		ic.modulate = DB[id]["tint"]
@@ -437,7 +497,16 @@ func _paint_slot(s: Control, id: String, n: int = 1) -> void:
 			cnt.visible = true
 		else:
 			cnt.visible = false
+		# 左上角 +N：每件装备自己的强化等级（各自独立，最高 +10）
+		var lv := _lv(id)
+		if is_enhanceable(id) and lv > 0:
+			enh.text = "+%d" % lv
+			enh.visible = true
+		else:
+			enh.visible = false
 		var tip := "%s%s\n%s" % [String(DB[id]["name"]), (" ×%d/%d" % [n, cap]) if cap > 1 else "", String(DB[id]["desc"])]
+		if is_enhanceable(id):
+			tip += "\n\n当前 +%d / %d ｜ 持有强化石 ×%d" % [lv, _enh_max(), stones_held()]
 		s.tooltip_text = tip
 	s.call("set_selected", is_selected(s.get_meta("loc")))
 
@@ -517,6 +586,17 @@ class SlotCtl extends Panel:
 		ic.visible = false
 		s.add_child(ic)
 		s.set_meta("icon", ic)
+		var en := Label.new()
+		en.position = Vector2(3, 1)
+		en.size = Vector2(34, 18)
+		en.add_theme_font_size_override("font_size", 14)
+		en.add_theme_color_override("font_color", Color(0.55, 0.92, 1.0))
+		en.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+		en.add_theme_constant_override("outline_size", 5)
+		en.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		en.visible = false
+		s.add_child(en)
+		s.set_meta("enh", en)
 		s.set_meta("loc", p_loc)
 		s.mouse_entered.connect(s._hover.bind(true))
 		s.mouse_exited.connect(s._hover.bind(false))

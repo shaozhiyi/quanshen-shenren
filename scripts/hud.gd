@@ -174,6 +174,31 @@ func _add_tick(pos: Vector2, size: Vector2) -> void:
 	_cross.add_child(r)
 
 
+func _enh_lv(id: String) -> int:
+	## 某件装备的强化等级（玩家未就绪/无方法时按 0）
+	if _player != null and _player.has_method("enhance_level_of"):
+		return int(_player.call("enhance_level_of", id))
+	return 0
+
+
+func _enh_scale(id: String) -> float:
+	## 某件武器的攻击力倍率
+	if _player != null and _player.has_method("damage_scale_for"):
+		return float(_player.call("damage_scale_for", id))
+	return 1.0
+
+
+func _enh_name(id: String) -> String:
+	var inv := get_node_or_null("Inventory")
+	if inv != null and inv.has_method("item_name"):
+		return String(inv.call("item_name", id))
+	match id:
+		"sword": return "剑"
+		"bow": return "弓箭"
+		"armor": return "防具"
+	return id
+
+
 func _process(delta: float) -> void:
 	if _player != null and _coord_label != null:
 		var p := _player.global_position
@@ -197,9 +222,13 @@ func _process(delta: float) -> void:
 	if _bow != null and _sword != null:
 		var bow_on: bool = _bow.get("active")
 		_cross.visible = bow_on
-		var lv := int(_player.get("enhance_level")) if _player != null else 0
-		var scale: float = float(_player.call("damage_scale")) if _player != null and _player.has_method("damage_scale") else 1.0
-		var tag := "｜装备 +%d（攻击 ×%.2f）" % [lv, scale] if lv > 0 else ""
+		var cur := "bow" if bow_on else "sword"
+		var lv := _enh_lv(cur)
+		var scale := _enh_scale(cur)
+		var armor_lv := _enh_lv("armor")
+		var tag := "｜%s +%d" % [String(_enh_name(cur)), lv] if lv > 0 else ""
+		if armor_lv > 0:
+			tag += "｜甲 +%d" % armor_lv
 		if bow_on:
 			_weapon_label.text = "当前：弓箭 攻击 %d~%d（按住左键蓄力 3 秒满，松手发射）｜Z 切换剑%s" % [
 				int(roundf(12.0 * scale)), int(roundf(50.0 * scale)), tag]

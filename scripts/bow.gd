@@ -153,10 +153,10 @@ func _fire() -> void:
 
 
 func _player_damage_scale() -> float:
-	## 装备强化后的攻击力倍率（玩家按分组取，取不到按 1.0）
+	## 弓的强化倍率（每件装备单独算，只认"弓箭 +N"）；玩家按分组取，取不到按 1.0
 	var p := get_tree().get_first_node_in_group("player")
-	if p != null and p.has_method("damage_scale"):
-		return float(p.call("damage_scale"))
+	if p != null and p.has_method("damage_scale_for"):
+		return float(p.call("damage_scale_for", "bow"))
 	return 1.0
 
 

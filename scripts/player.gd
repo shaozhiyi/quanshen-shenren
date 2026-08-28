@@ -20,8 +20,9 @@ var _weapon := 0        # 0=主武器剑 1=副武器弓
 var _has := [true, true]  # 装备栏：[剑, 弓] 是否已装备
 var armor_factor := 1.0   # 护甲减伤系数（穿上防具=0.7，即受到的伤害 ×0.7 后向下取整）
 var _armor_on := false    # 当前是否穿着防具
-var enhance_level := 0    # 装备强化等级（用强化石提升）
-const ENHANCE_MAX := 10
+const ENHANCE_MAX := 10                       # 每件装备各自封顶 +10
+const ENHANCE_KINDS := ["sword", "bow", "armor"]  # 可强化对象（武器/装备，不含消耗品）
+var enhance_levels := {"sword": 0, "bow": 0, "armor": 0}  # 逐件强化等级（双击该件→仅它+1）
 var _dmg_carry := 0.0     # 防具取整后剩下的小数伤害，累计到下一次（否则 0.21/跳会被抹成 0）
 var _invincible := false
 var _invincible_t := 0.0
@@ -86,7 +87,7 @@ func save_state() -> Dictionary:
 		"hp": hp, "max_hp": max_hp,
 		"x": global_position.x, "y": global_position.y, "z": global_position.z,
 		"yaw": rotation.y, "pitch": pitch, "weapon": _weapon, "kills": kills,
-		"enhance": enhance_level,
+		"enhance": enhance_levels.duplicate(true),
 		"invincible_left": _invincible_t if _invincible else 0.0,
 	}
 
@@ -119,7 +120,8 @@ func _apply_loaded_state() -> void:
 		if cam != null:
 			cam.rotation.x = float(p.get("pitch", 0.0))
 		kills = int(p.get("kills", 0))
-		enhance_level = clampi(int(p.get("enhance", 0)), 0, ENHANCE_MAX)
+		_apply_enhance(p.get("enhance", 0))
+		_refresh_armor_factor()
 	var left := float(p.get("invincible_left", 0.0))
 	if left > 0.0 and has_method("gain_invincibility"):
 		gain_invincibility(left)
@@ -289,17 +291,19 @@ func _on_boss_died(b: Node = null) -> void:
 	get_tree().create_timer(3.0).timeout.connect(_exit_arena)
 
 
-const STONE_CHAIN_START := 0.80     # 追加掉落概率起点，每成功一次再减 1%
+const STONE_CHAIN_START := 0.80 * 0.05    # 追加掉落概率：原 80% 下调 5% → 4%
+const STONE_CHAIN_STEP := 0.01 * 0.05     # 每成功一次概率递减量（原 1% → 0.05%）
 
 
 func _roll_stones() -> int:
-	## 必掉 1 块强化石；随后 80% 追掉 1 块，成功后 79%、78%… 逐次递减，一旦失败即停
+	## 必掉 1 块强化石；随后以 4%、3.95%、3.90%… 逐次递减追加，一旦失败即停
+	## （概率整体调成原来的 5%，期望约 1.04 块/次击杀）
 	var stones := 1
 	var p := STONE_CHAIN_START
 	while p > 0.0:
 		if randf() < p:
 			stones += 1
-			p -= 0.01
+			p -= STONE_CHAIN_STEP
 		else:
 			break
 	return stones
@@ -426,31 +430,71 @@ func set_equipment(weapon_id: String, sub_id: String, armor_id: String) -> void:
 				_bow.set_active(false)
 
 
-# ---- 装备强化（消耗"装备强化石"） ----
+# ---- 装备强化（每件各自算级，消耗"装备强化石"） ----
 func _refresh_armor_factor() -> void:
-	## 穿甲基础 ×0.7，每级强化再减 3%（最低 0.4）；系数变化时清空取整余数
+	## 穿甲基础 ×0.7，防具每级强化再减 3%（最低 0.4）；系数变化时清空取整余数
 	var new_factor := 1.0
 	if _armor_on:
-		new_factor = clampf(0.7 - 0.03 * float(enhance_level), 0.4, 1.0)
+		new_factor = clampf(0.7 - 0.03 * float(enhance_level_of("armor")), 0.4, 1.0)
 	if new_factor != armor_factor:
 		armor_factor = new_factor
 		_dmg_carry = 0.0
 
 
-func gain_enhance() -> bool:
-	## 双击强化石：全身装备 +1 级；已满级则返回 false（不消耗石头）
-	if enhance_level >= ENHANCE_MAX:
-		_toast("装备已强化到 +%d（满级）" % ENHANCE_MAX)
+func enhance_level_of(id: String) -> int:
+	## 某件装备的强化等级（不可强化的物品恒为 0）
+	return int(enhance_levels.get(id, 0))
+
+
+func enhance_max() -> int:
+	## 封顶等级（供背包面板显示；常量没法 call，这里包一层）
+	return ENHANCE_MAX
+
+
+func damage_scale_for(id: String) -> float:
+	## 该武器的攻击力倍率：每级 +10%，只跟这件武器自己的等级有关
+	return 1.0 + 0.10 * float(enhance_level_of(id))
+
+
+func enhance_item(id: String) -> bool:
+	## 双击某件武器/装备：仅强化它自己，+1 级（最高 +10）。
+	## 满级或物品不可强化返回 false —— 调用方（背包）据此不消耗强化石。
+	if not ENHANCE_KINDS.has(id):
 		return false
-	enhance_level += 1
+	var lv := enhance_level_of(id)
+	if lv >= ENHANCE_MAX:
+		_toast("%s 已强化到 +%d（满级）" % [_enh_name(id), ENHANCE_MAX])
+		return false
+	enhance_levels[id] = lv + 1
 	_refresh_armor_factor()
-	_toast("装备强化到 +%d ｜ 攻击 ×%.2f ｜ 受伤 ×%.2f" % [enhance_level, damage_scale(), armor_factor])
+	if id == "armor":
+		_toast("防具强化到 +%d ｜ 受伤 ×%.2f" % [lv + 1, armor_factor])
+	else:
+		_toast("%s 强化到 +%d ｜ 攻击 ×%.2f" % [_enh_name(id), lv + 1, damage_scale_for(id)])
 	return true
 
 
-func damage_scale() -> float:
-	## 武器攻击力倍率：每级 +10%
-	return 1.0 + 0.10 * float(enhance_level)
+func _apply_enhance(data) -> void:
+	## 读档套用强化等级：新存档是逐件字典，老存档是全身统一的整数（一律按当件等级还原）
+	if typeof(data) == TYPE_DICTIONARY:
+		for k in ENHANCE_KINDS:
+			if data.has(k):
+				enhance_levels[k] = clampi(int(data[k]), 0, ENHANCE_MAX)
+	elif typeof(data) == TYPE_INT or typeof(data) == TYPE_FLOAT:
+		var lv := clampi(int(data), 0, ENHANCE_MAX)
+		for k in ENHANCE_KINDS:
+			enhance_levels[k] = lv
+
+
+func _enh_name(id: String) -> String:
+	## 提示用中文名（优先问背包要，取不到就用内置表）
+	if _inv != null and _inv.has_method("item_name"):
+		return String(_inv.call("item_name", id))
+	match id:
+		"sword": return "剑"
+		"bow": return "弓箭"
+		"armor": return "防具"
+	return id
 
 
 func _on_slash_hit() -> void:
@@ -469,7 +513,7 @@ func _on_slash_hit() -> void:
 		if col.is_in_group("boss"):
 			var boss := col.get_parent()
 			if boss.has_method("take_damage"):
-				boss.take_damage(int(roundf(50.0 * damage_scale())))
+				boss.take_damage(int(roundf(50.0 * damage_scale_for("sword"))))
 
 
 func _find_spawn() -> Vector3:
