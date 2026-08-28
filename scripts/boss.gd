@@ -2,7 +2,8 @@ extends Node3D
 ## 野生狗奶等 BOSS 的通用实体：巨型贴图盒（Godot 内 SurfaceTool 程序化六面贴图盒）。
 ## 数值/外观全部来自 scripts/boss_roster.gd 名册（按 def_id 取），加新 BOSS 不用改本文件。
 ## 大地图无敌；按 E 进入 BOSS 空间后可战。空间内循环：
-## 待机 → 前摇（配乐乐句A + 星点渐多环绕蓄力）→ 攻击（20 米飞天 + 日月交替 + 玩家掉血）
+## 待机 → 前摇（配乐乐句A + 星点渐多环绕蓄力）→ 攻击（20 米飞天 + 日月交替 + 玩家掉血
+##      + 逐颗射出星点，单发命中 5 血）
 ##      → 空中追踪 2 秒（跟着玩家位置走）→ 锁定红圈 1 秒 → 砸落（圈内 -20 + 地裂）
 ##      → 落地后随机游走，进入下一轮。
 ## 时间轴按公开歌词时间戳标定；配乐路径由名册 song 字段给出（缺失/为空则静默同轴）。
@@ -68,6 +69,7 @@ const SLAM_DAMAGE := 20.0       # 砸中玩家扣血（仍会被防具减伤）
 const SLAM_RADIUS := 6.0        # 红圈半径＝命中判定半径
 const STAR_FLIGHT := 0.9        # 单颗星点射出后的飞行时长
 const STAR_SPEED := 42.0        # 星点初速（米/秒）
+const STAR_DAMAGE := 5.0        # 单颗星点命中伤害（仍吃防具减伤/无敌免疫）
 const SLAM_FX := preload("res://scripts/slam_fx.gd")
 var _phase := 0                 # 0待机 1前摇 2攻击(飞天) 4空中追踪 5红圈预警 6砸落
 var _phase_t := 0.0
@@ -535,7 +537,7 @@ func _update_windup(delta: float) -> void:
 				_phase_t = 0.0
 				_dmg_t = 0.0
 		2:
-			# 攻击：飞天 + 日月交替 + 逐颗射出彩力星点 + 每 0.1 秒掉 1 血
+			# 攻击：飞天 + 日月交替 + 逐颗射出星点（命中各 5 血）+ 每 0.1 秒掉 1 血
 			var at := clampf(_phase_t / ATTACK_TIME, 0.0, 1.0)
 			position.y = _arena_base_y + FLY_HEIGHT * minf(1.0, _phase_t / 1.4) + 0.5 * sin(_t * 2.1)
 			_visual.position.x = 0.12 * sin(_t * 50.0)
@@ -611,7 +613,7 @@ func _fire_star(i: int, player: Node) -> void:
 	var scene := get_tree().current_scene
 	if scene == null:
 		scene = get_tree().root
-	SLAM_FX.spawn_star(scene, from, dir.normalized(), STAR_SPEED, STAR_FLIGHT, st.scale.x)
+	SLAM_FX.spawn_star(scene, from, dir.normalized(), STAR_SPEED, STAR_FLIGHT, st.scale.x, STAR_DAMAGE)
 
 
 func _layout_stars(prog: float) -> void:

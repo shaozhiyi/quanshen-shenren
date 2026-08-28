@@ -32,6 +32,10 @@ var _star_size := 1.4
 var _vel := Vector3.ZERO
 var _star_mi: MeshInstance3D
 var _star_mat: StandardMaterial3D
+var _damage := 5.0                  # 星点单发伤害（0 = 纯观赏）
+const STAR_HIT_R := 1.4             # 命中半径（米）
+var _hit_done := false
+var _prev_pos := Vector3.INF
 
 
 ## 砸地特效：at 为地面点（贴地画），radius 为裂纹半径
@@ -57,7 +61,8 @@ static func _spawn(parent: Node, at: Vector3, radius: float, tint: Color, crack:
 
 
 ## 射出的星点：从 at 沿 dir 飞出（带一点重力），life 秒后自毁
-static func spawn_star(parent: Node, at: Vector3, dir: Vector3, speed: float, life: float, size: float = 1.4) -> void:
+## damage > 0 时，星点扫过玩家会结算一次伤害（走玩家 take_damage，吃防具减伤与无敌）
+static func spawn_star(parent: Node, at: Vector3, dir: Vector3, speed: float, life: float, size: float = 1.4, damage: float = 5.0) -> void:
 	if parent == null or not is_instance_valid(parent):
 		return
 	var fx: Node3D = load("res://scripts/slam_fx.gd").new()
@@ -66,6 +71,7 @@ static func spawn_star(parent: Node, at: Vector3, dir: Vector3, speed: float, li
 	fx._speed = speed
 	fx._star_life = maxf(life, 0.1)
 	fx._star_size = maxf(size, 0.4) * 1.6     # 20 米外要看得见，放大一档
+	fx._damage = damage
 	parent.add_child(fx)
 	fx.global_position = at
 
@@ -126,6 +132,28 @@ func _ready() -> void:
 	_wave.scale = Vector3(0.12, 1.0, 0.12)
 
 
+func _try_hit_player(from: Vector3, to: Vector3) -> void:
+	## 用"本帧起点→终点"这条线段到玩家身体中心的最近距离判命中：
+	## 星点 42 米/秒、每帧位移约 0.7 米，直接点距判会在低帧率下穿过去
+	var p := get_tree().get_first_node_in_group("player")
+	if p == null or not is_instance_valid(p):
+		return
+	var center: Vector3 = p.global_position + Vector3(0.0, 0.9, 0.0)
+	if _seg_point_dist(from, to, center) <= STAR_HIT_R:
+		_hit_done = true
+		if p.has_method("take_damage"):
+			p.take_damage(_damage)
+
+
+static func _seg_point_dist(a: Vector3, b: Vector3, p: Vector3) -> float:
+	var ab := b - a
+	var len2 := ab.length_squared()
+	if len2 < 0.000001:
+		return a.distance_to(p)
+	var t := clampf((p - a).dot(ab) / len2, 0.0, 1.0)
+	return (a + ab * t).distance_to(p)
+
+
 func _make_quad(tex: Texture2D, size: float, y: float) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	var pm := PlaneMesh.new()
@@ -148,8 +176,14 @@ func _make_quad(tex: Texture2D, size: float, y: float) -> MeshInstance3D:
 func _process(delta: float) -> void:
 	_t += delta
 	if _star:
+		var from := global_position
 		_vel.y -= 12.0 * delta
 		global_position += _vel * delta
+		if _damage > 0.0 and not _hit_done:
+			_try_hit_player(from, global_position)
+			if _hit_done:
+				queue_free()      # 命中即炸掉，不重复结算
+				return
 		var sw := clampf(_t / _star_life, 0.0, 1.0)
 		if _star_mat != null:
 			_star_mat.albedo_color = Color(1, 0.93, 0.62, 1.0 - sw * sw)
