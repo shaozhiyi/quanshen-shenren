@@ -12,6 +12,7 @@ const WAVE_LIFE := 0.55          # 扩散光环时长
 
 static var _crack_tex: ImageTexture
 static var _ring_tex: ImageTexture
+static var _star_tex: ImageTexture
 
 var _t := 0.0
 var _radius := 6.0
@@ -22,6 +23,15 @@ var _crack: MeshInstance3D
 var _wave: MeshInstance3D
 var _crack_mat: StandardMaterial3D
 var _wave_mat: StandardMaterial3D
+# 星点弹模式
+var _star := false
+var _dir := Vector3.DOWN
+var _speed := 40.0
+var _star_life := 0.9
+var _star_size := 1.4
+var _vel := Vector3.ZERO
+var _star_mi: MeshInstance3D
+var _star_mat: StandardMaterial3D
 
 
 ## 砸地特效：at 为地面点（贴地画），radius 为裂纹半径
@@ -46,8 +56,65 @@ static func _spawn(parent: Node, at: Vector3, radius: float, tint: Color, crack:
 	fx.global_position = at
 
 
+## 射出的星点：从 at 沿 dir 飞出（带一点重力），life 秒后自毁
+static func spawn_star(parent: Node, at: Vector3, dir: Vector3, speed: float, life: float, size: float = 1.4) -> void:
+	if parent == null or not is_instance_valid(parent):
+		return
+	var fx: Node3D = load("res://scripts/slam_fx.gd").new()
+	fx._star = true
+	fx._dir = dir.normalized()
+	fx._speed = speed
+	fx._star_life = maxf(life, 0.1)
+	fx._star_size = maxf(size, 0.4) * 1.6     # 20 米外要看得见，放大一档
+	parent.add_child(fx)
+	fx.global_position = at
+
+
+static func star_texture() -> ImageTexture:
+	## 32×32 四角星：十字星芒 + 亮芯，边缘渐隐（环绕与射出共用一张）
+	if _star_tex != null:
+		return _star_tex
+	var s := 32
+	var img := Image.create(s, s, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var c := s * 0.5
+	for y in s:
+		for x in s:
+			var dx := (x - c + 0.5) / c
+			var dy := (y - c + 0.5) / c
+			var v := 0.0
+			if absf(dx * dy) < 0.05 and absf(dx) + absf(dy) < 1.0:
+				v = 1.0 - (absf(dx) + absf(dy))
+			var r := sqrt(dx * dx + dy * dy)
+			if r < 0.34:
+				v = maxf(v, 1.0 - r * 2.6)
+			if v > 0.0:
+				img.set_pixel(x, y, Color(1, 0.97, 0.78, clampf(v * 1.35, 0.0, 1.0)))
+	_star_tex = ImageTexture.create_from_image(img)
+	return _star_tex
+
+
 func _ready() -> void:
 	add_to_group("slam_fx")
+	if _star:
+		add_to_group("slam_star")
+		_vel = _dir * _speed
+		_star_mi = MeshInstance3D.new()
+		var pm := PlaneMesh.new()
+		pm.size = Vector2(_star_size, _star_size)
+		_star_mi.mesh = pm
+		_star_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+		mat.albedo_texture = star_texture()
+		mat.albedo_color = Color(1, 0.93, 0.62, 1.0)
+		_star_mi.material_override = mat
+		_star_mat = mat
+		add_child(_star_mi)
+		return
 	# 地裂：贴地的方形面片（暗色裂纹，抬 0.02 防与地面穿模）
 	if _want_crack:
 		_crack = _make_quad(crack_texture(), _radius * 2.0, 0.02)
@@ -80,6 +147,18 @@ func _make_quad(tex: Texture2D, size: float, y: float) -> MeshInstance3D:
 
 func _process(delta: float) -> void:
 	_t += delta
+	if _star:
+		_vel.y -= 12.0 * delta
+		global_position += _vel * delta
+		var sw := clampf(_t / _star_life, 0.0, 1.0)
+		if _star_mat != null:
+			_star_mat.albedo_color = Color(1, 0.93, 0.62, 1.0 - sw * sw)
+		if _star_mi != null:
+			var ss := lerpf(1.0, 0.45, sw)
+			_star_mi.scale = Vector3(ss, ss, ss)
+		if _t >= _star_life:
+			queue_free()
+		return
 	var wl := WAVE_LIFE if _wave_life < 0.0 else _wave_life
 	if _crack != null and _crack_mat != null:
 		# 前 0.22 秒绽开到满尺寸，之后慢慢淡出（留下"地裂过"的痕迹）

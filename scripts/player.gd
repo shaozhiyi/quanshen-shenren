@@ -33,7 +33,6 @@ var _invincible_t := 0.0
 var _invincible_dur := 0.0
 signal invincibility_changed(active: bool, duration: float)
 var _inv: Node            # 背包/装备覆盖层（HUD/Inventory）
-var _hud: Node            # HUD 画布层（屏幕 toast 提示）
 var _arena_boss: Node     # 当前正在交手的那只 BOSS
 var _field: Node          # BossField：按名册生成多只 BOSS
 var _arena: Node
@@ -75,7 +74,6 @@ func _ready() -> void:
 	if _bow != null:
 		_bow.set_active(false)
 	_inv = get_node_or_null("../HUD/Inventory")
-	_hud = get_node_or_null("../HUD")
 	_apply_loaded_state()
 
 
@@ -162,10 +160,7 @@ func _quick_save() -> void:
 	if _inv != null and _inv.has_method("save_state"):
 		inv_state = _inv.call("save_state")
 	var data := SaveManager.build_data(seed_used, amp, freq, save_state(), inv_state, _boss_states(), kills)
-	if SaveManager.write_to(path, data):
-		_toast("已存档：%s" % String(path).get_file())
-	else:
-		_toast("存档写入失败，检查 save/ 目录权限")
+	SaveManager.write_to(path, data)
 
 
 # ---- 多 BOSS：按名册生成后，用"最近的那只"作为交互目标 ----
@@ -175,26 +170,10 @@ func bosses() -> Array:
 
 
 func _watch_bosses() -> void:
-	## 给场上每只 BOSS 的 died / slam_landed 信号各连一次（新增 BOSS 后重复调用即可，不会重复连）
+	## 给场上每只 BOSS 的 died 信号连一次结算（新增 BOSS 后重复调用即可，不会重复连）
 	for b in bosses():
-		if not (b is Node):
-			continue
-		if not b.is_connected("died", _on_boss_died):
+		if b is Node and not b.is_connected("died", _on_boss_died):
 			b.connect("died", _on_boss_died)
-		if b.has_signal("slam_landed") and not b.is_connected("slam_landed", _on_slam_landed):
-			b.connect("slam_landed", _on_slam_landed)
-
-
-func _on_slam_landed(b: Node, hit: bool, damage: float) -> void:
-	## 砸落结算提示：躲开红圈 vs 被砸中
-	var nm := String(b.get("boss_name"))
-	if hit:
-		if damage <= 0.0:
-			_toast("%s 砸中了你，但伤害被完全挡下" % nm)
-		else:
-			_toast("%s 砸中！-%d 血（红圈要跑出去）" % [nm, int(roundf(damage))])
-	else:
-		_toast("躲开了 %s 的红圈 —— 砸空了" % nm)
 
 
 func nearest_boss() -> Node:
@@ -297,16 +276,9 @@ func _on_boss_died(b: Node = null) -> void:
 	kills += 1
 	var item := String(b.call("get_reward_item"))
 	var n := int(b.call("reward_count"))
-	var dname := String(b.call("difficulty_name"))
 	if _inv != null and _inv.has_method("add_item"):
-		var ok_milk: bool = _inv.call("add_item", item, n)
-		var stones := _roll_stones()
-		var ok_stone: bool = _inv.call("add_item", "stone", stones)
-		var msg := "缴获 %s ×%d ＋ 装备强化石 ×%d（%s·%s难度）" % [
-			String(_inv.call("item_name", item)), n, stones, String(b.get("boss_name")), dname]
-		if not (ok_milk and ok_stone):
-			msg += "｜背包已满，部分丢失"
-		_toast(msg)
+		_inv.call("add_item", item, n)
+		_inv.call("add_item", "stone", _roll_stones())
 	if not _in_arena:
 		return
 	get_tree().create_timer(3.0).timeout.connect(_exit_arena)
@@ -338,21 +310,8 @@ func _try_cycle_difficulty() -> void:
 	if b == null:
 		return
 	if not b.call("can_adjust_difficulty"):
-		_toast("先击败 %s 一次，才能调节它的难度" % String(b.get("boss_name")))
 		return
 	b.call("cycle_difficulty")
-	var hp_max := int(b.get("max_hp"))
-	var mult: float = float(b.call("aura_damage")) / maxf(float(b.call("aura_base")), 0.001)
-	_toast("%s 难度 %s ｜ HP %d ｜ 光环 ×%.1f ｜ 掉落 ×%d" % [
-		String(b.get("boss_name")), String(b.call("difficulty_name")), hp_max, mult, int(b.call("reward_count"))])
-
-
-func _toast(text: String) -> void:
-	## 屏幕中下方短暂提示（HUD 就绪则用 HUD 的 toast，否则退回背包面板提示）
-	if _hud != null and _hud.has_method("toast"):
-		_hud.call("toast", text)
-	elif _inv != null and _inv.has_method("flash_hint"):
-		_inv.call("flash_hint", text)
 
 
 func _on_died() -> void:
@@ -361,9 +320,6 @@ func _on_died() -> void:
 	hp_changed.emit(hp, max_hp)
 	if _in_arena:
 		_exit_arena()
-		_toast("不敌野生狗奶……被送出空间（下次挑战 BOSS 满血）")
-	else:
-		_toast("我倒下了……")
 
 
 func _try_pick_box() -> bool:
@@ -375,10 +331,8 @@ func _try_pick_box() -> bool:
 		return false
 	var n := int(box.get("item_count")) if box.get("item_count") != null else 1
 	if not _inv.call("add_item", String(box.item_id), n):
-		_toast("背包已满，无法回收 %s×%d" % [String(_inv.item_name(String(box.item_id))), n])
 		return true
 	box.queue_free()
-	_toast("已回收 %s×%d" % [String(_inv.item_name(String(box.item_id))), n])
 	return true
 
 
@@ -478,20 +432,15 @@ func damage_scale_for(id: String) -> float:
 
 
 func enhance_item(id: String) -> bool:
-	## 双击某件武器/装备：仅强化它自己，+1 级（最高 +10）。
+	## 双击某件武器/装备：只强化它自己，+1 级（最高 +10）。
 	## 满级或物品不可强化返回 false —— 调用方（背包）据此不消耗强化石。
 	if not ENHANCE_KINDS.has(id):
 		return false
 	var lv := enhance_level_of(id)
 	if lv >= ENHANCE_MAX:
-		_toast("%s 已强化到 +%d（满级）" % [_enh_name(id), ENHANCE_MAX])
 		return false
 	enhance_levels[id] = lv + 1
 	_refresh_armor_factor()
-	if id == "armor":
-		_toast("防具强化到 +%d ｜ 受伤 ×%.2f" % [lv + 1, armor_factor])
-	else:
-		_toast("%s 强化到 +%d ｜ 攻击 ×%.2f" % [_enh_name(id), lv + 1, damage_scale_for(id)])
 	return true
 
 
@@ -505,17 +454,6 @@ func _apply_enhance(data) -> void:
 		var lv := clampi(int(data), 0, ENHANCE_MAX)
 		for k in ENHANCE_KINDS:
 			enhance_levels[k] = lv
-
-
-func _enh_name(id: String) -> String:
-	## 提示用中文名（优先问背包要，取不到就用内置表）
-	if _inv != null and _inv.has_method("item_name"):
-		return String(_inv.call("item_name", id))
-	match id:
-		"sword": return "剑"
-		"bow": return "弓箭"
-		"armor": return "防具"
-	return id
 
 
 func _on_slash_hit() -> void:

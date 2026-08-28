@@ -26,8 +26,6 @@ var _charge_bar: Control
 var _cross: Control
 var _sword: Node
 var _bow: Node
-var _toast_text := ""
-var _toast_t := 0.0
 
 
 func _ready() -> void:
@@ -229,9 +227,12 @@ func _process(delta: float) -> void:
 		var tag := "｜%s +%d" % [String(_enh_name(cur)), lv] if lv > 0 else ""
 		if armor_lv > 0:
 			tag += "｜甲 +%d" % armor_lv
+		# 数值一律向弓箭脚本要，改参数不用回来动 HUD
+		var dr: Array = _bow.call("damage_range")
+		var ct: float = float(_bow.call("charge_time"))
 		if bow_on:
-			_weapon_label.text = "当前：弓箭 攻击 %d~%d（按住左键蓄力 3 秒满，松手发射）｜Z 切换剑%s" % [
-				int(roundf(12.0 * scale)), int(roundf(50.0 * scale)), tag]
+			_weapon_label.text = "当前：弓箭 攻击 %d~%d（按住左键蓄力 %.0f 秒满，松手发射）｜Z 切换剑%s" % [
+				int(roundf(float(dr[0]) * scale)), int(roundf(float(dr[1]) * scale)), ct, tag]
 		else:
 			_weapon_label.text = "当前：剑 攻击 %d（X 挥砍）｜Z 切换弓箭%s" % [int(roundf(50.0 * scale)), tag]
 		if _bow.call("is_charging"):
@@ -240,11 +241,11 @@ func _process(delta: float) -> void:
 		elif _bow.get("active") and _bow.get("_cooldown") > 0.0:
 			# 射击冷却：红条倒数
 			_charge_bar.visible = true
-			_charge_bar.call("set_value", _bow.get("_cooldown") / 0.5 * 100.0, false)
+			_charge_bar.call("set_value", _bow.get("_cooldown") / float(_bow.call("shot_cooldown")) * 100.0, false)
 		else:
 			_charge_bar.visible = false
 
-	# BOSS 空间交互提示 + 空间内隐藏小地图
+	# BOSS 空间交互提示 + 空间内隐藏小地图（只保留按键指引，出招过程不再刷屏）
 	if _player != null and _player.has_method("in_arena"):
 		var in_arena: bool = _player.call("in_arena")
 		if _map_bg != null:
@@ -253,20 +254,12 @@ func _process(delta: float) -> void:
 		var boss: Node = _player.call("current_boss") if _player.has_method("current_boss") else null
 		if in_arena:
 			_hint_label.visible = true
-			var bname := "BOSS"
+			_hint_label.add_theme_color_override("font_color", Color(1, 0.98, 0.8, 1))
 			if boss != null:
-				bname = String(boss.get("boss_name"))
-			if boss != null and boss.call("is_attacking"):
-				var ptxt := String(boss.call("phase_text"))
-				_hint_label.text = "%s %s" % [bname, ptxt if ptxt != "" else "腾空 · 日月倒悬 —— 持续失血！"]
-				_hint_label.add_theme_color_override("font_color", Color(1, 0.35, 0.3, 1))
+				_hint_label.text = "—— %s 空间 · %s难度 ——（按 E 离开）" % [
+					String(boss.get("boss_name")), String(boss.call("difficulty_name"))]
 			else:
-				if boss != null:
-					_hint_label.text = "—— %s 空间 · %s难度 ——（按 E 离开）" % [
-						bname, String(boss.call("difficulty_name"))]
-				else:
-					_hint_label.text = "—— BOSS 空间 ——（按 E 离开）"
-				_hint_label.add_theme_color_override("font_color", Color(1, 0.98, 0.8, 1))
+				_hint_label.text = "—— BOSS 空间 ——（按 E 离开）"
 		elif _player.call("near_boss") and boss != null:
 			_hint_label.visible = true
 			_hint_label.add_theme_color_override("font_color", Color(1, 0.98, 0.8, 1))
@@ -277,22 +270,6 @@ func _process(delta: float) -> void:
 				_hint_label.text = "靠近 %s —— 按 E 挑战（先赢一次才能切换难度）" % String(boss.get("boss_name"))
 		else:
 			_hint_label.visible = false
-
-	# toast 优先占用提示位（击杀奖励 / 难度切换 / 回收结果）
-	if _toast_t > 0.0:
-		_toast_t -= delta
-		if _hint_label != null:
-			_hint_label.visible = true
-			_hint_label.text = _toast_text
-			_hint_label.add_theme_color_override("font_color", Color(1.0, 0.86, 0.35, 1))
-		if _toast_t <= 0.0:
-			_toast_t = 0.0
-
-
-func toast(text: String) -> void:
-	## 屏幕中下方金色提示，3 秒后自动交还给常规操作提示
-	_toast_text = text
-	_toast_t = 3.0
 
 
 func _update_minimap() -> void:

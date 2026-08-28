@@ -46,8 +46,6 @@ var _player: Node
 var _open := false
 var _selected_loc: Array = []       # 当前选中的槽位 ["bag",i]/["eq",k]
 var _hint_label: Label
-var _hint_default := ""
-var _hint_t := 0.0
 
 
 func _ready() -> void:
@@ -315,16 +313,14 @@ func _take_one_stone() -> bool:
 	return false
 
 
-## 双击某件武器/装备：只强化这一件，并消耗 1 块强化石
+## 双击某件武器/装备：只强化这一件，并消耗 1 块强化石（无提示，成功与否看格子上的 +N）
 func enhance_at(loc: Array) -> bool:
 	var id := _get_at(loc)
 	if not is_enhanceable(id):
 		return false
 	if _player == null or not _player.has_method("enhance_item"):
-		flash_hint("找不到玩家，无法强化")
 		return false
 	if stones_held() <= 0:
-		flash_hint("没有装备强化石——去击败野生狗奶（必掉 1 块）")
 		return false
 	# 满级等情况玩家会返回 false，此时不吃石头
 	if not bool(_player.call("enhance_item", id)):
@@ -333,13 +329,6 @@ func enhance_at(loc: Array) -> bool:
 	_take_one_stone()
 	refresh_all()
 	_sync_player()
-	var effect := ""
-	if id == "armor":
-		effect = "受伤 ×%.2f" % float(_player.get("armor_factor"))
-	else:
-		effect = "攻击 ×%.2f" % float(_player.call("damage_scale_for", id))
-	flash_hint("%s 强化到 +%d ｜ %s ｜ 强化石剩 %d 块" % [
-		item_name(id), _lv(id), effect, stones_held()])
 	return true
 
 
@@ -353,16 +342,12 @@ func use_slot(loc: Array) -> void:
 		return
 	var def: Dictionary = DB[id]
 	if id == "stone":
-		# 石头是材料，双击不动它，只提醒用法
-		flash_hint("持有 %d 块强化石 ｜ 双击武器或防具＝只强化那一件（剑 +%d · 弓 +%d · 甲 +%d）" % [
-			stones_held(), _lv("sword"), _lv("bow"), _lv("armor")])
-		return
+		return        # 石头是材料，双击不消耗
 	# 消耗品：生效一次并只扣 1 个（堆叠见底才空格）
 	if def.has("use"):
 		var kind := String(def["use"])
 		if kind == "invincible" and _player != null and _player.has_method("gain_invincibility"):
 			_player.call("gain_invincibility", float(def.get("dur", 10.0)))
-			flash_hint("饮下野生狗奶：10 秒无敌（血条显示「永久」）")
 		var n := _count_at(loc) - 1
 		_set_at(loc, id if n > 0 else "", maxi(n, 0))
 		if n <= 0:
@@ -385,22 +370,6 @@ func discard_selected() -> void:
 	_sync_player()
 	if _player != null and _player.has_method("spawn_drop_box"):
 		_player.call("spawn_drop_box", id, n)
-		flash_hint("已丢弃 %s×%d（走近按 E 回收）" % [item_name(id), n])
-
-
-func flash_hint(text: String) -> void:
-	if _hint_label != null:
-		_hint_label.text = text
-		_hint_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.4))
-		_hint_t = 2.5
-
-
-func _process(delta: float) -> void:
-	if _hint_t > 0.0:
-		_hint_t -= delta
-		if _hint_t <= 0.0 and _hint_label != null:
-			_hint_label.text = _hint_default
-			_hint_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.55))
 
 
 # ---- UI ----
@@ -432,9 +401,8 @@ func _build_ui() -> void:
 	title.add_theme_color_override("font_color", Color(0.95, 0.90, 0.70))
 	panel.add_child(title)
 
-	_hint_default = "Tab 关闭 · 拖到装备栏穿/卸 · 双击武器或防具＝强化这一件（耗 1 块强化石）· 双击狗奶＝喝 · 选中按 E 丢弃"
 	_hint_label = Label.new()
-	_hint_label.text = _hint_default
+	_hint_label.text = "Tab 关闭 · 拖到装备栏穿/卸 · 双击武器或防具＝强化这一件（耗 1 块强化石）· 双击狗奶＝喝 · 选中按 E 丢弃"
 	_hint_label.position = Vector2(20, 312)
 	_hint_label.add_theme_font_size_override("font_size", 13)
 	_hint_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.55))

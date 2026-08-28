@@ -66,16 +66,18 @@ const MARK_TIME := 1.0          # 追踪位置固定后，红圈预警时长
 const SLAM_DROP_TIME := 0.45    # 从空中砸向红圈的时长（越落越快）
 const SLAM_DAMAGE := 20.0       # 砸中玩家扣血（仍会被防具减伤）
 const SLAM_RADIUS := 6.0        # 红圈半径＝命中判定半径
+const STAR_FLIGHT := 0.9        # 单颗星点射出后的飞行时长
+const STAR_SPEED := 42.0        # 星点初速（米/秒）
 const SLAM_FX := preload("res://scripts/slam_fx.gd")
 var _phase := 0                 # 0待机 1前摇 2攻击(飞天) 4空中追踪 5红圈预警 6砸落
 var _phase_t := 0.0
+var _stars_fired := 0           # 本轮攻击已射出的星点数
 var _slam_target := Vector3.ZERO    # 锁定的砸落点（XZ 有效）
 var _slam_top := 0.0                # 起砸时的高度
 var _slam_hit := false              # 上一次砸落是否命中（供测试/提示）
 var _marker: MeshInstance3D         # 地面红圈
 var _marker_mat: StandardMaterial3D
 var _stars: Array[MeshInstance3D] = []
-var _star_tex: ImageTexture
 var _orbit := 0.0
 var _music: AudioStreamPlayer
 var _has_music := false
@@ -86,7 +88,6 @@ var _wander_target := Vector3.ZERO
 var _wandering := false
 
 signal died(target: Node)   # 多只 BOSS 同场，带上是谁死的
-signal slam_landed(target: Node, hit: bool, damage: float)   # 砸落结算（是否命中）
 
 
 func set_arena_mode(b: bool) -> void:
@@ -387,9 +388,8 @@ func _build_marker() -> void:
 	add_child(_marker)
 
 
-# ---- 蓄力星点：程序化四角星贴图 + 公告板小面片（池，蓄力时逐个点亮） ----
+# ---- 蓄力星点：公告板小面片池（蓄力时逐个点亮，攻击期逐颗射出） ----
 func _build_stars() -> void:
-	_star_tex = _make_star_texture()
 	for i in MAX_STARS:
 		var mi := MeshInstance3D.new()
 		var pm := PlaneMesh.new()
@@ -400,7 +400,7 @@ func _build_stars() -> void:
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 		mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-		mat.albedo_texture = _star_tex
+		mat.albedo_texture = SLAM_FX.star_texture()
 		mat.emission_enabled = true
 		mat.emission = Color(1, 0.92, 0.55)
 		mat.emission_energy_multiplier = 3.6
@@ -409,27 +409,6 @@ func _build_stars() -> void:
 		mi.visible = false
 		add_child(mi)
 		_stars.append(mi)
-
-
-func _make_star_texture() -> ImageTexture:
-	## 32x32 四角星：十字星芒 + 亮芯，边缘渐隐
-	var s := 32
-	var img := Image.create(s, s, false, Image.FORMAT_RGBA8)
-	img.fill(Color(0, 0, 0, 0))
-	var c := s * 0.5
-	for y in s:
-		for x in s:
-			var dx := (x - c + 0.5) / c
-			var dy := (y - c + 0.5) / c
-			var v := 0.0
-			if absf(dx * dy) < 0.05 and absf(dx) + absf(dy) < 1.0:
-				v = 1.0 - (absf(dx) + absf(dy))
-			var r := sqrt(dx * dx + dy * dy)
-			if r < 0.34:
-				v = maxf(v, 1.0 - r * 2.6)
-			if v > 0.0:
-				img.set_pixel(x, y, Color(1, 0.97, 0.78, clampf(v * 1.35, 0.0, 1.0)))
-	return ImageTexture.create_from_image(img)
 
 
 func _face_mat(tex_file: String) -> StandardMaterial3D:
@@ -556,12 +535,14 @@ func _update_windup(delta: float) -> void:
 				_phase_t = 0.0
 				_dmg_t = 0.0
 		2:
-			# 攻击：飞天 + 日月交替 + 每 0.1 秒掉 1 血
+			# 攻击：飞天 + 日月交替 + 逐颗射出彩力星点 + 每 0.1 秒掉 1 血
 			var at := clampf(_phase_t / ATTACK_TIME, 0.0, 1.0)
 			position.y = _arena_base_y + FLY_HEIGHT * minf(1.0, _phase_t / 1.4) + 0.5 * sin(_t * 2.1)
 			_visual.position.x = 0.12 * sin(_t * 50.0)
-			for i in MAX_STARS:
-				_stars[i].visible = (int(_t * 14.0) + i) % 4 != 0
+			# 发射窗口 = 交替时长 - 单颗飞行时间 → 交替结束正好射完最后一颗
+			var want := int((_phase_t / maxf(ATTACK_TIME - STAR_FLIGHT, 0.001)) * float(MAX_STARS))
+			while _stars_fired < clampi(want, 0, MAX_STARS):
+				_fire_star(_stars_fired, player)
 			_layout_stars(1.0)
 			if arena != null:
 				arena.set_day_night((1.0 - cos(TAU * at)) * 0.5)   # 昼→夜→昼 整周期
@@ -613,6 +594,26 @@ func _update_windup(delta: float) -> void:
 				_pick_wander_target()   # 砸完开始正常移动
 
 
+func _fire_star(i: int, player: Node) -> void:
+	## 把第 i 颗环绕星点射出去：从它当前的环绕位置朝玩家当时所在方向飞出，池子里熄灭
+	_stars_fired = i + 1        # 先计数，异常分支也不会让调用方的 while 卡死
+	if i < 0 or i >= _stars.size():
+		return
+	var st := _stars[i]
+	var from := st.global_position
+	st.visible = false
+	var to := from + Vector3(0.0, -8.0, 0.0)
+	if player != null and is_instance_valid(player):
+		to = player.global_position + Vector3(0.0, 0.6, 0.0)
+	var dir := to - from
+	if dir.length_squared() < 0.0001:
+		dir = Vector3(0.0, -1.0, 0.0)
+	var scene := get_tree().current_scene
+	if scene == null:
+		scene = get_tree().root
+	SLAM_FX.spawn_star(scene, from, dir.normalized(), STAR_SPEED, STAR_FLIGHT, st.scale.x)
+
+
 func _layout_stars(prog: float) -> void:
 	## 星点绕身体螺旋环绕：半径随蓄力收缩、高度错开、尺寸微涨
 	var n := MAX_STARS
@@ -627,6 +628,8 @@ func _layout_stars(prog: float) -> void:
 
 
 func _hide_stars() -> void:
+	## 收起全部星点并重置发射计数（下一轮前摇重新蓄满）
+	_stars_fired = 0
 	for st in _stars:
 		st.visible = false
 
@@ -656,29 +659,12 @@ func _do_slam_impact(player: Node) -> void:
 		var d := Vector2(player.global_position.x - position.x, player.global_position.z - position.z).length()
 		if d <= SLAM_RADIUS:
 			_slam_hit = true
-			var hp_before := float(player.get("hp"))
 			if player.has_method("take_damage"):
 				player.take_damage(SLAM_DAMAGE)
-			# 上报真实扣到的血（防具减伤 / 无敌免疫 / 致死复活都能如实反映）
-			var dealt := maxf(0.0, hp_before - float(player.get("hp")))
-			slam_landed.emit(self, true, dealt)
-		else:
-			slam_landed.emit(self, false, 0.0)
 
 
 func slam_hit() -> bool:
 	return _slam_hit
-
-
-func phase_text() -> String:
-	## 给 HUD 的分相位提示
-	match _phase:
-		1: return "蓄力中"
-		2: return "腾空 · 日月倒悬 —— 持续失血！"
-		4: return "在空中锁定你的位置 —— 继续跑！"
-		5: return "红圈已锁定 —— 1 秒后砸落，快出圈！"
-		6: return "砸落！"
-	return ""
 
 
 func _show_marker(b: bool) -> void:

@@ -1,17 +1,17 @@
 extends Node3D
 ## 副武器·弓（挂在相机下）。主/副武器按 Z 切换，初始主武器为剑。
 ## 交互：装备弓时，按住鼠标左键 → 进入瞄准（FOV 拉近、弓移到眼前、搭箭、弦随蓄力后拉），
-## 3 秒蓄满；松手 → 沿准星方向射出箭。箭为 RigidBody3D，弹道/射程由物理引擎（重力抛物线）决定，
-## 初速与攻击力随蓄力提升：满蓄 3s 时攻击力 50（命中 BOSS 扣 50），未满按比例衰减。
+## 2 秒蓄满；松手 → 沿准星方向射出箭。箭为 RigidBody3D，弹道/射程由物理引擎（重力抛物线）决定，
+## 初速与攻击力随蓄力提升：满蓄 2s 时攻击力 70（命中 BOSS 扣 70），未满按比例衰减。
 ## 模型：Poly Pizza CC0 弓 + Quaternius CC0 箭（assets/weapons，见 CREDITS.txt）。
 
 const BOW_MODEL := preload("res://assets/weapons/bow.glb")
 const ARROW_MODEL := preload("res://assets/weapons/arrow.glb")
 const ARROW_SCRIPT := preload("res://scripts/arrow.gd")
 
-const CHARGE_TIME := 3.0          # 满蓄秒数
+const CHARGE_TIME := 2.0          # 满蓄秒数
 const SHOT_COOLDOWN := 0.5        # 每次射出后的等待（秒）
-const FULL_DMG := 50              # 满蓄攻击力
+const FULL_DMG := 70              # 满蓄攻击力
 const MIN_DMG := 12               # 刚松手的最低攻击力
 const SPEED_MIN := 22.0           # 初速 m/s
 const SPEED_MAX := 58.0           # 满蓄初速 m/s（决定射程）
@@ -61,6 +61,19 @@ func charge_ratio() -> float:
 	if not _charging:
 		return 0.0
 	return clampf(_charge / CHARGE_TIME, 0.0, 1.0)
+
+
+func damage_range() -> Array:
+	## 供 HUD 显示：[速射最低伤害, 满蓄伤害]（常量没法 call，这里包一层）
+	return [MIN_DMG, FULL_DMG]
+
+
+func charge_time() -> float:
+	return CHARGE_TIME
+
+
+func shot_cooldown() -> float:
+	return SHOT_COOLDOWN
 
 
 func is_charging() -> bool:
