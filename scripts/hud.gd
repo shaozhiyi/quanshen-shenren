@@ -20,8 +20,8 @@ var _map_rect: TextureRect
 var _map_tex: ImageTexture
 var _last_map_pos := Vector3(1e9, 0, 0)
 var _weapon_label: Label
-var _inv_label: Label
 var _hint_label: Label
+const HP_LABEL_FMT := "{value}/{max}"      # 血条数字格式（无敌时临时换成"永久"）
 var _charge_bar: Control
 var _cross: Control
 var _sword: Node
@@ -54,7 +54,7 @@ func _ready() -> void:
 	style.shadow_offset = Vector2(2, 3)
 	style.shadow_apply_to = HealthBarXStyle.SHADOW_APPLY_BOTH
 	style.label_enabled = true
-	style.label_format = "{value}/{max}"
+	style.label_format = HP_LABEL_FMT
 	style.label_custom_max = 100.0
 	style.font_size = 16
 	style.font_color = Color(1, 1, 1, 1)
@@ -124,16 +124,6 @@ func _ready() -> void:
 	_weapon_label.text = "当前：剑（X 挥砍）｜Z 切换弓箭"
 	add_child(_weapon_label)
 
-	_inv_label = Label.new()
-	_inv_label.position = bar_position + Vector2(0, 26)
-	_inv_label.add_theme_font_size_override("font_size", 18)
-	_inv_label.add_theme_color_override("font_color", Color(1, 0.88, 0.35))
-	_inv_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
-	_inv_label.add_theme_constant_override("outline_size", 4)
-	_inv_label.text = "无敌"
-	_inv_label.visible = false
-	add_child(_inv_label)
-
 	_hint_label = Label.new()
 	_hint_label.position = Vector2(640 - 240, 610)
 	_hint_label.size = Vector2(480, 26)
@@ -194,18 +184,14 @@ func _process(delta: float) -> void:
 				_last_map_pos = _player.global_position
 				_update_minimap()
 
-	# 无敌：血条金色常显 + 倒计时标签
+	# 无敌：血条金色常显，并把条上的数字换成"永久"（时长仍是 10 秒，不另开倒计时文字）
 	if _player != null and _player.has_method("is_invincible") and _bar != null:
 		var inv: bool = _player.call("is_invincible")
-		if inv:
-			_bar.modulate = Color(1.25, 1.08, 0.5)
-			if _inv_label != null:
-				_inv_label.visible = true
-				_inv_label.text = "无敌 %.1fs" % float(_player.get("_invincible_t"))
-		else:
-			_bar.modulate = Color(1, 1, 1)
-			if _inv_label != null:
-				_inv_label.visible = false
+		var want_fmt := "永久" if inv else HP_LABEL_FMT
+		if _bar.style != null and String(_bar.style.label_format) != want_fmt:
+			_bar.style.label_format = want_fmt
+			_bar.queue_redraw()
+		_bar.modulate = Color(1.25, 1.08, 0.5) if inv else Color(1, 1, 1)
 
 	# 武器状态：提示文字 / 准星 / 蓄力条
 	if _bow != null and _sword != null:
