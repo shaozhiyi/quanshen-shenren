@@ -139,7 +139,7 @@ func _cancel() -> void:
 func _fire() -> void:
 	var ratio := clampf(_charge / CHARGE_TIME, 0.0, 1.0)
 	var speed := lerpf(SPEED_MIN, SPEED_MAX, ratio)
-	var dmg := int(round(lerpf(float(MIN_DMG), float(FULL_DMG), ratio)))
+	var dmg := int(round(lerpf(float(MIN_DMG), float(FULL_DMG), ratio) * _player_damage_scale()))
 	_cancel()
 	_cooldown = SHOT_COOLDOWN
 	if _camera == null:
@@ -150,6 +150,14 @@ func _fire() -> void:
 	if scene == null:
 		scene = get_tree().root
 	ARROW_SCRIPT.spawn(scene, _camera.global_transform.basis, origin, speed, dmg)
+
+
+func _player_damage_scale() -> float:
+	## 装备强化后的攻击力倍率（玩家按分组取，取不到按 1.0）
+	var p := get_tree().get_first_node_in_group("player")
+	if p != null and p.has_method("damage_scale"):
+		return float(p.call("damage_scale"))
+	return 1.0
 
 
 func _process(delta: float) -> void:

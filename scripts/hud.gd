@@ -197,10 +197,14 @@ func _process(delta: float) -> void:
 	if _bow != null and _sword != null:
 		var bow_on: bool = _bow.get("active")
 		_cross.visible = bow_on
+		var lv := int(_player.get("enhance_level")) if _player != null else 0
+		var scale: float = float(_player.call("damage_scale")) if _player != null and _player.has_method("damage_scale") else 1.0
+		var tag := "｜装备 +%d（攻击 ×%.2f）" % [lv, scale] if lv > 0 else ""
 		if bow_on:
-			_weapon_label.text = "当前：弓箭（按住左键蓄力 3 秒满，松手发射）｜Z 切换剑"
+			_weapon_label.text = "当前：弓箭 攻击 %d~%d（按住左键蓄力 3 秒满，松手发射）｜Z 切换剑%s" % [
+				int(roundf(12.0 * scale)), int(roundf(50.0 * scale)), tag]
 		else:
-			_weapon_label.text = "当前：剑（X 挥砍）｜Z 切换弓箭"
+			_weapon_label.text = "当前：剑 攻击 %d（X 挥砍）｜Z 切换弓箭%s" % [int(roundf(50.0 * scale)), tag]
 		if _bow.call("is_charging"):
 			_charge_bar.visible = true
 			_charge_bar.call("set_value", _bow.call("charge_ratio") * 100.0, false)

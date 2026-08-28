@@ -15,6 +15,10 @@ const K_WEAPON := 1
 const K_SUB := 2
 const K_ARMOR := 3
 
+# 堆叠：消耗品可堆到同格，格子上显示 ×2/×3…；上限 20
+const STACK_MAX := 20
+const STACKABLE := ["dogmilk", "stone"]
+
 # id -> 定义：名称/可装备去处(-1=不可装备)/图标/着色/属性说明/[use]
 const DB := {
 	"sword":  {"name": "剑", "slot": K_WEAPON, "icon": "res://assets/items/sword.svg", "tint": Color(0.88, 0.92, 0.98),
@@ -24,12 +28,16 @@ const DB := {
 	"armor":  {"name": "防具", "slot": K_ARMOR, "icon": "res://assets/items/armor.svg", "tint": Color(1.00, 0.85, 0.40),
 		"desc": "护甲 · 受到的伤害 ×0.7 后向下取整\nBOSS 光环 3 血/秒 → 约 2.1 血/秒\n（不足 1 点的零头会累计到之后扣）"},
 	"dogmilk": {"name": "野生狗奶", "slot": -1, "icon": "res://assets/items/dogmilk.png", "tint": Color(1, 1, 1),
-		"desc": "消耗品 · 双击饮用\n获得 10 秒无敌（免疫伤害），血条常显\n10 秒后解除并恢复满血",
+		"desc": "「生命惧怕时间，时间惧怕野生狗奶。」\n\n消耗品 · 双击饮用\n获得 10 秒无敌（免疫伤害），\n血条变金、数字显示「永久」\n10 秒后解除并恢复满血",
 		"use": "invincible", "dur": 10.0},
+	"stone":  {"name": "装备强化石", "slot": -1, "icon": "res://assets/items/stone.svg", "tint": Color(0.60, 0.86, 1.00),
+		"desc": "消耗品 · 双击使用\n全身装备强化 +1 级（最高 +10）\n武器攻击力 +10%/级，防具减伤再 +3%/级\n\n击杀野生狗奶必掉 1 块，\n之后以 80%、79%、78%… 逐次递减追加",
+		"use": "enhance"},
 }
 
 var _bag: Inventory                 # addons/grid_inventory 的数据模型（27 格）
 var _items := {}                    # id -> InvItem
+var _bag_n: Array = []              # 每格物品数量（与 _bag.slots 同长）
 var _eq := {"weapon": "sword", "subweapon": "bow", "armor": "armor"}
 var _eq_slots := {}                 # key -> SlotCtl
 var _bag_slots: Array = []
@@ -55,23 +63,27 @@ func _ready() -> void:
 		_sync_player()
 
 
-## 存档：导出装备栏与背包内容（物品 id 数组）
+## 存档：导出装备栏、背包内容与每格堆叠数量
 func save_state() -> Dictionary:
 	var bag: Array = []
+	var counts: Array = []
 	for i in BAG_SIZE:
 		bag.append(bag_get(i))
-	return {"equipment": _eq.duplicate(), "bag": bag}
+		counts.append(bag_count(i))
+	return {"equipment": _eq.duplicate(), "bag": bag, "bag_counts": counts}
 
 
-## 读档：还原装备栏、背包，并把"手上拿的哪把武器"同步回玩家
+## 读档：还原装备栏、背包（含数量），并把"手上拿的哪把武器"同步回玩家
 func load_state(save: Dictionary) -> void:
 	var eq: Dictionary = save.get("equipment", {})
 	for k in ["weapon", "subweapon", "armor"]:
 		if eq.has(k):
 			_eq[k] = String(eq[k])
 	var bag: Array = save.get("bag", [])
+	var counts: Array = save.get("bag_counts", [])
 	for i in mini(bag.size(), BAG_SIZE):
-		bag_set(i, String(bag[i]))
+		var n := int(counts[i]) if i < counts.size() else 1
+		bag_set(i, String(bag[i]), maxi(n, 1))
 	refresh_all()
 	_sync_player()
 	var w := int(save.get("player", {}).get("weapon", 0))
@@ -92,6 +104,9 @@ func _build_items() -> void:
 
 func _build_bag() -> void:
 	_bag = Inventory.new(BAG_SIZE)
+	_bag_n.clear()
+	for i in BAG_SIZE:
+		_bag_n.append(0)
 	# 防具自动穿戴（_eq.armor 默认已为 armor），背包起始留空
 
 
@@ -99,38 +114,62 @@ func item_name(id: String) -> String:
 	return String(DB[id]["name"]) if DB.has(id) else id
 
 
-## 对外：加入物品（可指定数量）。可装备且对应栏空→自动穿戴；否则进背包。
+static func is_stackable(id: String) -> bool:
+	return STACKABLE.has(id)
+
+
+func stack_max_of(id: String) -> int:
+	return STACK_MAX if STACKABLE.has(id) else 1
+
+
+## 对外：加入物品（可指定数量）。可装备且对应栏空→自动穿戴；
+## 可堆叠物品先补满已有堆，再占用新格子。
 ## 返回是否全部放下：部分放下时已放的保留，返回值 false 供调用方提示"背包已满"。
 func add_item(id: String, count: int = 1) -> bool:
 	if not DB.has(id) or count <= 0:
 		return false
-	var placed := 0
+	var left := count
 	var slot := int(DB[id]["slot"])
-	for _i in count:
-		# 仅首件走"自动穿戴"逻辑，其余进背包
-		if slot >= 0 and placed == 0:
-			var key := _kind_to_key(slot)
-			if key != "" and _eq[key] == "":
-				_eq[key] = id
-				placed += 1
-				continue
+	var placed := 0
+	# 仅首件走"自动穿戴"逻辑，其余进背包
+	if slot >= 0:
+		var key := _kind_to_key(slot)
+		if key != "" and _eq[key] == "":
+			_eq[key] = id
+			left -= 1
+			placed += 1
+	var cap := stack_max_of(id)
+	if cap > 1:
+		# 先补已有的堆
+		for i in BAG_SIZE:
+			if left <= 0:
+				break
+			if bag_get(i) == id and bag_count(i) < cap:
+				var room := cap - bag_count(i)
+				var take := mini(room, left)
+				bag_set(i, id, bag_count(i) + take)
+				left -= take
+				placed += take
+	while left > 0:
 		var idx := _first_empty_bag()
 		if idx < 0:
 			break
-		bag_set(idx, id)
-		placed += 1
+		var take2 := mini(cap, left)
+		bag_set(idx, id, take2)
+		left -= take2
+		placed += take2
 	refresh_all()
 	if placed > 0:
 		_sync_player()
 	return placed >= count
 
 
-## 统计某 id 在背包+装备栏的总数量
+## 统计某 id 在背包+装备栏的总数量（按堆叠数累加）
 func count_of(id: String) -> int:
 	var n := 0
 	for i in BAG_SIZE:
 		if bag_get(i) == id:
-			n += 1
+			n += bag_count(i)
 	for k in _eq:
 		if _eq[k] == id:
 			n += 1
@@ -157,8 +196,15 @@ func bag_get(i: int) -> String:
 	return String(s.item.id) if s != null else ""
 
 
-func bag_set(i: int, id: String) -> void:
+func bag_count(i: int) -> int:
+	return int(_bag_n[i]) if i < _bag_n.size() else 0
+
+
+func bag_set(i: int, id: String, n: int = 1) -> void:
 	_bag.slots[i] = ({"item": _items[id]} if id != "" else null)
+	while _bag_n.size() <= i:
+		_bag_n.append(0)
+	_bag_n[i] = (mini(n, stack_max_of(id)) if id != "" else 0)
 
 
 func eq_get(k: String) -> String:
@@ -187,8 +233,23 @@ func move_item(src: Array, dst: Array) -> bool:
 		return false
 	if src[0] == "eq" and did != "" and int(DB[did]["slot"]) != key_kind(src[1]):
 		return false
-	_set_at(dst, sid)
-	_set_at(src, did)
+	# 同种可堆叠物品拖到同一格 → 合并（装不下的留在原格）
+	if src[0] == "bag" and dst[0] == "bag" and sid != "" and sid == did and is_stackable(sid):
+		var cap := stack_max_of(sid)
+		var have := _count_at(dst)
+		var move_n := _count_at(src)
+		var take: int = mini(cap - have, move_n)
+		if take <= 0:
+			return false
+		bag_set(int(dst[1]), sid, have + take)
+		bag_set(int(src[1]), sid if take < move_n else "", move_n - take)
+		refresh_all()
+		_sync_player()
+		return true
+	var sn := _count_at(src)
+	var dn := _count_at(dst)
+	_set_at(dst, sid, sn)
+	_set_at(src, did, dn)
 	refresh_all()
 	_sync_player()
 	return true
@@ -198,11 +259,15 @@ func _get_at(loc: Array) -> String:
 	return bag_get(loc[1]) if loc[0] == "bag" else eq_get(loc[1])
 
 
-func _set_at(loc: Array, id: String) -> void:
+func _count_at(loc: Array) -> int:
+	return bag_count(int(loc[1])) if loc[0] == "bag" else 1
+
+
+func _set_at(loc: Array, id: String, n: int = 1) -> void:
 	if loc[0] == "bag":
-		bag_set(loc[1], id)
+		bag_set(int(loc[1]), id, n)
 	else:
-		eq_set(loc[1], id)
+		eq_set(String(loc[1]), id)
 
 
 func _sync_player() -> void:
@@ -221,14 +286,25 @@ func use_slot(loc: Array) -> void:
 	if id == "" or not DB.has(id):
 		return
 	var def: Dictionary = DB[id]
-	# 消耗品：使用效果 + 消耗一个
+	# 消耗品：生效一次并只扣 1 个（堆叠见底才空格）
 	if def.has("use"):
-		if String(def["use"]) == "invincible" and _player != null and _player.has_method("gain_invincibility"):
+		var kind := String(def["use"])
+		var ok := true
+		if kind == "invincible" and _player != null and _player.has_method("gain_invincibility"):
 			_player.call("gain_invincibility", float(def.get("dur", 10.0)))
-			flash_hint("饮下野生狗奶：10 秒无敌！")
-		_set_at(loc, "")
-		_selected_loc = []
+			flash_hint("饮下野生狗奶：10 秒无敌（血条显示「永久」）")
+		elif kind == "enhance" and _player != null and _player.has_method("gain_enhance"):
+			ok = _player.call("gain_enhance")
+			if ok:
+				flash_hint("装备强化成功！")
+		if not ok:
+			return
+		var n := _count_at(loc) - 1
+		_set_at(loc, id if n > 0 else "", maxi(n, 0))
+		if n <= 0:
+			_selected_loc = []
 		refresh_all()
+		_sync_player()
 		return
 	# 装备：穿戴到对应栏（与当前装备交换）
 	var slot := int(def["slot"])
@@ -244,13 +320,14 @@ func discard_selected() -> void:
 	if id == "":
 		return
 	var loc := _selected_loc.duplicate()
-	_set_at(loc, "")
+	var n := _count_at(loc)
+	_set_at(loc, "", 0)
 	_selected_loc = []
 	refresh_all()
 	_sync_player()
 	if _player != null and _player.has_method("spawn_drop_box"):
-		_player.call("spawn_drop_box", id)
-		flash_hint("已丢弃 " + item_name(id) + "（走近按 E 回收）")
+		_player.call("spawn_drop_box", id, n)
+		flash_hint("已丢弃 %s×%d（走近按 E 回收）" % [item_name(id), n])
 
 
 func flash_hint(text: String) -> void:
@@ -334,25 +411,34 @@ func _build_ui() -> void:
 
 func refresh_all() -> void:
 	for i in _bag_slots.size():
-		_paint_slot(_bag_slots[i], bag_get(i))
+		_paint_slot(_bag_slots[i], bag_get(i), bag_count(i))
 	for k in _eq_slots:
-		_paint_slot(_eq_slots[k], eq_get(k))
+		_paint_slot(_eq_slots[k], eq_get(k), 1)
 
 
 func is_selected(loc: Array) -> bool:
 	return not _selected_loc.is_empty() and _selected_loc[0] == loc[0] and int(_selected_loc[1]) == int(loc[1])
 
 
-func _paint_slot(s: Control, id: String) -> void:
+func _paint_slot(s: Control, id: String, n: int = 1) -> void:
 	var ic: TextureRect = s.get_meta("icon")
+	var cnt: Label = s.get_meta("count")
 	if id == "":
 		ic.visible = false
 		s.tooltip_text = ""
+		cnt.visible = false
 	else:
 		ic.texture = _items[id].icon
 		ic.modulate = DB[id]["tint"]
 		ic.visible = true
-		s.tooltip_text = "%s\n%s" % [String(DB[id]["name"]), String(DB[id]["desc"])]
+		var cap := stack_max_of(id)
+		if n > 1:
+			cnt.text = "×%d" % n
+			cnt.visible = true
+		else:
+			cnt.visible = false
+		var tip := "%s%s\n%s" % [String(DB[id]["name"]), (" ×%d/%d" % [n, cap]) if cap > 1 else "", String(DB[id]["desc"])]
+		s.tooltip_text = tip
 	s.call("set_selected", is_selected(s.get_meta("loc")))
 
 
@@ -410,6 +496,18 @@ class SlotCtl extends Panel:
 			sb.set("corner_radius_%s" % corner, 6)
 		s.add_theme_stylebox_override("panel", sb)
 		s._style = sb
+		var cn := Label.new()
+		cn.position = Vector2(px - 34, px - 23)
+		cn.size = Vector2(30, 19)
+		cn.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		cn.add_theme_font_size_override("font_size", 15)
+		cn.add_theme_color_override("font_color", Color(1, 0.95, 0.6))
+		cn.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
+		cn.add_theme_constant_override("outline_size", 5)
+		cn.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		cn.visible = false
+		s.add_child(cn)
+		s.set_meta("count", cn)
 		var ic := TextureRect.new()
 		ic.position = Vector2(7, 7)
 		ic.size = Vector2(px - 14, px - 14)

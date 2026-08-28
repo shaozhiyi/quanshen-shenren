@@ -19,6 +19,9 @@ var _bow: Node
 var _weapon := 0        # 0=主武器剑 1=副武器弓
 var _has := [true, true]  # 装备栏：[剑, 弓] 是否已装备
 var armor_factor := 1.0   # 护甲减伤系数（穿上防具=0.7，即受到的伤害 ×0.7 后向下取整）
+var _armor_on := false    # 当前是否穿着防具
+var enhance_level := 0    # 装备强化等级（用强化石提升）
+const ENHANCE_MAX := 10
 var _dmg_carry := 0.0     # 防具取整后剩下的小数伤害，累计到下一次（否则 0.21/跳会被抹成 0）
 var _invincible := false
 var _invincible_t := 0.0
@@ -83,6 +86,7 @@ func save_state() -> Dictionary:
 		"hp": hp, "max_hp": max_hp,
 		"x": global_position.x, "y": global_position.y, "z": global_position.z,
 		"yaw": rotation.y, "pitch": pitch, "weapon": _weapon, "kills": kills,
+		"enhance": enhance_level,
 		"invincible_left": _invincible_t if _invincible else 0.0,
 	}
 
@@ -115,6 +119,7 @@ func _apply_loaded_state() -> void:
 		if cam != null:
 			cam.rotation.x = float(p.get("pitch", 0.0))
 		kills = int(p.get("kills", 0))
+		enhance_level = clampi(int(p.get("enhance", 0)), 0, ENHANCE_MAX)
 	var left := float(p.get("invincible_left", 0.0))
 	if left > 0.0 and has_method("gain_invincibility"):
 		gain_invincibility(left)
@@ -271,13 +276,33 @@ func _on_boss_died(b: Node = null) -> void:
 	var n := int(b.call("reward_count"))
 	var dname := String(b.call("difficulty_name"))
 	if _inv != null and _inv.has_method("add_item"):
-		if _inv.call("add_item", item, n):
-			_toast("缴获 %s ×%d（%s·%s难度）" % [String(_inv.call("item_name", item)), n, String(b.get("boss_name")), dname])
-		else:
-			_toast("背包已满，掉落未能全部收走")
+		var ok_milk: bool = _inv.call("add_item", item, n)
+		var stones := _roll_stones()
+		var ok_stone: bool = _inv.call("add_item", "stone", stones)
+		var msg := "缴获 %s ×%d ＋ 装备强化石 ×%d（%s·%s难度）" % [
+			String(_inv.call("item_name", item)), n, stones, String(b.get("boss_name")), dname]
+		if not (ok_milk and ok_stone):
+			msg += "｜背包已满，部分丢失"
+		_toast(msg)
 	if not _in_arena:
 		return
 	get_tree().create_timer(3.0).timeout.connect(_exit_arena)
+
+
+const STONE_CHAIN_START := 0.80     # 追加掉落概率起点，每成功一次再减 1%
+
+
+func _roll_stones() -> int:
+	## 必掉 1 块强化石；随后 80% 追掉 1 块，成功后 79%、78%… 逐次递减，一旦失败即停
+	var stones := 1
+	var p := STONE_CHAIN_START
+	while p > 0.0:
+		if randf() < p:
+			stones += 1
+			p -= 0.01
+		else:
+			break
+	return stones
 
 
 func _try_cycle_difficulty() -> void:
@@ -317,17 +342,18 @@ func _on_died() -> void:
 
 
 func _try_pick_box() -> bool:
-	## 附近有掉落箱则回收其物品到背包并销毁箱子；返回是否处理了箱子
+	## 附近有掉落箱则回收其物品（含整堆数量）到背包并销毁箱子
 	if _inv == null or not _inv.has_method("add_item"):
 		return false
 	var box := _nearest_box()
 	if box == null:
 		return false
-	if not _inv.call("add_item", String(box.item_id)):
-		_toast("背包已满，无法回收 " + String(_inv.item_name(box.item_id)))
+	var n := int(box.get("item_count")) if box.get("item_count") != null else 1
+	if not _inv.call("add_item", String(box.item_id), n):
+		_toast("背包已满，无法回收 %s×%d" % [String(_inv.item_name(String(box.item_id))), n])
 		return true
 	box.queue_free()
-	_toast("已回收 " + String(_inv.item_name(box.item_id)))
+	_toast("已回收 %s×%d" % [String(_inv.item_name(String(box.item_id))), n])
 	return true
 
 
@@ -344,15 +370,15 @@ func _nearest_box() -> Node:
 	return best
 
 
-func spawn_drop_box(item_id: String) -> void:
-	## 在玩家身前生成一个掉落箱（Area3D + 箱子图标），承载被丢弃的物品
+func spawn_drop_box(item_id: String, count: int = 1) -> void:
+	## 在玩家身前生成一个掉落箱（Area3D + 箱子图标），承载被丢弃的物品（可整堆）
 	var scene := get_tree().current_scene
 	if scene == null:
 		scene = get_tree().root
 	var box: Area3D = load("res://scripts/drop_box.gd").new()
 	box.name = "DropBox"
 	scene.add_child(box)
-	box.setup(item_id)
+	box.setup(item_id, count)
 	var f := -global_transform.basis.z
 	var pos := global_position + f * 1.6
 	var ground := get_node_or_null("../Ground")
@@ -382,10 +408,8 @@ func set_equipment(weapon_id: String, sub_id: String, armor_id: String) -> void:
 	## 由背包/装备栏调用：同步已装备状态与护甲减伤；当前武器被卸下则自动改用另一把
 	_has[0] = (weapon_id == "sword")
 	_has[1] = (sub_id == "bow")
-	var new_factor := 0.7 if armor_id != "" else 1.0
-	if new_factor != armor_factor:
-		armor_factor = new_factor
-		_dmg_carry = 0.0      # 穿/脱防具时清空取整余数
+	_armor_on = (armor_id != "")
+	_refresh_armor_factor()
 	if _has[_weapon]:
 		_equip(_weapon)
 	else:
@@ -400,6 +424,33 @@ func set_equipment(weapon_id: String, sub_id: String, armor_id: String) -> void:
 				_sword.set_active(false)
 			if _bow != null:
 				_bow.set_active(false)
+
+
+# ---- 装备强化（消耗"装备强化石"） ----
+func _refresh_armor_factor() -> void:
+	## 穿甲基础 ×0.7，每级强化再减 3%（最低 0.4）；系数变化时清空取整余数
+	var new_factor := 1.0
+	if _armor_on:
+		new_factor = clampf(0.7 - 0.03 * float(enhance_level), 0.4, 1.0)
+	if new_factor != armor_factor:
+		armor_factor = new_factor
+		_dmg_carry = 0.0
+
+
+func gain_enhance() -> bool:
+	## 双击强化石：全身装备 +1 级；已满级则返回 false（不消耗石头）
+	if enhance_level >= ENHANCE_MAX:
+		_toast("装备已强化到 +%d（满级）" % ENHANCE_MAX)
+		return false
+	enhance_level += 1
+	_refresh_armor_factor()
+	_toast("装备强化到 +%d ｜ 攻击 ×%.2f ｜ 受伤 ×%.2f" % [enhance_level, damage_scale(), armor_factor])
+	return true
+
+
+func damage_scale() -> float:
+	## 武器攻击力倍率：每级 +10%
+	return 1.0 + 0.10 * float(enhance_level)
 
 
 func _on_slash_hit() -> void:
@@ -418,7 +469,7 @@ func _on_slash_hit() -> void:
 		if col.is_in_group("boss"):
 			var boss := col.get_parent()
 			if boss.has_method("take_damage"):
-				boss.take_damage(50)
+				boss.take_damage(int(roundf(50.0 * damage_scale())))
 
 
 func _find_spawn() -> Vector3:

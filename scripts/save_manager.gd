@@ -127,6 +127,7 @@ static func build_data(seed: int, amp: float, freq: float, player: Dictionary,
 		"player": player,
 		"equipment": inventory.get("equipment", {}),
 		"bag": inventory.get("bag", []),
+		"bag_counts": inventory.get("bag_counts", []),
 		"bosses": bosses, "kills": kills,
 		"saved_at": Time.get_datetime_string_from_system(false, true),
 	}

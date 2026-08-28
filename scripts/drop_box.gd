@@ -3,11 +3,13 @@ extends Area3D
 ## 用 game-icons.net 的 open-chest（CC-BY, skoll）作为广告牌图标，走近按 E 回收。
 
 var item_id := ""
+var item_count := 1
 var _visual: Sprite3D
 
 
-func setup(id: String) -> void:
+func setup(id: String, count: int = 1) -> void:
 	item_id = id
+	item_count = count
 	add_to_group("drop_box")
 
 	_visual = Sprite3D.new()
@@ -20,7 +22,7 @@ func setup(id: String) -> void:
 	add_child(_visual)
 
 	var lbl := Label3D.new()
-	lbl.text = "掉落箱 · 按 E 回收"
+	lbl.text = "掉落箱 · 按 E 回收" if count <= 1 else "掉落箱 ×%d · 按 E 回收" % count
 	lbl.position = Vector3(0, 1.6, 0)
 	lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	lbl.font_size = 48
