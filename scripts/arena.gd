@@ -22,6 +22,7 @@ const NIGHT_GROUND := Color(0.06, 0.07, 0.12)
 
 
 func _ready() -> void:
+	add_to_group("arena")
 	position = ARENA_CENTER
 	visible = false
 

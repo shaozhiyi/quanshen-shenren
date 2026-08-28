@@ -29,6 +29,7 @@ var _grid_cell := 1.0
 
 
 func _ready() -> void:
+	add_to_group("ground")
 	_resolve_seed()
 	# mesh 立即生成（渲染需要）；物理体延迟到第一个物理帧创建
 	_build_terrain_mesh()

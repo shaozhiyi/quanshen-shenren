@@ -93,7 +93,7 @@ func set_arena_mode(b: bool) -> void:
 		elif RESET_HP_ON_LEAVE:
 			hp = max_hp      # 中途撤退：BOSS 回满血，防止反复消耗打法
 			_refresh_labels()
-	var arena := get_node_or_null("../Arena")
+	var arena := arena_node()
 	if arena != null:
 		arena.set_day_night(0.0)
 
@@ -179,6 +179,27 @@ func is_attacking() -> bool:
 
 func is_arena_mode() -> bool:
 	return _arena_mode
+
+
+# ---- 节点查找：BOSS 可能直接挂在 Main 下，也可能由 BossField 生成（层级多一层），
+#      因此一律优先按分组查找，避免 "../Player" 这类相对路径在嵌套后取到 null ----
+func _find(group: String, rel: String) -> Node:
+	var n := get_tree().get_first_node_in_group(group)
+	if n == null:
+		n = get_node_or_null(rel)
+	return n
+
+
+func player_node() -> Node:
+	return _find("player", "../Player")
+
+
+func arena_node() -> Node:
+	return _find("arena", "../Arena")
+
+
+func ground_node() -> Node:
+	return _find("ground", "../Ground")
 
 
 func is_dead() -> bool:
@@ -275,7 +296,7 @@ func _ready() -> void:
 		world_z = _spawn_at.z
 	_base_max_hp = max_hp            # 名册的普通档基准，难度倍率在此基础上放大
 	apply_difficulty()               # 先按名册把血量/光环伤害/星点色算好，避免未开战时读到默认 0.3
-	var ground := get_node_or_null("../Ground")
+	var ground := ground_node()
 	if ground != null and ground.has_method("height_at"):
 		_base_y = ground.height_at(world_x, world_z)
 	position = Vector3(world_x, _base_y, world_z)
@@ -446,7 +467,7 @@ func _process(delta: float) -> void:
 		_visual.position.y = maxf(_visual.position.y - delta * 1.2, -0.25 * 24.0 * 0.9)
 		return
 	# 正面（+Z）始终转向玩家：梗脸永远对着你
-	var player := get_node_or_null("../Player")
+	var player := player_node()
 	if player != null:
 		var d: Vector3 = player.global_position - global_position
 		_visual.rotation.y = lerp_angle(_visual.rotation.y, atan2(d.x, d.z), minf(1.0, delta * 3.0))
@@ -463,8 +484,8 @@ func _update_windup(delta: float) -> void:
 		_music_tail -= delta
 		if _music_tail <= 0.0 and _music != null and _music.playing:
 			_music.stop()
-	var arena := get_node_or_null("../Arena")
-	var player := get_node_or_null("../Player")
+	var arena := arena_node()
+	var player := player_node()
 	var prog := 0.0
 	if _phase == 1:
 		prog = clampf(_phase_t / WINDUP_TIME, 0.0, 1.0)

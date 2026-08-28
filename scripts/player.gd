@@ -48,6 +48,7 @@ var _last_tap := {}               # action -> 上次点按时刻(秒)
 
 
 func _ready() -> void:
+	add_to_group("player")
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	hp = max_hp
 	connect("died", _on_died)
