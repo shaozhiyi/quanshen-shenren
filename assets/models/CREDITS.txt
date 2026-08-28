@@ -1,0 +1,24 @@
+PRIMARY MODEL
+-------------
+File: assets/models/truck.glb（野生重卡 BOSS 外观）
+Model: "Military Truck - 2D/3D Collab" by Alex Safayan (alexsafayan.com)
+Source: Poly Pizza https://poly.pizza/m/3XAD5t0Djqv (direct GLB: https://static.poly.pizza/4d93603f-afb0-427a-9537-b977340f26c0.glb)
+License: CC-BY 3.0 (https://creativecommons.org/licenses/by/3.0/)
+Modification: 车身四种材质由土黄改为红色（只改材质颜色，几何未动）；
+  BIN 块类型字段按 Godot 要求从 "BIN " 修正为 "BIN\0"，否则导入报
+  chunk_type != 0x004E4942。
+CREDITS one-liner（分享/视频说明用）:
+  "Military Truck - 2D/3D Collab" by Alex Safayan (CC-BY 3.0, via Poly Pizza), recolored red.
+
+参考图
+------
+assets/models/ref/truck_ref.png         用户提供的红色栏板重卡参考图（原图）
+assets/models/ref/truck_ref_clean.png   抠掉蓝底并放大到 900px，用于喂 Hyper3D 一类图生 3D 工具
+（两张都不参与运行时渲染，只是建模参考）
+
+换模型
+------
+把任意 GLB 覆盖 assets/models/truck.glb 即换外观；朝向/大小/贴地用
+scripts/boss_roster.gd 里 truck 条目的 model_scale / model_y / model_rot_y / box 调，
+代码不用动。模型文件缺失时 BOSS 自动改用 scripts/boss_model.gd 的程序化低模
+（自有内容，无第三方许可）。

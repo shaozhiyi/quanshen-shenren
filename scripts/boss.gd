@@ -1,7 +1,9 @@
 extends Node3D
-## 野生狗奶等 BOSS 的通用实体：巨型贴图盒（Godot 内 SurfaceTool 程序化六面贴图盒）。
-## 数值/外观全部来自 scripts/boss_roster.gd 名册（按 def_id 取），加新 BOSS 不用改本文件。
-## 大地图无敌；按 E 进入 BOSS 空间后可战。空间内循环：
+## 野生狗奶等 BOSS 的通用实体：外观可以是「六面贴图盒」，也可以是名册 model 字段指向的
+## 外部 3D 模型（.glb/.gltf/.tscn，Hyper3D 出的车即走这条路），模型文件缺失时用
+## scripts/boss_model.gd 的程序化低模顶上，数值/外观全部来自 scripts/boss_roster.gd。
+## 名册 skills=false 的 BOSS 暂无技能：不飞天不砸地不射星点，只缓慢驶近 + 贴身光环掉血。
+## 大地图无敌；按 E 进入 BOSS 空间后可战。有技能的空内循环：
 ## 待机 → 前摇（配乐乐句A + 星点渐多环绕蓄力）→ 攻击（20 米飞天 + 日月交替 + 玩家掉血
 ##      + 逐颗射出星点，单发命中 5 血）
 ##      → 空中追踪 2 秒（跟着玩家位置走）→ 锁定红圈 1 秒 → 砸落（圈内 -20 + 地裂）
@@ -9,8 +11,10 @@ extends Node3D
 ## 时间轴按公开歌词时间戳标定；配乐路径由名册 song 字段给出（缺失/为空则静默同轴）。
 ## 可重复挑战：死亡沉地 3 秒后自动离开空间即复活回原位，每次开战都从满血开始（撤退同样重置）。
 ## 难度：三档（普通/困难/噩梦），血量·光环伤害·掉落收益逐级递增；首次仅普通，击败一次后按 R 调节。
+##      名册给了 hp_by_diff 的 BOSS 直接用三档定值（如重卡 2000/2500/3000），不吃倍率。
 
 const ROSTER := preload("res://scripts/boss_roster.gd")
+const BOSS_MODEL := preload("res://scripts/boss_model.gd")
 
 @export var def_id := "dogmilk"      # 名册 id：决定外观与数值
 @export var world_x := 18.0
@@ -30,6 +34,21 @@ var _tint := Color(1, 1, 1)
 var _aura_base := 0.3                 # 普通档光环每 0.1 秒伤害
 var _reward_counts: Array = [2, 3, 4]
 var _song_path := "res://assets/audio/song.mp3"
+# ---- 外观来源（名册可选字段，缺省即老的贴图盒 BOSS）----
+var _model_path := ""                 # 外部 3D 模型（.glb/.gltf/.tscn）
+var _placeholder := ""                # 模型缺失时的程序化占位外观（"truck"）
+var _model_scale := 1.0
+var _model_y := 0.0                   # 模型资产自身的上下偏移（对齐"原点落地"用）
+var _model_rot_y := 0.0               # 模型朝向修正（度）：外部资产可能车头朝 ±X/±Z
+var _model_node: Node3D               # 实际挂上去的外观（模型或占位低模）
+var _visual_source := "box"           # 实际生效的外观来源：model / placeholder / box
+var _visual_y := 0.12                 # 整个外观离地高度（贴图盒原本浮 0.12）
+var _box_size := Vector3.ZERO         # 碰撞盒；零向量 = 按 scale_factor 推导
+# ---- 战斗风格（名册可选字段）----
+var _hp_by_diff: Array = []           # 三档定值血量（非空则忽略 DIFF_HP_MULT）
+var _has_skills := true               # false = 暂无技能，只驶近 + 贴身光环
+var _chase_speed := 0.0               # 无技能档的驶近速度（米/秒）
+var _bob_amp := 0.1                   # 待机上下浮动幅度
 
 # ---- 难度档位：每升一档血量与伤害增加，收益（狗奶掉落）同步增加 ----
 const DIFF_NAMES := ["普通", "困难", "噩梦"]
@@ -123,7 +142,10 @@ func set_arena_mode(b: bool) -> void:
 func apply_difficulty() -> void:
 	## 按当前难度重算血量与光环伤害，并给蓄力星点上色（越难越凶）
 	difficulty = clampi(difficulty, 0, DIFF_NAMES.size() - 1)
-	max_hp = _base_max_hp * float(DIFF_HP_MULT[difficulty])
+	if _hp_by_diff.size() == DIFF_NAMES.size():
+		max_hp = float(_hp_by_diff[difficulty])       # 名册给了定值（重卡 2000/2500/3000）
+	else:
+		max_hp = _base_max_hp * float(DIFF_HP_MULT[difficulty])
 	hp = max_hp
 	_aura_dmg = _aura_base * float(DIFF_AURA_MULT[difficulty])
 	var col: Color = DIFF_STAR_COLOR[difficulty]
@@ -180,7 +202,7 @@ func respawn() -> void:
 	## 沉地后复活：恢复外观高度、满血、待机相位并回到大地图原位
 	_dead = false
 	if _visual != null:
-		_visual.position.y = 0.12
+		_visual.position.y = _visual_y
 		_visual.position.x = 0.0
 	if _hp_label != null:
 		_hp_label.visible = true
@@ -286,7 +308,7 @@ func size_half(ground: Node) -> float:
 
 func box_height() -> float:
 	## 碰撞盒高度（Label 挂在盒顶上方，落点变化时同步）
-	return 0.25 * scale_factor
+	return _box_size.y if _box_size.y > 0.0 else 0.25 * scale_factor
 
 
 var _spawn_at := Vector3.INF    # 由 boss_field 预分配的落点（无则用 world_x/world_z）
@@ -310,6 +332,25 @@ func _load_def() -> void:
 	spawn_min_dist = float(band[0])
 	spawn_max_dist = float(band[1])
 	_song_path = String(_def.get("song", _song_path))
+	# ---- 外观：外部模型 / 程序化占位 / 贴图盒 ----
+	_model_path = String(_def.get("model", ""))
+	_placeholder = String(_def.get("placeholder", ""))
+	_model_scale = float(_def.get("model_scale", 1.0))
+	_model_y = float(_def.get("model_y", 0.0))
+	_model_rot_y = float(_def.get("model_rot_y", 0.0))
+	_visual_y = float(_def.get("visual_y", 0.12))
+	_bob_amp = float(_def.get("bob_amp", 0.1))
+	var bx: Array = _def.get("box", [])
+	if bx.size() == 3:
+		_box_size = Vector3(float(bx[0]), float(bx[1]), float(bx[2]))
+	else:
+		_box_size = Vector3(0.09, 0.25, 0.06) * scale_factor
+	# ---- 战斗风格 ----
+	_hp_by_diff = _def.get("hp_by_diff", [])
+	if _hp_by_diff.size() > 0:
+		max_hp = float(_hp_by_diff[0])     # 基准血量取普通档定值，供 _base_max_hp 继承
+	_has_skills = bool(_def.get("skills", true))
+	_chase_speed = float(_def.get("chase", 0.0))
 
 
 func _ready() -> void:
@@ -328,17 +369,14 @@ func _ready() -> void:
 
 	_visual = Node3D.new()
 	add_child(_visual)
-	var mi := MeshInstance3D.new()
-	mi.mesh = _build_box_mesh()
-	mi.scale = Vector3.ONE * scale_factor
-	_visual.add_child(mi)
+	_build_visual()
 
 	# 实体碰撞（剑射线与玩家阻挡）
 	var body := StaticBody3D.new()
 	body.add_to_group("boss")
 	var csc := CollisionShape3D.new()
 	var box := BoxShape3D.new()
-	box.size = Vector3(0.09, 0.25, 0.06) * scale_factor
+	box.size = _box_size
 	csc.shape = box
 	csc.position = Vector3(0, box.size.y * 0.5, 0)
 	body.add_child(csc)
@@ -360,8 +398,9 @@ func _ready() -> void:
 	_hp_label.modulate = Color(0.4, 1.0, 0.45)
 	_hp_label.outline_size = 18
 	add_child(_hp_label)
-	_build_stars()
-	_build_marker()
+	if _has_skills:
+		_build_stars()
+		_build_marker()
 	_refresh_labels()
 	# 可选战斗配乐：由名册 song 字段指定（为空或文件缺失则静默走同一时间轴）
 	_music = AudioStreamPlayer.new()
@@ -369,6 +408,53 @@ func _ready() -> void:
 	_has_music = _song_path != "" and ResourceLoader.exists(_song_path)
 	if _has_music:
 		_music.stream = load(_song_path)
+
+
+func _build_visual() -> void:
+	## 外观优先级：名册 model（外部 3D 模型）> placeholder（程序化低模）> 六面贴图盒
+	if _model_path != "" and ResourceLoader.exists(_model_path):
+		var res: Resource = load(_model_path)
+		if res is PackedScene:
+			var node := (res as PackedScene).instantiate()
+			if node is Node3D:
+				node.scale = Vector3.ONE * _model_scale
+				node.position = Vector3(0.0, _model_y, 0.0)
+				node.rotation_degrees.y = _model_rot_y
+				_visual.add_child(node)
+				_model_node = node as Node3D
+				_visual_source = "model"
+				print("[boss] %s 采用模型 %s" % [boss_name, _model_path])
+				return
+			node.free()
+		push_warning("boss: %s 存在但不是可用的 PackedScene，改用占位外观" % _model_path)
+	if _placeholder == "truck":
+		var t: Node3D = BOSS_MODEL.build_truck(_tint)
+		t.scale = Vector3.ONE * _model_scale
+		t.position = Vector3(0.0, _model_y, 0.0)
+		t.rotation_degrees.y = _model_rot_y
+		_visual.add_child(t)
+		_model_node = t
+		_visual_source = "placeholder"
+		print("[boss] %s 采用占位低模（把 truck.glb 放进 assets/models/ 即自动换成真模型）" % boss_name)
+		return
+	var mi := MeshInstance3D.new()
+	mi.mesh = _build_box_mesh()
+	mi.scale = Vector3.ONE * scale_factor
+	_visual.add_child(mi)
+	_visual_source = "box"
+
+
+func visual_source() -> String:
+	return _visual_source
+
+
+func has_skills() -> bool:
+	return _has_skills
+
+
+func aura_radius() -> float:
+	## 无技能档的贴身伤害半径：以车身最长边的一半再留 2 米
+	return maxf(_box_size.x, _box_size.z) * 0.5 + 2.0
 
 
 func _build_marker() -> void:
@@ -487,17 +573,36 @@ func _process(delta: float) -> void:
 	_t += delta
 	if _dead:
 		# 沉地消失
-		_visual.position.y = maxf(_visual.position.y - delta * 1.2, -0.25 * 24.0 * 0.9)
+		_visual.position.y = maxf(_visual.position.y - delta * 1.2, -box_height() * 0.9)
 		return
 	# 正面（+Z）始终转向玩家：梗脸永远对着你
 	var player := player_node()
+	var spd := 0.0
 	if player != null:
 		var d: Vector3 = player.global_position - global_position
 		_visual.rotation.y = lerp_angle(_visual.rotation.y, atan2(d.x, d.z), minf(1.0, delta * 3.0))
-	_visual.position.y = 0.12 + 0.1 * sin(_t * 1.4)
+	_visual.position.y = _visual_y + _bob_amp * sin(_t * 1.4)
 	_visual.position.x = 0.0
 	if _arena_mode:
-		_update_windup(delta)
+		if _has_skills:
+			_update_windup(delta)
+		else:
+			spd = _update_chase(delta)
+	_animate_wheels(delta, spd)
+
+
+func _animate_wheels(delta: float, speed: float) -> void:
+	## 车轮滚动：外观里有名为 "Wheels" 的节点（占位低模自带，外部模型可选）就按速度转
+	if speed <= 0.001 or _model_node == null:
+		return
+	var wheels := _model_node.find_child("Wheels", true, false)
+	if wheels == null:
+		return
+	var r := maxf(float(wheels.get_meta("radius", 0.55)), 0.05)
+	var ang := speed * delta / r
+	for w in wheels.get_children():
+		if w is Node3D:
+			(w as Node3D).rotation.x += ang
 
 
 # ---- 音乐同步战斗循环：待机 → 前摇(乐句A+星点渐多) → 攻击(飞天+日月交替+掉血) → 落地 ----
@@ -716,3 +821,30 @@ func _update_wander(delta: float) -> void:
 	var step := minf(WANDER_SPEED * delta, d)
 	position += to.normalized() * step
 	position.y = _arena_base_y
+
+
+func _update_chase(delta: float) -> float:
+	## 暂无技能档（野生重卡）：只缓慢朝玩家驶近 + 贴身光环掉血。
+	## 不飞天、不蓄力、不砸地、不射星点，也不改动日月。返回本帧速度（米/秒）。
+	var player := player_node()
+	if player == null or _dead:
+		return 0.0
+	var to: Vector3 = player.global_position - position
+	to.y = 0.0
+	var d := to.length()
+	# 停车距离按车身半长算：长车头只留 2 米会直接插进玩家模型里
+	var stop := maxf(2.0, _box_size.z * 0.5 + 1.0)
+	var step := 0.0
+	if d > stop and _chase_speed > 0.0:
+		step = minf(_chase_speed * delta, d - stop)     # 留出停车距离，不会顶进玩家模型
+		position += to.normalized() * step
+	_clamp_arena()
+	position.y = _arena_base_y
+	# 只有贴到车身附近才被尾气/碾压蹭到，站远了就是纯打靶
+	if d <= aura_radius():
+		_dmg_t += delta
+		while _dmg_t >= 0.1:
+			_dmg_t -= 0.1
+			if player.has_method("take_damage"):
+				player.take_damage(_aura_dmg)
+	return step / maxf(delta, 0.0001)
