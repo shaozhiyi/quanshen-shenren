@@ -67,6 +67,10 @@ PBR 材质、无贴图依赖，Godot 直接导入）。
    注意：Hyper3D 常把模型中心放在几何中心（而非地面），所以一般要把 `model_y` 调成
    负的一半车高；如果它输出的是"车头朝 +X"，就把 `model_rot_y` 设 90 或 -90 试。
 
+> **换完模型怎么生效**：双击 `启动游戏.exe`（跑源码）会提示重新导入，进游戏立刻是新车；
+> 但 `build/游戏大乱斗.exe` 分享包已经把模型打进 exe 内部的 pck，换完模型需要重新导出一次
+> （`Godot --headless --path . --export-release "Windows Desktop" build/out_game.exe`）才会带上。
+
 ### 喂给 Hyper3D 的提示词（可直接粘）
 
 英文（Hyper3D Rodin 对英文响应更稳）：
