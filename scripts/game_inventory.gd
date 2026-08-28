@@ -48,8 +48,35 @@ func _ready() -> void:
 	_build_items()
 	_build_bag()
 	_build_ui()
+	if not SaveManager.pending_load.is_empty():
+		load_state(SaveManager.pending_load)
+	else:
+		refresh_all()
+		_sync_player()
+
+
+## 存档：导出装备栏与背包内容（物品 id 数组）
+func save_state() -> Dictionary:
+	var bag: Array = []
+	for i in BAG_SIZE:
+		bag.append(bag_get(i))
+	return {"equipment": _eq.duplicate(), "bag": bag}
+
+
+## 读档：还原装备栏、背包，并把"手上拿的哪把武器"同步回玩家
+func load_state(save: Dictionary) -> void:
+	var eq: Dictionary = save.get("equipment", {})
+	for k in ["weapon", "subweapon", "armor"]:
+		if eq.has(k):
+			_eq[k] = String(eq[k])
+	var bag: Array = save.get("bag", [])
+	for i in mini(bag.size(), BAG_SIZE):
+		bag_set(i, String(bag[i]))
 	refresh_all()
 	_sync_player()
+	var w := int(save.get("player", {}).get("weapon", 0))
+	if _player != null and _player.has_method("set_current_weapon"):
+		_player.call("set_current_weapon", w)
 
 
 # ---- 数据 ----

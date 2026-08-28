@@ -94,7 +94,7 @@ func _ready() -> void:
 	seed_label.add_theme_constant_override("outline_size", 3)
 	var gnd := get_node_or_null("../Ground")
 	var tseed: int = int(gnd.get("terrain_seed")) if gnd != null else 0
-	seed_label.text = "地形种子 %d（改 Ground.seed_value 可复现）" % tseed
+	seed_label.text = "地形种子 %d ｜ F5 存档（save/*.json）" % tseed
 	add_child(seed_label)
 
 	# 右上角地形小地图：按海拔着色显示周围地形（深=低，浅=高），白点=玩家

@@ -41,7 +41,10 @@ func _ready() -> void:
 func _resolve_seed() -> void:
 	## 定种子 → 定噪声偏移/幅度/频率；同时把全局 RNG 绑到该种子，
 	## 让 BOSS 落点、技能随机游走、石子散布都能靠同一颗种子复现
-	if seed_value >= 0:
+	## 优先级：菜单指定的 pending_seed（新游戏选种子 / 读档）> 导出的 seed_value > 每次随机
+	if SaveManager.pending_seed >= 0:
+		terrain_seed = SaveManager.pending_seed
+	elif seed_value >= 0:
 		terrain_seed = seed_value
 	else:
 		terrain_seed = int(Time.get_unix_time_from_system()) ^ (randi() << 8)
@@ -55,6 +58,11 @@ func _resolve_seed() -> void:
 		noise_off3 = Vector2(rng.randf_range(0.0, 26.0), rng.randf_range(0.0, 26.0))
 		height_amp = rng.randf_range(amp_range.x, amp_range.y)
 		frequency = rng.randf_range(freq_range.x, freq_range.y)
+		# 读档时直接沿用存档里记下的地形参数，保证山形与当初完全一致
+		var saved: Dictionary = SaveManager.pending_load
+		if saved.has("amp") and saved.has("freq"):
+			height_amp = float(saved.get("amp", height_amp))
+			frequency = float(saved.get("freq", frequency))
 	print("[terrain] 地形种子=%d 起伏幅度=%.2f 频率=%.5f 随机=%s" % [
 		terrain_seed, height_amp, frequency, randomize_terrain])
 

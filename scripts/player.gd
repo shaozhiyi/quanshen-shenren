@@ -67,6 +67,93 @@ func _ready() -> void:
 		_bow.set_active(false)
 	_inv = get_node_or_null("../HUD/Inventory")
 	_hud = get_node_or_null("../HUD")
+	_apply_loaded_state()
+
+
+# ---- 存档：状态采集 / 套用 / F5 快速存档 ----
+var kills := 0
+
+
+func save_state() -> Dictionary:
+	var cam := get_node_or_null("Camera3D") as Camera3D
+	var pitch := 0.0
+	if cam != null:
+		pitch = cam.rotation.x
+	return {
+		"hp": hp, "max_hp": max_hp,
+		"x": global_position.x, "y": global_position.y, "z": global_position.z,
+		"yaw": rotation.y, "pitch": pitch, "weapon": _weapon, "kills": kills,
+		"invincible_left": _invincible_t if _invincible else 0.0,
+	}
+
+
+func _boss_states() -> Dictionary:
+	var out := {}
+	for b in bosses():
+		var bd := {
+			"difficulty": int(b.get("difficulty")),
+			"beats": int(b.call("times_beaten")),
+		}
+		out[String(b.get("def_id"))] = bd
+	return out
+
+
+func _apply_loaded_state() -> void:
+	## 读档进来时套用血量/位置/BOSS 进度；新游戏（pending_load 为空）什么都不做
+	var d: Dictionary = SaveManager.pending_load
+	if d.is_empty():
+		return
+	var p: Dictionary = d.get("player", {})
+	if not p.is_empty():
+		max_hp = float(p.get("max_hp", max_hp))
+		hp = clampf(float(p.get("hp", max_hp)), 1.0, max_hp)
+		hp_changed.emit(hp, max_hp)
+		global_position = Vector3(float(p.get("x", global_position.x)),
+			float(p.get("y", global_position.y)), float(p.get("z", global_position.z)))
+		rotation.y = float(p.get("yaw", rotation.y))
+		var cam := get_node_or_null("Camera3D") as Camera3D
+		if cam != null:
+			cam.rotation.x = float(p.get("pitch", 0.0))
+		kills = int(p.get("kills", 0))
+	var left := float(p.get("invincible_left", 0.0))
+	if left > 0.0 and has_method("gain_invincibility"):
+		gain_invincibility(left)
+	var bs: Dictionary = d.get("bosses", {})
+	for b in bosses():
+		var id := String(b.get("def_id"))
+		if bs.has(id):
+			b.set("difficulty", int(bs[id].get("difficulty", 0)))
+			b.set("_beats", int(bs[id].get("beats", 0)))
+			b.call("apply_difficulty")   # 按还原的难度重算血量与光环
+
+
+func set_current_weapon(w: int) -> void:
+	## 读档时恢复"手上拿的是哪把"（装备状态由背包模块先同步）
+	if (w == 0 or w == 1) and _has[w]:
+		_equip(w)
+
+
+func _quick_save() -> void:
+	var path := SaveManager.current_slot
+	if path == "":
+		path = SaveManager.new_slot()
+		SaveManager.current_slot = path
+	var ground := get_node_or_null("../Ground")
+	var seed_used := 0
+	var amp := 0.0
+	var freq := 0.0
+	if ground != null:
+		seed_used = int(ground.get("terrain_seed"))
+		amp = float(ground.get("height_amp"))
+		freq = float(ground.get("frequency"))
+	var inv_state: Dictionary = {}
+	if _inv != null and _inv.has_method("save_state"):
+		inv_state = _inv.call("save_state")
+	var data := SaveManager.build_data(seed_used, amp, freq, save_state(), inv_state, _boss_states(), kills)
+	if SaveManager.write_to(path, data):
+		_toast("已存档：%s" % String(path).get_file())
+	else:
+		_toast("存档写入失败，检查 save/ 目录权限")
 
 
 # ---- 多 BOSS：按名册生成后，用"最近的那只"作为交互目标 ----
@@ -179,6 +266,7 @@ func _on_boss_died(b: Node = null) -> void:
 		b = _arena_boss
 	if b == null:
 		return
+	kills += 1
 	var item := String(b.call("get_reward_item"))
 	var n := int(b.call("reward_count"))
 	var dname := String(b.call("difficulty_name"))
@@ -427,6 +515,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.keycode == KEY_R:
 			# R：靠近 BOSS 时切换下一档挑战难度（击败过一次后解锁）
 			_try_cycle_difficulty()
+		elif event.keycode == KEY_F5:
+			# F5：写入 save/ 下的 JSON 存档
+			_quick_save()
 
 
 func _physics_process(delta: float) -> void:
