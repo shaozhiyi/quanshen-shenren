@@ -7,6 +7,10 @@ extends CharacterBody3D
 @export var mouse_sensitivity := 0.0022
 @export var max_hp := 100.0
 
+const SLAM_FX := preload("res://scripts/slam_fx.gd")
+const MAX_AIR_JUMPS := 1        # 离地后还能再跳几次（1 = 二段跳）
+const AIR_JUMP_MULT := 0.92     # 二段跳比地面起跳略弱
+
 signal hp_changed(current: float, maximum: float)
 signal died
 
@@ -48,6 +52,7 @@ const DASH_COOLDOWN := 0.5        # 冲刺后摇冷却，防连发
 var _dash_time := 0.0
 var _dash_cd := 0.0
 var _dash_dir := Vector3.ZERO
+var _air_jumps := 0               # 本次离地还能空中再跳几次
 var _last_tap := {}               # action -> 上次点按时刻(秒)
 
 
@@ -170,10 +175,26 @@ func bosses() -> Array:
 
 
 func _watch_bosses() -> void:
-	## 给场上每只 BOSS 的 died 信号连一次结算（新增 BOSS 后重复调用即可，不会重复连）
+	## 给场上每只 BOSS 的 died / slam_landed 信号各连一次（新增 BOSS 后重复调用即可，不会重复连）
 	for b in bosses():
-		if b is Node and not b.is_connected("died", _on_boss_died):
+		if not (b is Node):
+			continue
+		if not b.is_connected("died", _on_boss_died):
 			b.connect("died", _on_boss_died)
+		if b.has_signal("slam_landed") and not b.is_connected("slam_landed", _on_slam_landed):
+			b.connect("slam_landed", _on_slam_landed)
+
+
+func _on_slam_landed(b: Node, hit: bool, damage: float) -> void:
+	## 砸落结算提示：躲开红圈 vs 被砸中
+	var nm := String(b.get("boss_name"))
+	if hit:
+		if damage <= 0.0:
+			_toast("%s 砸中了你，但伤害被完全挡下" % nm)
+		else:
+			_toast("%s 砸中！-%d 血（红圈要跑出去）" % [nm, int(roundf(damage))])
+	else:
+		_toast("躲开了 %s 的红圈 —— 砸空了" % nm)
 
 
 func nearest_boss() -> Node:
@@ -635,8 +656,11 @@ func _physics_process(delta: float) -> void:
 	if not is_on_floor():
 		velocity.y -= _gravity * delta
 
-	if Input.is_action_just_pressed("jump") and is_on_floor():
-		velocity.y = jump_velocity
+	if is_on_floor():
+		_air_jumps = MAX_AIR_JUMPS      # 落地就补满空中跳数
+
+	if Input.is_action_just_pressed("jump"):
+		try_jump()
 
 	# 双击方向键 → 冲刺：检测同一移动键在时间窗内被再次点按
 	var now := Time.get_ticks_msec() / 1000.0
@@ -667,6 +691,32 @@ func _physics_process(delta: float) -> void:
 		_dash_cd -= delta
 
 	move_and_slide()
+
+
+func air_jumps_left() -> int:
+	return _air_jumps
+
+
+func try_jump() -> int:
+	## 0=跳不动 1=地面起跳 2=空中二段跳（落地补满次数，二段跳略弱并给一圈脚底光环）
+	if is_on_floor():
+		_air_jumps = MAX_AIR_JUMPS
+		velocity.y = jump_velocity
+		return 1
+	if _air_jumps > 0:
+		_air_jumps -= 1
+		velocity.y = jump_velocity * AIR_JUMP_MULT
+		_jump_ring()
+		return 2
+	return 0
+
+
+func _jump_ring() -> void:
+	## 二段跳：脚下一圈淡白光环迅速散开（克制版反馈，不做粒子）
+	var scene := get_tree().current_scene
+	if scene == null:
+		scene = get_tree().root
+	SLAM_FX.spawn_ring(scene, global_position + Vector3(0.0, 0.08, 0.0), 1.5, Color(1, 1, 1), 0.42)
 
 
 func _start_dash(act: String) -> void:

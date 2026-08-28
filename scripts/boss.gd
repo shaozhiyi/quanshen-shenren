@@ -2,7 +2,9 @@ extends Node3D
 ## 野生狗奶等 BOSS 的通用实体：巨型贴图盒（Godot 内 SurfaceTool 程序化六面贴图盒）。
 ## 数值/外观全部来自 scripts/boss_roster.gd 名册（按 def_id 取），加新 BOSS 不用改本文件。
 ## 大地图无敌；按 E 进入 BOSS 空间后可战。空间内循环：
-## 待机 → 前摇（配乐乐句A + 星点渐多环绕蓄力）→ 攻击（飞天 + 场景日月交替 + 玩家掉血）→ 落地。
+## 待机 → 前摇（配乐乐句A + 星点渐多环绕蓄力）→ 攻击（20 米飞天 + 日月交替 + 玩家掉血）
+##      → 空中追踪 2 秒（跟着玩家位置走）→ 锁定红圈 1 秒 → 砸落（圈内 -20 + 地裂）
+##      → 落地后随机游走，进入下一轮。
 ## 时间轴按公开歌词时间戳标定；配乐路径由名册 song 字段给出（缺失/为空则静默同轴）。
 ## 可重复挑战：死亡沉地 3 秒后自动离开空间即复活回原位，每次开战都从满血开始（撤退同样重置）。
 ## 难度：三档（普通/困难/噩梦），血量·光环伤害·掉落收益逐级递增；首次仅普通，击败一次后按 R 调节。
@@ -53,13 +55,25 @@ var _home_pos := Vector3.ZERO     # 大地图原位（进出空间时恢复）
 const MUSIC_AT := 0.0           # 音频直接从副歌"忘你不舍"起头，故起点=0
 const WINDUP_TIME := 11.10      # 前摇时长：曲内"忘你不舍 寻你不休"唱完（下句入点）即升空
 const ATTACK_TIME := 14.18      # 攻击时长：四个乐句
-const LAND_TIME := 1.2          # 落地缓降
 const CHARGE_GAP := 8.0         # 每轮释放完后待机（秒）
 const MAX_STARS := 24           # 蓄满星点数
-const FLY_HEIGHT := 13.5        # 飞天高度（原 9.0 × 1.5）
+const FLY_HEIGHT := 20.25       # 飞天高度（13.5 × 1.5）
 const WANDER_SPEED := 45.0      # 释放完后随机移动速度（单位/秒）
-var _phase := 0                 # 0待机 1前摇 2攻击(飞天) 3落地
+# ---- 砸落：技能放完不立刻落地，先在空中追人，再锁位砸下 ----
+const TRACK_TIME := 2.0         # 空中停留并追踪玩家当前位置的时长
+const TRACK_LERP := 1.6         # 追踪跟随强度：留点滞后，玩家持续跑动才甩得开
+const MARK_TIME := 1.0          # 追踪位置固定后，红圈预警时长
+const SLAM_DROP_TIME := 0.45    # 从空中砸向红圈的时长（越落越快）
+const SLAM_DAMAGE := 20.0       # 砸中玩家扣血（仍会被防具减伤）
+const SLAM_RADIUS := 6.0        # 红圈半径＝命中判定半径
+const SLAM_FX := preload("res://scripts/slam_fx.gd")
+var _phase := 0                 # 0待机 1前摇 2攻击(飞天) 4空中追踪 5红圈预警 6砸落
 var _phase_t := 0.0
+var _slam_target := Vector3.ZERO    # 锁定的砸落点（XZ 有效）
+var _slam_top := 0.0                # 起砸时的高度
+var _slam_hit := false              # 上一次砸落是否命中（供测试/提示）
+var _marker: MeshInstance3D         # 地面红圈
+var _marker_mat: StandardMaterial3D
 var _stars: Array[MeshInstance3D] = []
 var _star_tex: ImageTexture
 var _orbit := 0.0
@@ -72,6 +86,7 @@ var _wander_target := Vector3.ZERO
 var _wandering := false
 
 signal died(target: Node)   # 多只 BOSS 同场，带上是谁死的
+signal slam_landed(target: Node, hit: bool, damage: float)   # 砸落结算（是否命中）
 
 
 func set_arena_mode(b: bool) -> void:
@@ -81,6 +96,9 @@ func set_arena_mode(b: bool) -> void:
 	_dmg_t = 0.0
 	_music_tail = 0.0
 	_wandering = false
+	_slam_hit = false
+	_slam_target = Vector3.ZERO
+	_show_marker(false)
 	_hide_stars()
 	if _music != null and _music.playing:
 		_music.stop()
@@ -168,13 +186,16 @@ func respawn() -> void:
 	_dmg_t = 0.0
 	_music_tail = 0.0
 	_wandering = false
+	_slam_hit = false
+	_show_marker(false)
 	_hide_stars()
 	apply_difficulty()
 	go_home()
 
 
 func is_attacking() -> bool:
-	return _phase == 2
+	## 2 飞天攻击 / 4 空中追踪 / 5 红圈预警 / 6 砸落 —— 整段空中阶段都算"正在出招"
+	return _phase >= 2
 
 
 func is_arena_mode() -> bool:
@@ -337,6 +358,7 @@ func _ready() -> void:
 	_hp_label.outline_size = 18
 	add_child(_hp_label)
 	_build_stars()
+	_build_marker()
 	_refresh_labels()
 	# 可选战斗配乐：由名册 song 字段指定（为空或文件缺失则静默走同一时间轴）
 	_music = AudioStreamPlayer.new()
@@ -344,6 +366,25 @@ func _ready() -> void:
 	_has_music = _song_path != "" and ResourceLoader.exists(_song_path)
 	if _has_music:
 		_music.stream = load(_song_path)
+
+
+func _build_marker() -> void:
+	## 砸落预警红圈：本体子节点，贴地水平面片（直径=判定直径），默认隐藏
+	_marker = MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(SLAM_RADIUS * 2.0, SLAM_RADIUS * 2.0)
+	_marker.mesh = pm
+	_marker.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF   # 贴地透明面片，投影会糊成一方块
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.albedo_texture = SLAM_FX.ring_texture()
+	mat.albedo_color = Color(1.0, 0.10, 0.08, 0.62)
+	_marker.material_override = mat
+	_marker_mat = mat
+	_marker.visible = false
+	add_child(_marker)
 
 
 # ---- 蓄力星点：程序化四角星贴图 + 公告板小面片（池，蓄力时逐个点亮） ----
@@ -364,6 +405,7 @@ func _build_stars() -> void:
 		mat.emission = Color(1, 0.92, 0.55)
 		mat.emission_energy_multiplier = 3.6
 		mi.material_override = mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mi.visible = false
 		add_child(mi)
 		_stars.append(mi)
@@ -529,21 +571,46 @@ func _update_windup(delta: float) -> void:
 				if player != null and player.has_method("take_damage") and not _dead:
 					player.take_damage(_aura_dmg)   # 普通 0.3/tick，随难度倍率提升
 			if _phase_t >= ATTACK_TIME:
-				_phase = 3
-				_phase_t = 0.0
 				_music_tail = 0.8   # 歌曲多播 0.8 秒后收尾
-		3:
-			# 落地复位
-			position.y = lerpf(_arena_base_y + FLY_HEIGHT, _arena_base_y, clampf(_phase_t / LAND_TIME, 0.0, 1.0))
-			_layout_stars(maxf(0.0, 1.0 - _phase_t / LAND_TIME))
-			if _phase_t >= LAND_TIME:
-				position.y = _arena_base_y
-				_phase = 0
-				_phase_t = 0.0
-				_hide_stars()
 				if arena != null:
 					arena.set_day_night(0.0)
-				_pick_wander_target()   # 释放完后随机移动最多 100 步
+				_set_phase(4)       # 技能放完不立刻落地：先在空中追人
+		4:
+			# 空中停留 2 秒：持续追踪玩家当前位置（有滞后，跑得快就追不上）
+			position.y = _arena_base_y + FLY_HEIGHT + 0.35 * sin(_t * 2.4)
+			_visual.position.x = 0.10 * sin(_t * 42.0)
+			if player != null:
+				var k := 1.0 - exp(-TRACK_LERP * delta)
+				position.x = lerpf(position.x, player.global_position.x, k)
+				position.z = lerpf(position.z, player.global_position.z, k)
+				_clamp_arena()
+			_layout_stars(1.0)
+			if _phase_t >= TRACK_TIME:
+				_slam_target = Vector3(position.x, _arena_base_y, position.z)   # 追踪位置就此固定
+				_set_phase(5)
+				_show_marker(true)
+		5:
+			# 红圈预警 1 秒：本体悬停在圈正上方，玩家有时间跑出圈外
+			position.x = _slam_target.x
+			position.z = _slam_target.z
+			position.y = _arena_base_y + FLY_HEIGHT + 0.25 * sin(_t * 7.0)
+			_visual.position.x = 0.16 * sin(_t * 60.0)
+			_update_marker(clampf(_phase_t / MARK_TIME, 0.0, 1.0))
+			_layout_stars(1.0)
+			if _phase_t >= MARK_TIME:
+				_slam_top = position.y
+				_set_phase(6)
+		6:
+			# 砸落：越落越快，落地瞬间判定命中 + 地裂特效
+			var p := clampf(_phase_t / SLAM_DROP_TIME, 0.0, 1.0)
+			position.y = lerpf(_slam_top, _arena_base_y, p * p)
+			_layout_stars(1.0)
+			if _phase_t >= SLAM_DROP_TIME:
+				position.y = _arena_base_y
+				_do_slam_impact(player)
+				_set_phase(0)
+				_hide_stars()
+				_pick_wander_target()   # 砸完开始正常移动
 
 
 func _layout_stars(prog: float) -> void:
@@ -562,6 +629,75 @@ func _layout_stars(prog: float) -> void:
 func _hide_stars() -> void:
 	for st in _stars:
 		st.visible = false
+
+
+func _set_phase(p: int) -> void:
+	## 统一换相位（顺带把计时清零，避免各处漏写 _phase_t = 0.0）
+	_phase = p
+	_phase_t = 0.0
+
+
+func _clamp_arena() -> void:
+	## 追踪时别把 BOSS 甩出场地（半宽 400，留 40 边距）
+	var lim := 360.0
+	position.x = clampf(position.x, -lim, lim)
+	position.z = clampf(position.z, -lim, lim)
+
+
+func _do_slam_impact(player: Node) -> void:
+	## 砸地瞬间：地裂特效 + 圈内命中判定（命中扣 SLAM_DAMAGE，仍吃防具减伤/无敌）
+	_show_marker(false)
+	var scene := get_tree().current_scene
+	if scene == null:
+		scene = get_tree().root
+	SLAM_FX.spawn_slam(scene, Vector3(position.x, _arena_base_y + 0.02, position.z), SLAM_RADIUS)
+	_slam_hit = false
+	if player != null and is_instance_valid(player):
+		var d := Vector2(player.global_position.x - position.x, player.global_position.z - position.z).length()
+		if d <= SLAM_RADIUS:
+			_slam_hit = true
+			var hp_before := float(player.get("hp"))
+			if player.has_method("take_damage"):
+				player.take_damage(SLAM_DAMAGE)
+			# 上报真实扣到的血（防具减伤 / 无敌免疫 / 致死复活都能如实反映）
+			var dealt := maxf(0.0, hp_before - float(player.get("hp")))
+			slam_landed.emit(self, true, dealt)
+		else:
+			slam_landed.emit(self, false, 0.0)
+
+
+func slam_hit() -> bool:
+	return _slam_hit
+
+
+func phase_text() -> String:
+	## 给 HUD 的分相位提示
+	match _phase:
+		1: return "蓄力中"
+		2: return "腾空 · 日月倒悬 —— 持续失血！"
+		4: return "在空中锁定你的位置 —— 继续跑！"
+		5: return "红圈已锁定 —— 1 秒后砸落，快出圈！"
+		6: return "砸落！"
+	return ""
+
+
+func _show_marker(b: bool) -> void:
+	if _marker != null:
+		_marker.visible = b
+
+
+func _update_marker(prog: float) -> void:
+	## 红圈：贴在锁定点的地面上，随预警进度由淡转浓、轻微脉动
+	if _marker == null:
+		return
+	_marker.visible = true
+	# 本体在 FLY_HEIGHT 上，标记是它的子节点 → 反向偏移才能贴住地面
+	_marker.position = Vector3(0.0, (_arena_base_y + 0.06) - position.y, 0.0)
+	var pulse := 1.0 + 0.06 * sin(_t * 12.0)
+	var s := lerpf(0.72, 1.0, clampf(prog * 1.6, 0.0, 1.0)) * pulse
+	_marker.scale = Vector3(s, 1.0, s)
+	if _marker_mat != null:
+		_marker_mat.albedo_color = Color(1.0, 0.10, 0.08, lerpf(0.62, 1.0, prog))
 
 
 func _pick_wander_target() -> void:

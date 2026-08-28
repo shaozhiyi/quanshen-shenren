@@ -257,7 +257,8 @@ func _process(delta: float) -> void:
 			if boss != null:
 				bname = String(boss.get("boss_name"))
 			if boss != null and boss.call("is_attacking"):
-				_hint_label.text = "%s 腾空 · 日月倒悬 —— 持续失血！" % bname
+				var ptxt := String(boss.call("phase_text"))
+				_hint_label.text = "%s %s" % [bname, ptxt if ptxt != "" else "腾空 · 日月倒悬 —— 持续失血！"]
 				_hint_label.add_theme_color_override("font_color", Color(1, 0.35, 0.3, 1))
 			else:
 				if boss != null:
