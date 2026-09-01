@@ -119,7 +119,7 @@ func _ready() -> void:
 	_weapon_label.add_theme_color_override("font_color", Color(1, 0.92, 0.65, 0.95))
 	_weapon_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
 	_weapon_label.add_theme_constant_override("outline_size", 3)
-	_weapon_label.text = "当前：剑（X 挥砍）｜Z 切换弓箭"
+	_weapon_label.text = "当前：剑（X 挥砍）｜C 切换弓箭"
 	add_child(_weapon_label)
 
 	_hint_label = Label.new()
@@ -231,10 +231,10 @@ func _process(delta: float) -> void:
 		var dr: Array = _bow.call("damage_range")
 		var ct: float = float(_bow.call("charge_time"))
 		if bow_on:
-			_weapon_label.text = "当前：弓箭 攻击 %d~%d（按住左键蓄力 %.0f 秒满，松手发射）｜Z 切换剑%s" % [
+			_weapon_label.text = "当前：弓箭 攻击 %d~%d（按住左键蓄力 %.0f 秒满，松手发射）｜C 切换剑%s" % [
 				int(roundf(float(dr[0]) * scale)), int(roundf(float(dr[1]) * scale)), ct, tag]
 		else:
-			_weapon_label.text = "当前：剑 攻击 %d（X 挥砍）｜Z 切换弓箭%s" % [int(roundf(50.0 * scale)), tag]
+			_weapon_label.text = "当前：剑 攻击 %d（X 挥砍）｜C 切换弓箭%s" % [int(roundf(50.0 * scale)), tag]
 		if _bow.call("is_charging"):
 			_charge_bar.visible = true
 			_charge_bar.call("set_value", _bow.call("charge_ratio") * 100.0, false)

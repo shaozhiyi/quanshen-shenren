@@ -43,8 +43,7 @@ var _saved_pitch := 0.0
 var _saved_env: Environment
 const BOSS_INTERACT_DIST := 12.0
 
-# 冲刺：连续（双击）同一方向键触发一小段爆发位移
-const DOUBLE_TAP_WINDOW := 0.28   # 两次点按间隔小于此值判定为双击
+# 冲刺：单独按 Z 触发一小段爆发位移（方向取当前按住的移动键，没按就朝正前方）
 const DASH_SPEED := 18.0          # 冲刺瞬时速度（约 3.6× 步行）
 const DASH_DURATION := 0.2        # 冲刺持续
 const DASH_COOLDOWN := 0.5        # 冲刺后摇冷却，防连发
@@ -52,7 +51,14 @@ var _dash_time := 0.0
 var _dash_cd := 0.0
 var _dash_dir := Vector3.ZERO
 var _air_jumps := 0               # 本次离地还能空中再跳几次
+# 奔跑：双击同一方向键进入，移动速度 ×2；松开所有方向键自动退出
+const DOUBLE_TAP_WINDOW := 0.28   # 两次点按间隔小于此值判定为双击
+const RUN_MULT := 2.0
+var _running := false
 var _last_tap := {}               # action -> 上次点按时刻(秒)
+# 减速：被蓝色星点命中后一段时间移动速度打折（无敌期免疫）
+const SLOW_MULT := 0.5
+var _slow_t := 0.0
 
 
 func _ready() -> void:
@@ -318,8 +324,19 @@ func _on_died() -> void:
 	## 血量归零：以 30% 血苏醒；在 BOSS 空间内则视为挑战失败被弹出（BOSS 下次仍满血）
 	hp = max_hp * 0.3
 	hp_changed.emit(hp, max_hp)
+	_reset_motion_state()      # 苏醒不带奔跑/减速/冲刺残留
 	if _in_arena:
 		_exit_arena()
+
+
+func _reset_motion_state() -> void:
+	## 清掉奔跑、减速与冲刺的瞬时状态（死亡/进出 BOSS 空间时调用）
+	_running = false
+	_slow_t = 0.0
+	_dash_time = 0.0
+	_dash_cd = 0.0
+	velocity.x = 0.0
+	velocity.z = 0.0
 
 
 func _try_pick_box() -> bool:
@@ -369,7 +386,7 @@ func spawn_drop_box(item_id: String, count: int = 1) -> void:
 
 
 func _switch_weapon() -> void:
-	## Z 键：主/副武器切换（剑 ↔ 弓）；仅当两把都已装备时可切
+	## C 键：主/副武器切换（剑 ↔ 弓）；仅当两把都已装备时可切
 	if _has[0] and _has[1]:
 		_equip(1 - _weapon)
 
@@ -560,7 +577,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			else:
 				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 		elif event.keycode == KEY_Z:
-			# Z：主/副武器切换（剑 ↔ 弓）
+			# Z：冲刺（单独一下，沿当前按住的方向；没按方向就朝正前方）
+			try_dash()
+		elif event.keycode == KEY_C:
+			# C：主/副武器切换（剑 ↔ 弓）
 			_switch_weapon()
 		elif event.keycode == KEY_E:
 			# E：附近有掉落箱→回收；否则靠近 BOSS 进入其空间 / 空间内离开
@@ -600,14 +620,22 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_just_pressed("jump"):
 		try_jump()
 
-	# 双击方向键 → 冲刺：检测同一移动键在时间窗内被再次点按
+	# 双击同一方向键 → 进入奔跑状态（速度 ×2）；松开所有方向键自动退出
 	var now := Time.get_ticks_msec() / 1000.0
+	var holding := false
 	for act in ["move_forward", "move_back", "move_left", "move_right"]:
 		if Input.is_action_just_pressed(act):
 			var prev: float = _last_tap.get(act, -99.0)
-			if now - prev <= DOUBLE_TAP_WINDOW and _dash_cd <= 0.0 and _dash_time <= 0.0:
-				_start_dash(act)
+			if now - prev <= DOUBLE_TAP_WINDOW:
+				_running = true
 			_last_tap[act] = now
+		if Input.is_action_pressed(act):
+			holding = true
+	if not holding:
+		_running = false
+
+	if _slow_t > 0.0:
+		_slow_t = maxf(_slow_t - delta, 0.0)
 
 	if _dash_time > 0.0:
 		# 冲刺中：覆盖水平速度
@@ -616,14 +644,15 @@ func _physics_process(delta: float) -> void:
 		velocity.z = _dash_dir.z * DASH_SPEED
 	else:
 		# 获取移动输入（x: 左右, y: 前后），并按身体朝向转为世界方向
+		var spd := speed_now()
 		var input_dir := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 		var direction := (transform.basis * Vector3(input_dir.x, 0.0, input_dir.y)).normalized()
 		if direction:
-			velocity.x = direction.x * move_speed
-			velocity.z = direction.z * move_speed
+			velocity.x = direction.x * spd
+			velocity.z = direction.z * spd
 		else:
-			velocity.x = move_toward(velocity.x, 0.0, move_speed)
-			velocity.z = move_toward(velocity.z, 0.0, move_speed)
+			velocity.x = move_toward(velocity.x, 0.0, spd)
+			velocity.z = move_toward(velocity.z, 0.0, spd)
 
 	if _dash_cd > 0.0:
 		_dash_cd -= delta
@@ -657,17 +686,48 @@ func _jump_ring() -> void:
 	SLAM_FX.spawn_ring(scene, global_position + Vector3(0.0, 0.08, 0.0), 1.5, Color(1, 1, 1), 0.42)
 
 
-func _start_dash(act: String) -> void:
-	## 依据被双击的方向键，沿身体朝向的对应水平方向发起一段冲刺
-	var d := Vector3.ZERO
-	match act:
-		"move_forward": d = -transform.basis.z
-		"move_back":    d = transform.basis.z
-		"move_left":    d = -transform.basis.x
-		"move_right":   d = transform.basis.x
+func try_dash() -> bool:
+	## Z 键冲刺：沿当前按住的移动方向；没按方向键就朝身体正前方。冷却中返回 false
+	if _dash_cd > 0.0 or _dash_time > 0.0:
+		return false
+	var input_dir := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+	var d := transform.basis * Vector3(input_dir.x, 0.0, input_dir.y)
 	d.y = 0.0
 	if d.length_squared() < 0.0001:
-		return
+		d = -transform.basis.z
+		d.y = 0.0
+	if d.length_squared() < 0.0001:
+		return false
 	_dash_dir = d.normalized()
 	_dash_time = DASH_DURATION
 	_dash_cd = DASH_COOLDOWN
+	return true
+
+
+func speed_now() -> float:
+	## 本帧应有的水平速度：基础 × 奔跑 2 倍 × 减速系数
+	var spd := move_speed
+	if _running:
+		spd *= RUN_MULT
+	if _slow_t > 0.0:
+		spd *= SLOW_MULT
+	return spd
+
+
+func is_running() -> bool:
+	return _running
+
+
+func set_running(b: bool) -> void:
+	_running = b
+
+
+func apply_slow(seconds: float) -> void:
+	## 蓝色星点命中：移速 -50% 持续 seconds 秒；无敌期免疫，重复命中取更长剩余
+	if _invincible or seconds <= 0.0:
+		return
+	_slow_t = maxf(_slow_t, seconds)
+
+
+func slow_left() -> float:
+	return _slow_t

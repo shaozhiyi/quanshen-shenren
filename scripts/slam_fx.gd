@@ -32,10 +32,34 @@ var _star_size := 1.4
 var _vel := Vector3.ZERO
 var _star_mi: MeshInstance3D
 var _star_mat: StandardMaterial3D
-var _damage := 5.0                  # 星点单发伤害（0 = 纯观赏）
+var _damage := 5.0                  # 星点单发伤害（0 = 不造成伤害）
+var _kind := "yellow"               # 星点颜色规律：red 高伤 / yellow 常规 / blue 减速 / green 回血
+var _heal := 0.0                    # 命中给玩家回复的血量（绿色）
+var _slow := 0.0                    # 命中给玩家的减速时长（蓝色）
+var _base_col := Color(1, 0.93, 0.62)
 const STAR_HIT_R := 1.4             # 命中半径（米）
+const STAR_GRAVITY := 12.0          # 星点下坠加速度（boss.gd 弹道补偿共用）
+const STAR_LIFE_CAP := 8.0          # 兜底自毁上限（正常都应落在地板上消失）
 var _hit_done := false
 var _prev_pos := Vector3.INF
+
+# ---- 星点四色：规律固定为红→黄→蓝→绿循环，颜色即效果预告 ----
+const STAR_KINDS := ["red", "yellow", "blue", "green"]
+const STAR_COLORS := {
+	"red": Color(1.0, 0.16, 0.12),
+	"yellow": Color(1.0, 0.88, 0.30),
+	"blue": Color(0.24, 0.58, 1.0),
+	"green": Color(0.26, 0.95, 0.45),
+}
+
+
+static func star_kind(index: int) -> String:
+	## 第 index 颗环绕星点对应的颜色种类（红黄蓝绿依次循环）
+	return STAR_KINDS[posmod(index, STAR_KINDS.size())]
+
+
+static func star_color(kind: String) -> Color:
+	return STAR_COLORS.get(kind, Color(1, 0.93, 0.62))
 
 
 ## 砸地特效：at 为地面点（贴地画），radius 为裂纹半径
@@ -60,18 +84,23 @@ static func _spawn(parent: Node, at: Vector3, radius: float, tint: Color, crack:
 	fx.global_position = at
 
 
-## 射出的星点：从 at 沿 dir 飞出（带一点重力），life 秒后自毁
-## damage > 0 时，星点扫过玩家会结算一次伤害（走玩家 take_damage，吃防具减伤与无敌）
-static func spawn_star(parent: Node, at: Vector3, dir: Vector3, speed: float, life: float, size: float = 1.4, damage: float = 5.0) -> void:
+## 射出的星点：从 at 沿 dir 飞出（带重力），**只有落到地板上才消失**（life 只作兜底上限）
+## kind 决定颜色与效果：red 高伤 / yellow 常规 / blue 命中减速 5 秒 / green 无伤但回 5 血
+static func spawn_star(parent: Node, at: Vector3, dir: Vector3, speed: float, life: float,
+		size: float = 1.4, damage: float = 5.0, kind: String = "yellow") -> void:
 	if parent == null or not is_instance_valid(parent):
 		return
 	var fx: Node3D = load("res://scripts/slam_fx.gd").new()
 	fx._star = true
 	fx._dir = dir.normalized()
 	fx._speed = speed
-	fx._star_life = maxf(life, 0.1)
+	fx._star_life = clampf(life, 0.5, STAR_LIFE_CAP)
 	fx._star_size = maxf(size, 0.4) * 1.6     # 20 米外要看得见，放大一档
-	fx._damage = damage
+	fx._kind = kind if STAR_COLORS.has(kind) else "yellow"
+	fx._damage = 0.0 if fx._kind == "green" else damage
+	fx._heal = 5.0 if fx._kind == "green" else 0.0
+	fx._slow = 5.0 if fx._kind == "blue" else 0.0
+	fx._base_col = star_color(fx._kind)
 	parent.add_child(fx)
 	fx.global_position = at
 
@@ -116,7 +145,7 @@ func _ready() -> void:
 		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 		mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 		mat.albedo_texture = star_texture()
-		mat.albedo_color = Color(1, 0.93, 0.62, 1.0)
+		mat.albedo_color = _base_col
 		_star_mi.material_override = mat
 		_star_mat = mat
 		add_child(_star_mi)
@@ -139,10 +168,40 @@ func _try_hit_player(from: Vector3, to: Vector3) -> void:
 	if p == null or not is_instance_valid(p):
 		return
 	var center: Vector3 = p.global_position + Vector3(0.0, 0.9, 0.0)
-	if _seg_point_dist(from, to, center) <= STAR_HIT_R:
-		_hit_done = true
-		if p.has_method("take_damage"):
-			p.take_damage(_damage)
+	if _seg_point_dist(from, to, center) > STAR_HIT_R:
+		return
+	_hit_done = true
+	if _damage > 0.0 and p.has_method("take_damage"):
+		p.take_damage(_damage)          # 吃防具减伤与无敌免疫
+	if _slow > 0.0 and p.has_method("apply_slow"):
+		p.apply_slow(_slow)             # 蓝色：移速 -50% 持续 5 秒（无敌期免疫）
+	if _heal > 0.0 and p.has_method("heal"):
+		p.heal(_heal)                   # 绿色：不回血上限外，直接 +5
+
+
+func _floor_y(p: Vector3) -> float:
+	## 星点下方最近的地面：地形表面；若它还在 BOSS 空间地板上方，则空间地板更优先
+	## （空间边框 800 米，大地图坐标几乎全落在里面，不能无条件取地板，
+	##  否则地形上方飞的星点会被 100 米高的空间地板当场拦下）
+	var y := -1000.0
+	var ground := get_tree().get_first_node_in_group("ground")
+	if ground != null and ground.has_method("height_at"):
+		y = float(ground.call("height_at", p.x, p.z))
+	var arena := get_tree().get_first_node_in_group("arena")
+	if arena != null and arena.has_method("inside") and bool(arena.call("inside", p)):
+		var af := float(arena.call("floor_y"))
+		if p.y >= af - 0.5:
+			y = maxf(y, af)
+	return y
+
+
+func _land_puff() -> void:
+	## 落点反馈：一圈本颜色的小光环（绿色落地上也该看得出来是"补血"的那颗）
+	var p := get_parent()
+	if p == null or not is_instance_valid(p):
+		return
+	var gy := _floor_y(global_position)
+	spawn_ring(p, Vector3(global_position.x, gy + 0.05, global_position.z), 1.1, _base_col, 0.34)
 
 
 static func _seg_point_dist(a: Vector3, b: Vector3, p: Vector3) -> float:
@@ -177,20 +236,17 @@ func _process(delta: float) -> void:
 	_t += delta
 	if _star:
 		var from := global_position
-		_vel.y -= 12.0 * delta
+		_vel.y -= STAR_GRAVITY * delta
 		global_position += _vel * delta
-		if _damage > 0.0 and not _hit_done:
+		if not _hit_done:
 			_try_hit_player(from, global_position)
 			if _hit_done:
 				queue_free()      # 命中即炸掉，不重复结算
 				return
-		var sw := clampf(_t / _star_life, 0.0, 1.0)
-		if _star_mat != null:
-			_star_mat.albedo_color = Color(1, 0.93, 0.62, 1.0 - sw * sw)
-		if _star_mi != null:
-			var ss := lerpf(1.0, 0.45, sw)
-			_star_mi.scale = Vector3(ss, ss, ss)
-		if _t >= _star_life:
+		# 关键修正：星点不再"飞到一半自己消失"，只有落到地板才消失
+		# （旧版按 0.9 秒生命自毁，离玩家远时根本飞不到就没了）
+		if global_position.y <= _floor_y(global_position) + 0.06 or _t >= _star_life:
+			_land_puff()
 			queue_free()
 		return
 	var wl := WAVE_LIFE if _wave_life < 0.0 else _wave_life

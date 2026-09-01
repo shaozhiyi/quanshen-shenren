@@ -26,7 +26,7 @@ const DB := {
 	"sword":  {"name": "剑", "slot": K_WEAPON, "icon": "res://assets/items/sword.svg", "tint": Color(0.88, 0.92, 0.98),
 		"desc": "主武器 · 基础攻击 50，按 X 挥砍\n双击：花 1 块强化石 → 只有剑 +1 级\n每级攻击力 +10%（最高 +10）"},
 	"bow":    {"name": "弓箭", "slot": K_SUB, "icon": "res://assets/items/bow.svg", "tint": Color(0.95, 0.80, 0.62),
-		"desc": "副武器 · 蓄力 3 秒满，攻击 12~50\n按住左键蓄力，松手发射，每箭冷却 0.5 秒\n双击：花 1 块强化石 → 只有弓箭 +1 级\n每级攻击力 +10%（最高 +10）"},
+		"desc": "副武器 · 蓄力 2 秒满，攻击 12~70\n按住左键蓄力，松手发射，每箭冷却 0.5 秒\n双击：花 1 块强化石 → 只有弓箭 +1 级\n每级攻击力 +10%（最高 +10）"},
 	"armor":  {"name": "防具", "slot": K_ARMOR, "icon": "res://assets/items/armor.svg", "tint": Color(1.00, 0.85, 0.40),
 		"desc": "护甲 · 受到的伤害 ×0.7 后向下取整\n双击：花 1 块强化石 → 只有防具 +1 级\n每级再减 3% 受伤（最低 ×0.4）\n（不足 1 点的零头会累计到之后扣）"},
 	"dogmilk": {"name": "野生狗奶", "slot": -1, "icon": "res://assets/items/dogmilk.png", "tint": Color(1, 1, 1),

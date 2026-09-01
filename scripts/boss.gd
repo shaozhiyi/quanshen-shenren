@@ -54,7 +54,6 @@ var _bob_amp := 0.1                   # 待机上下浮动幅度
 const DIFF_NAMES := ["普通", "困难", "噩梦"]
 const DIFF_HP_MULT := [1.0, 1.6, 2.4]        # 相对普通档基准血量的倍率
 const DIFF_AURA_MULT := [1.0, 1.5, 2.0]      # 光环伤害倍率
-const DIFF_STAR_COLOR := [Color(1, 0.92, 0.55), Color(1, 0.55, 0.25), Color(0.78, 0.45, 1.0)]
 const RESET_HP_ON_LEAVE := true              # 撤退也重置满血（false=保留已打掉的血量）
 
 var hp := max_hp
@@ -86,9 +85,11 @@ const MARK_TIME := 1.0          # 追踪位置固定后，红圈预警时长
 const SLAM_DROP_TIME := 0.45    # 从空中砸向红圈的时长（越落越快）
 const SLAM_DAMAGE := 20.0       # 砸中玩家扣血（仍会被防具减伤）
 const SLAM_RADIUS := 6.0        # 红圈半径＝命中判定半径
-const STAR_FLIGHT := 0.9        # 单颗星点射出后的飞行时长
+const STAR_FLIGHT := 0.9        # 单颗星点的提前发射量（保证最后一颗在交替结束时刚好射出）
 const STAR_SPEED := 42.0        # 星点初速（米/秒）
-const STAR_DAMAGE := 5.0        # 单颗星点命中伤害（仍吃防具减伤/无敌免疫）
+const STAR_MAX_FLY := 8.0       # 星点存在兜底上限：正常情况下飞到地板上才消失
+const STAR_DAMAGE := 5.0        # 黄色星点命中伤害（基准；仍吃防具减伤/无敌免疫）
+const STAR_RED_BONUS := 5.0     # 红色星点比基准再多这么多（=10）
 const SLAM_FX := preload("res://scripts/slam_fx.gd")
 var _phase := 0                 # 0待机 1前摇 2攻击(飞天) 4空中追踪 5红圈预警 6砸落
 var _phase_t := 0.0
@@ -140,7 +141,7 @@ func set_arena_mode(b: bool) -> void:
 
 # ---- 难度：默认最低档，击败一次后由玩家按 R 调节 ----
 func apply_difficulty() -> void:
-	## 按当前难度重算血量与光环伤害，并给蓄力星点上色（越难越凶）
+	## 按当前难度重算血量与光环伤害（星点颜色是固定的红黄蓝绿规律，不随难度变）
 	difficulty = clampi(difficulty, 0, DIFF_NAMES.size() - 1)
 	if _hp_by_diff.size() == DIFF_NAMES.size():
 		max_hp = float(_hp_by_diff[difficulty])       # 名册给了定值（重卡 2000/2500/3000）
@@ -148,13 +149,6 @@ func apply_difficulty() -> void:
 		max_hp = _base_max_hp * float(DIFF_HP_MULT[difficulty])
 	hp = max_hp
 	_aura_dmg = _aura_base * float(DIFF_AURA_MULT[difficulty])
-	var col: Color = DIFF_STAR_COLOR[difficulty]
-	for st in _stars:
-		var mat := st.material_override as StandardMaterial3D
-		if mat != null:
-			# 星点材质是 unshaded：emission 不参与着色，必须用 albedo_color 乘到贴图上才看得见
-			mat.albedo_color = col
-			mat.emission = col
 	_refresh_labels()
 
 
@@ -476,13 +470,16 @@ func _build_marker() -> void:
 	add_child(_marker)
 
 
-# ---- 蓄力星点：公告板小面片池（蓄力时逐个点亮，攻击期逐颗射出） ----
+# ---- 蓄力星点：公告板小面片池（蓄力时逐个点亮，攻击期逐颗射出）----
+# 颜色规律固定为 红→黄→蓝→绿 循环：红=高伤(10)，黄=常规(5)，蓝=命中减速 5 秒，绿=无伤但回 5 血
 func _build_stars() -> void:
 	for i in MAX_STARS:
 		var mi := MeshInstance3D.new()
 		var pm := PlaneMesh.new()
 		pm.size = Vector2(1.0, 1.0)
 		mi.mesh = pm
+		var kind := SLAM_FX.star_kind(i)
+		var col: Color = SLAM_FX.star_color(kind)
 		var mat := StandardMaterial3D.new()
 		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
@@ -490,13 +487,34 @@ func _build_stars() -> void:
 		mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
 		mat.albedo_texture = SLAM_FX.star_texture()
 		mat.emission_enabled = true
-		mat.emission = Color(1, 0.92, 0.55)
+		mat.emission = col
 		mat.emission_energy_multiplier = 3.6
+		# unshaded：emission 不参与着色，必须用 albedo_color 乘到贴图上才看得见颜色
+		mat.albedo_color = col
 		mi.material_override = mat
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mi.visible = false
+		mi.set_meta("kind", kind)
 		add_child(mi)
 		_stars.append(mi)
+
+
+func star_kind_of(i: int) -> String:
+	## 第 i 颗蓄力星点的颜色种类（供测试/表现查询）
+	if i < 0 or i >= _stars.size():
+		return ""
+	return String(_stars[i].get_meta("kind", SLAM_FX.star_kind(i)))
+
+
+func star_damage_of(kind: String) -> float:
+	## 该颜色种类的星点伤害：红色比基准多 STAR_RED_BONUS，绿色无伤害
+	match kind:
+		"red":
+			return STAR_DAMAGE + STAR_RED_BONUS
+		"green":
+			return 0.0
+		_:
+			return STAR_DAMAGE
 
 
 func _face_mat(tex_file: String) -> StandardMaterial3D:
@@ -702,23 +720,30 @@ func _update_windup(delta: float) -> void:
 
 
 func _fire_star(i: int, player: Node) -> void:
-	## 把第 i 颗环绕星点射出去：从它当前的环绕位置朝玩家当时所在方向飞出，池子里熄灭
+	## 把第 i 颗环绕星点射出去：从它当前的环绕位置朝玩家当时所在方向飞出，池子里熄灭。
+	## 颜色与效果按红黄蓝绿规律（见 slam_fx.star_kind）：红 10 伤、黄 5 伤、蓝 5 伤 + 减速、绿 0 伤 + 回血
 	_stars_fired = i + 1        # 先计数，异常分支也不会让调用方的 while 卡死
 	if i < 0 or i >= _stars.size():
 		return
 	var st := _stars[i]
 	var from := st.global_position
 	st.visible = false
+	var kind := star_kind_of(i)
 	var to := from + Vector3(0.0, -8.0, 0.0)
 	if player != null and is_instance_valid(player):
 		to = player.global_position + Vector3(0.0, 0.6, 0.0)
+		# 弹道补偿：星点带重力下坠，按飞行时间把瞄准点抬高，离得远也打得到你脚下
+		var fly_t := from.distance_to(to) / STAR_SPEED
+		to.y += 0.5 * SLAM_FX.STAR_GRAVITY * fly_t * fly_t
 	var dir := to - from
 	if dir.length_squared() < 0.0001:
 		dir = Vector3(0.0, -1.0, 0.0)
 	var scene := get_tree().current_scene
 	if scene == null:
 		scene = get_tree().root
-	SLAM_FX.spawn_star(scene, from, dir.normalized(), STAR_SPEED, STAR_FLIGHT, st.scale.x, STAR_DAMAGE)
+	# 生命参数只作兜底上限：星点现在是碰到地板才消失，不再飞到一半自己没了
+	SLAM_FX.spawn_star(scene, from, dir.normalized(), STAR_SPEED, STAR_MAX_FLY,
+		st.scale.x, star_damage_of(kind), kind)
 
 
 func _layout_stars(prog: float) -> void:
