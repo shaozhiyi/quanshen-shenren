@@ -1,24 +1,32 @@
-PRIMARY MODEL
--------------
-File: assets/models/truck.glb（野生重卡 BOSS 外观）
-Model: "Military Truck - 2D/3D Collab" by Alex Safayan (alexsafayan.com)
-Source: Poly Pizza https://poly.pizza/m/3XAD5t0Djqv (direct GLB: https://static.poly.pizza/4d93603f-afb0-427a-9537-b977340f26c0.glb)
-License: CC-BY 3.0 (https://creativecommons.org/licenses/by/3.0/)
-Modification: 车身四种材质由土黄改为红色（只改材质颜色，几何未动）；
-  BIN 块类型字段按 Godot 要求从 "BIN " 修正为 "BIN\0"，否则导入报
-  chunk_type != 0x004E4942。
-CREDITS one-liner（分享/视频说明用）:
-  "Military Truck - 2D/3D Collab" by Alex Safayan (CC-BY 3.0, via Poly Pizza), recolored red.
+assets/models/ 素材说明（第三方许可与自有内容）
+================================================
 
-参考图
-------
-assets/models/ref/truck_ref.png         用户提供的红色栏板重卡参考图（原图）
-assets/models/ref/truck_ref_clean.png   抠掉蓝底并放大到 900px，用于喂 Hyper3D 一类图生 3D 工具
-（两张都不参与运行时渲染，只是建模参考）
+当前状态：本目录下**没有第三方 3D 模型**。野生重卡 BOSS 的外观由引擎程序化生成
+（scripts/boss_model.gd 拼 BoxMesh/CylinderMesh），白字贴图由本项目自己渲染，
+因此无需第三方署名。
 
-换模型
-------
-把任意 GLB 覆盖 assets/models/truck.glb 即换外观；朝向/大小/贴地用
+truck_lettering.png
+  自有内容：黑体竖排白字「大运重卡」+ 深色描边，384×1024，运行时贴在货箱两侧面片上。
+  文字内容取自用户提供的参考车型涂装，仅作游戏内恶搞外观使用。
+
+ref/truck_ref_dump.png · ref/truck_ref_dump_big.png
+  用户提供的橙色 8×4 自卸重卡参考照片（后者 3× 放大，便于喂图生 3D 工具）。
+ref/truck_ref.png · ref/truck_ref_clean.png
+  用户提供的另一张红色栏板货车参考图（后者抠掉蓝底并放大）。
+  以上四张仅作建模参考，不参与运行时渲染。
+
+直投槽（等你放模型进来）
+------------------------
+把任意 GLB 存成 assets/models/truck.glb，BOSS 会自动改用它；朝向/大小/贴地用
 scripts/boss_roster.gd 里 truck 条目的 model_scale / model_y / model_rot_y / box 调，
-代码不用动。模型文件缺失时 BOSS 自动改用 scripts/boss_model.gd 的程序化低模
-（自有内容，无第三方许可）。
+代码不用动。文件不存在时自动回退到程序化低模（自有内容，无第三方许可）。
+
+历史备用模型（已移出工程，未包含在本构建内）
+--------------------------------------------
+"Military Truck - 2D/3D Collab" by Alex Safayan (alexsafayan.com)
+  Source: Poly Pizza https://poly.pizza/m/3XAD5t0Djqv
+  License: CC-BY 3.0 (https://creativecommons.org/licenses/by/3.0/)
+  修改：车身材质由土黄改红；BIN 块类型字段按 Godot 要求从 "BIN " 修正为 "BIN\0"。
+  说明：两轴军用卡车，造型与参考图（四轴自卸车）不符，故不再作为默认外观。
+  若将来重新启用，请恢复以下署名：
+    "Military Truck - 2D/3D Collab" by Alex Safayan (CC-BY 3.0, via Poly Pizza), recolored red.

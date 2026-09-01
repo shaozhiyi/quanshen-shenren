@@ -47,22 +47,22 @@ const DEFS := {
 		"name": "野生重卡",
 		"model": "res://assets/models/truck.glb",
 		"placeholder": "truck",
-		"model_scale": 1.4,             # 原模型 5.85 长 → 放大到 8.2 米的大家伙
-		"model_y": -0.02,               # 模型原点略高于地面，压回来贴地
-		"model_rot_y": 0.0,             # 车头已朝 +Z
+		"model_scale": 1.0,             # 真模型到位后再按实际尺寸调
+		"model_y": 0.0,
+		"model_rot_y": 0.0,             # 车头须朝 +Z（BOSS 用 +Z 对玩家）
 		"face_dir": "res://assets/props/dogmilk/",
 		"tint": Color(1, 1, 1),
 		"scale": 1.0,
-		"box": [3.7, 3.85, 8.2],        # 宽 3.7 · 高 3.85 · 长 8.2（米，车头朝 +Z）
+		"box": [3.0, 3.8, 10.6],        # 宽 3.0 · 高 3.8 · 长 10.6（米，车头朝 +Z）
 		"hp_by_diff": [2000.0, 2500.0, 3000.0],   # 普通 / 困难 / 噩梦
 		"aura": 0.3,                    # 贴身尾气：每 0.1 秒 0.3 血（困难 ×1.5、噩梦 ×2）
 		"skills": false,                # 暂无技能：不飞天、不砸地、不射星点
 		"chase": 3.6,                   # 缓慢驶近（玩家步行 5.0，跑得掉）
-		"bob_amp": 0.03,                # 几乎贴地，只留一点悬挂起伏
+		"bob_amp": 0.02,                # 几乎贴地，只留一点悬挂起伏
 		"visual_y": 0.0,
 		"reward": "dogmilk",            # 拉的一车货
 		"reward_counts": [2, 3, 4],
-		"band": [55.0, 95.0],           # 车身长，出生点离玩家稍远些
+		"band": [60.0, 100.0],          # 车身 10 米多长，出生点离玩家更远些
 		"song": "",
 	},
 	# 下一只 BOSS 照抄一条写在这里即可（换 face_dir 用新贴图，
