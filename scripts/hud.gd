@@ -70,24 +70,25 @@ func _ready() -> void:
 	_set_hp_palette(false)
 	var max_hp: float = _player.get("max_hp") if _player.get("max_hp") != null else 100.0
 	var hp: float = _player.get("hp") if _player.get("hp") != null else max_hp
-	_bar.set_value(hp, false)
+	_bar.set_value(hp / max_hp * 100.0, false)
 	_player.connect("hp_changed", _on_hp_changed)
 
 	# ---- 魔法条（蓝，上限 200）----
+	# 注意：HealthBarX 是"百分比"条——set_value 会把值归一成 0..100 存，
+	# 画填充时又除以 max_value。所以条量程必须恒为 100、传百分比进去；
+	# 真实上限 200 只交给 style.label_custom_max 换算显示文字（否则满值只画一半）。
 	var mp_max: float = float(_player.get("max_mp")) if _player.get("max_mp") != null else 200.0
 	var mp_now: float = float(_player.get("mp")) if _player.get("mp") != null else mp_max
 	_mp_bar = _make_bar(Vector2(bar_position.x, bar_position.y + 32), Vector2(bar_size.x, 16),
 		MP_FILL, false, "{value}/{max}", 11, mp_max)
-	_mp_bar.max_value = mp_max
-	_mp_bar.set_value(mp_now, false)
+	_mp_bar.set_value(mp_now / mp_max * 100.0, false)
 	_mp_shown = mp_now
 	_mp_max_shown = mp_max
 
 	# ---- 经验条（绿，细）：升级系统未做，本版恒为 0 ----
 	_exp_bar = _make_bar(Vector2(bar_position.x, bar_position.y + 52), Vector2(bar_size.x, 8),
 		EXP_FILL, false, "", 10, 1.0)
-	_exp_bar.max_value = 1.0
-	_exp_bar.set_value(_exp_ratio(), false)
+	_exp_bar.set_value(_exp_ratio() * 100.0, false)
 	_exp_shown = _exp_ratio()
 
 	# 世界坐标显示（状态区下方）
@@ -181,8 +182,9 @@ func _ready() -> void:
 
 
 func _make_bar(pos: Vector2, size: Vector2, fill: Color, thresholds: bool,
-		fmt: String, fsize: int, cmax: float) -> Control:
+		fmt: String, fsize: int, label_max: float) -> Control:
 	## 统一风格的状态条：深色底 + 细边框 + 可选数字；thresholds=true 时按三档换色
+	## label_max：文字里 "{max}" 显示的真实上限（填充量程恒为 100，见下方注释）
 	var st := HealthBarXStyle.new()
 	st.background_color = Color(0.10, 0.10, 0.13, 0.82)
 	st.fill_color = fill
@@ -201,7 +203,7 @@ func _make_bar(pos: Vector2, size: Vector2, fill: Color, thresholds: bool,
 	st.shadow_apply_to = HealthBarXStyle.SHADOW_APPLY_BOTH
 	st.label_enabled = fmt != ""
 	st.label_format = fmt
-	st.label_custom_max = cmax
+	st.label_custom_max = label_max
 	st.font_size = fsize
 	st.font_color = Color(1, 1, 1, 1)
 	st.outline_size = 2
@@ -211,7 +213,9 @@ func _make_bar(pos: Vector2, size: Vector2, fill: Color, thresholds: bool,
 	# 顺序反了会被最小高度夹住（细条变粗、三条叠在一起），后改也回缩不了
 	bar.custom_minimum_size = Vector2.ZERO
 	bar.min_value = 0.0
-	bar.max_value = cmax
+	# 插件是"百分比"条：set_value 归一成 0..100 存、画填充时除以 max_value，
+	# 所以量程恒为 100（真实上限走 label_custom_max 换算文字，别把它放进 max_value）
+	bar.max_value = 100.0
 	bar.style = st
 	bar.position = pos
 	bar.size = size
@@ -305,14 +309,13 @@ func _process(delta: float) -> void:
 		if absf(mp - _mp_shown) > 0.001 or absf(mmax - _mp_max_shown) > 0.001:
 			_mp_shown = mp
 			_mp_max_shown = mmax
-			_mp_bar.max_value = mmax
 			if _mp_bar.style != null:
-				_mp_bar.style.label_custom_max = mmax
-			_mp_bar.set_value(mp, false)
+				_mp_bar.style.label_custom_max = mmax   # 真实上限只用于文字
+			_mp_bar.set_value(mp / mmax * 100.0, false)  # 填充量程恒为 100
 		var er := _exp_ratio()
 		if absf(er - _exp_shown) > 0.001:
 			_exp_shown = er
-			_exp_bar.set_value(er, false)
+			_exp_bar.set_value(er * 100.0, false)
 		if _lv_label != null:
 			var lv: int = int(_player.get("level")) if _player.get("level") != null else 1
 			if lv != _lv_shown:
@@ -416,6 +419,7 @@ func _update_minimap() -> void:
 		_map_tex.update(img)
 
 
-func _on_hp_changed(current: float, _maximum: float) -> void:
+func _on_hp_changed(current: float, maximum: float) -> void:
+	# 填充量程恒为 100，传百分比（文字上限走 label_custom_max）
 	if _bar != null:
-		_bar.set_value(current, true)
+		_bar.set_value(current / maxf(maximum, 0.001) * 100.0, true)
