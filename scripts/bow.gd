@@ -4,10 +4,13 @@ extends Node3D
 ## 2 秒蓄满；松手 → 沿准星方向射出箭。箭为 RigidBody3D，弹道/射程由物理引擎（重力抛物线）决定，
 ## 初速与攻击力随蓄力提升：满蓄 2s 时攻击力 70（命中 BOSS 扣 70），未满按比例衰减。
 ## 模型：Poly Pizza CC0 弓 + Quaternius CC0 箭（assets/weapons，见 CREDITS.txt）。
+## 音效：拉弓 assets/audio/bow_draw.wav、放箭 bow_shot.wav（jc-sounds「Fantasy SFX Pack Vol 1」，
+##      CC-BY 4.0，见 assets/audio/CREDITS.txt；文件缺失则静默）。满蓄放箭更响（按蓄力比例加音量）。
 
 const BOW_MODEL := preload("res://assets/weapons/bow.glb")
 const ARROW_MODEL := preload("res://assets/weapons/arrow.glb")
 const ARROW_SCRIPT := preload("res://scripts/arrow.gd")
+const SFX := preload("res://scripts/sfx.gd")     # 拉弓 / 射箭音效（素材缺失时自动静默）
 
 const CHARGE_TIME := 2.0          # 满蓄秒数
 const SHOT_COOLDOWN := 0.5        # 每次射出后的等待（秒）
@@ -136,6 +139,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and _cooldown <= 0.0:
+				if not _charging:
+					SFX.play("draw")      # 搭弦开拉：只在起势那一刻响
 				_charging = true
 				_charge = 0.0
 		else:
@@ -155,6 +160,7 @@ func _fire() -> void:
 	var dmg := int(round(lerpf(float(MIN_DMG), float(FULL_DMG), ratio) * _player_damage_scale()))
 	_cancel()
 	_cooldown = SHOT_COOLDOWN
+	SFX.play("shot", ratio * 2.5 - 1.0)   # 拉得越满，撒放越响
 	if _camera == null:
 		return
 	var f := -_camera.global_transform.basis.z.normalized()

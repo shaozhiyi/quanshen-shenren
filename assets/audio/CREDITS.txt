@@ -1,0 +1,25 @@
+音效素材来源（assets/audio/*.wav）
+==================================
+
+sword_swing.wav / sword_swing_2.wav / bow_draw.wav / bow_shot.wav
+  作品："Fantasy SFX Pack Vol 1"
+  作者：jc-sounds
+  来源：https://opengameart.org/content/jc-sounds-fantasy-sfx-pack-vol-1
+  许可：CC-BY 4.0（Creative Commons Attribution 4.0 International）
+        → 可自由使用与再分发（含商用），但需署名，本文件即署名。
+
+  文件对应关系（只改名，未做剪辑/加工）：
+    sword_swing.wav    ← Single_Fantasy SFX Pack Vol 1_Sword_Swing_01.wav
+    sword_swing_2.wav  ← Single_Fantasy SFX Pack Vol 1_Sword_Swing_02.wav   （挥剑变体，随机二选一）
+    bow_draw.wav       ← Single_Fantasy SFX Pack Vol 1_Bow_Arrow_Draw_01.wav（拉弓/蓄力）
+    bow_shot.wav       ← Single_Fantasy SFX Pack Vol 1_Bow_Arrow_Shoot_01.wav（撒放）
+  音量、是否打断上一个、变体选择都在 scripts/sfx.gd 的 SOUNDS 表里配置（swing / draw / shot）。
+
+song.mp3
+  非素材站资源：战斗背景音乐请自行从个人音乐账号放入并命名为 song.mp3（缺失则自动静默）。
+  版权归原发行方，不随分享包分发。详见同目录 README.txt。
+
+备查（未随包发布的候选，若日后想换口味可直接取用）
+  Kenney「RPG Audio」 https://kenney.nl/assets/rpg-audio （CC0 0，无需署名）
+    knifeSlice.ogg（挥击）、creak2.ogg（弓臂吱声）、metalLatch.ogg（脆响）、drawKnife1.ogg（拔刀风声）
+  Swishes Sound Pack / RPG Sound Pack（artisticdude，OpenGameArt，CC0）：swish-*.wav、battle/swing*.wav

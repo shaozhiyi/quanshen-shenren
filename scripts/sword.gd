@@ -4,9 +4,14 @@ extends Node3D
 ## 原理：隐藏的动画骨架挂在相机下，剑每帧跟随其右手腕骨（Wrist.R）的世界姿态，
 ## 因此得到真实、流畅的挥砍轨迹；待机时跟随 Idle_Sword 自然呼吸。
 ## 动态模糊：挥砍期间按延迟显示 3 片剑身残影（记录剑的历史姿态，越旧越淡）。
+## 挥剑特效：出手瞬间在相机前方立一片斜月牙剑气（scripts/slam_fx.gd 程序化，无素材）。
+## 挥剑音效：assets/audio/sword_swing.wav（含变体随机二选一，CC-BY，见 assets/audio/CREDITS.txt；缺失时静默）。
 ## slash_hit 信号在挥砍动画 35% 进度处发出，供后续命中判定。
 
 signal slash_hit
+
+const SLAM_FX := preload("res://scripts/slam_fx.gd")
+const SFX := preload("res://scripts/sfx.gd")
 
 const KNIGHT_SCENE := preload("res://assets/character/king.glb")
 const SLASH_ANIM := "CharacterArmature|Sword_Slash"
@@ -111,6 +116,24 @@ func attack() -> void:
 	_hit_emitted = false
 	_hist.clear()
 	_anim_player.play(SLASH_ANIM)
+	SFX.play("swing")
+	_slash_fx()
+
+
+func _slash_fx() -> void:
+	## 剑气：立在相机前 1.15 米的一片斜月牙，朝向随视线水平方向
+	## 挂在相机下（而不是场景根）：挥砍 0.3 秒内玩家照常跑动/落地，
+	## 挂根节点会把弧光丢在原地、看起来"脱手"；跟视角走才像第一人称的挥击。
+	var cam := get_parent() as Camera3D
+	if cam == null:
+		return
+	var fwd := -cam.global_transform.basis.z
+	fwd.y = 0.0
+	if fwd.length_squared() < 0.0001:
+		return
+	fwd = fwd.normalized()
+	SLAM_FX.spawn_slash(cam, cam.global_position + fwd * 0.95 + Vector3(0.0, -0.18, 0.0),
+		fwd, 1.95, Color(0.62, 0.80, 1.0))
 
 
 # ---- 剑柄组件 ----

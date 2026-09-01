@@ -15,6 +15,15 @@ signal hp_changed(current: float, maximum: float)
 signal died
 
 var hp := 100.0
+# ---- 魔法：上限固定 200，留给之后的技能系统（本版只有满值显示，不做消耗）----
+@export var max_mp := 200.0
+var mp := 200.0
+signal mp_changed(current: float, maximum: float)
+# ---- 等级：只做显示（LV + 绿色经验条），升级系统暂不实现 ----
+var level := 1
+var exp := 0.0
+var exp_to_next := 100.0
+signal exp_changed(current_level: int, current_exp: float, need: float)
 
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 var _spawn_pos := Vector3(0.0, 5.0, 0.0)
@@ -65,6 +74,8 @@ func _ready() -> void:
 	add_to_group("player")
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	hp = max_hp
+	mp = max_mp
+	mp_changed.emit(mp, max_mp)
 	connect("died", _on_died)
 	_spawn_pos = _find_spawn()
 	global_position = _spawn_pos
@@ -94,6 +105,7 @@ func save_state() -> Dictionary:
 		pitch = cam.rotation.x
 	return {
 		"hp": hp, "max_hp": max_hp,
+		"mp": mp, "max_mp": max_mp, "level": level, "exp": exp,
 		"x": global_position.x, "y": global_position.y, "z": global_position.z,
 		"yaw": rotation.y, "pitch": pitch, "weapon": _weapon, "kills": kills,
 		"enhance": enhance_levels.duplicate(true),
@@ -122,6 +134,12 @@ func _apply_loaded_state() -> void:
 		max_hp = float(p.get("max_hp", max_hp))
 		hp = clampf(float(p.get("hp", max_hp)), 1.0, max_hp)
 		hp_changed.emit(hp, max_hp)
+		max_mp = maxf(float(p.get("max_mp", max_mp)), 1.0)
+		mp = clampf(float(p.get("mp", max_mp)), 0.0, max_mp)
+		mp_changed.emit(mp, max_mp)
+		level = maxi(int(p.get("level", 1)), 1)
+		exp = maxf(float(p.get("exp", 0.0)), 0.0)
+		exp_changed.emit(level, exp, exp_to_next)
 		global_position = Vector3(float(p.get("x", global_position.x)),
 			float(p.get("y", global_position.y)), float(p.get("z", global_position.z)))
 		rotation.y = float(p.get("yaw", rotation.y))
@@ -324,6 +342,8 @@ func _on_died() -> void:
 	## 血量归零：以 30% 血苏醒；在 BOSS 空间内则视为挑战失败被弹出（BOSS 下次仍满血）
 	hp = max_hp * 0.3
 	hp_changed.emit(hp, max_hp)
+	mp = max_mp                    # 苏醒同时回满魔法
+	mp_changed.emit(mp, max_mp)
 	_reset_motion_state()      # 苏醒不带奔跑/减速/冲刺残留
 	if _in_arena:
 		_exit_arena()
@@ -560,6 +580,48 @@ func heal(amount: float) -> void:
 	hp_changed.emit(hp, max_hp)
 
 
+# ---- 魔法条：上限 200，本版没有技能会消耗它；接口留给后续技能系统 ----
+func mp_ratio() -> float:
+	## 0..1，供 HUD 魔法条读取
+	if max_mp <= 0.0:
+		return 0.0
+	return clampf(mp / max_mp, 0.0, 1.0)
+
+
+func has_mp(amount: float) -> bool:
+	return mp >= amount
+
+
+func spend_mp(amount: float) -> bool:
+	## 尝试消耗魔法：够则扣并广播，不够返回 false（不做任何提示）
+	if amount <= 0.0:
+		return true
+	if mp < amount:
+		return false
+	mp = clampf(mp - amount, 0.0, max_mp)
+	mp_changed.emit(mp, max_mp)
+	return true
+
+
+func restore_mp(amount: float) -> void:
+	## 回魔法（上限封顶）；amount<=0 什么都不做
+	if amount <= 0.0 or mp >= max_mp:
+		return
+	mp = clampf(mp + amount, 0.0, max_mp)
+	mp_changed.emit(mp, max_mp)
+
+
+# ---- 等级：只读显示用，升级系统尚未实现（经验恒为 0，绿条空着）----
+func exp_ratio() -> float:
+	if exp_to_next <= 0.0:
+		return 0.0
+	return clampf(exp / exp_to_next, 0.0, 1.0)
+
+
+func level_text() -> String:
+	return "LV%d" % level
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		# 水平：绕 Y 轴旋转身体；垂直：仅旋转相机并限制角度
@@ -678,12 +740,17 @@ func try_jump() -> int:
 	return 0
 
 
-func _jump_ring() -> void:
-	## 二段跳：脚下一圈淡白光环迅速散开（克制版反馈，不做粒子）
+func _fx_scene() -> Node:
+	## 特效挂点：优先当前场景，退回 root
 	var scene := get_tree().current_scene
 	if scene == null:
 		scene = get_tree().root
-	SLAM_FX.spawn_ring(scene, global_position + Vector3(0.0, 0.08, 0.0), 1.5, Color(1, 1, 1), 0.42)
+	return scene
+
+
+func _jump_ring() -> void:
+	## 二段跳：脚下一圈淡白光环迅速散开（克制版反馈，不做粒子）
+	SLAM_FX.spawn_ring(_fx_scene(), global_position + Vector3(0.0, 0.08, 0.0), 1.5, Color(1, 1, 1), 0.42)
 
 
 func try_dash() -> bool:
@@ -701,7 +768,17 @@ func try_dash() -> bool:
 	_dash_dir = d.normalized()
 	_dash_time = DASH_DURATION
 	_dash_cd = DASH_COOLDOWN
+	_dash_fx()
 	return true
+
+
+func _dash_fx() -> void:
+	## 冲刺特效（不加任何文字提示）：
+	##  · 身后一段风痕拖尾（长度≈本次冲刺的实际位移）——别人看得见
+	##  · 视野四周 0.22 秒径向速度线——自己看得见
+	SLAM_FX.spawn_dash_trail(_fx_scene(), global_position, _dash_dir,
+		DASH_SPEED * DASH_DURATION, Color(0.86, 0.93, 1.0))
+	SLAM_FX.spawn_dash_rush(get_node_or_null("Camera3D") as Camera3D)
 
 
 func speed_now() -> float:

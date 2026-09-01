@@ -1,5 +1,5 @@
 extends Control
-## 背包 & 装备栏（Tab 开关）。
+## 背包 & 装备栏（Tab 开关；打开期间整局暂停，关闭即恢复）。
 ## 数据层复用 Godot 素材库插件 addons/grid_inventory（MIT, GodotForge）的
 ## Inventory / InvItem 类；物品图标取自 game-icons.net（CC-BY 4.0，见 assets/items/CREDITS.txt）。
 ## 装备栏：武器 / 副武器 / 防具；背包 3 行 × 9 列。默认装备剑+弓箭+防具（防具自动穿戴）。
@@ -49,6 +49,9 @@ var _hint_label: Label
 
 
 func _ready() -> void:
+	# 背包打开时会暂停整棵树，本面板必须在暂停态下也照常收输入；
+	# 注意 WHEN_PAUSED 是"只在暂停时处理"（那样平时按 Tab 就没反应了），所以要用 ALWAYS
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	visible = false
 	_player = get_node_or_null("../../Player")
@@ -502,12 +505,20 @@ func _toggle() -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		if _player != null:
 			_player.process_mode = Node.PROCESS_MODE_DISABLED
+		get_tree().paused = true      # 开包即暂停：BOSS、箭、特效、掉落全部冻住
 	else:
 		_selected_loc = []
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+		get_tree().paused = false     # 先解除暂停，再恢复玩家（顺序反了会卡在暂停里）
 		if _player != null:
 			_player.process_mode = Node.PROCESS_MODE_INHERIT
 		refresh_all()
+
+
+func _exit_tree() -> void:
+	## 切场景/重开时兜底：绝不把 paused=true 留给下一个场景
+	if get_tree() != null:
+		get_tree().paused = false
 
 
 # ============================================================

@@ -470,27 +470,22 @@ func _build_marker() -> void:
 	add_child(_marker)
 
 
-# ---- 蓄力星点：公告板小面片池（蓄力时逐个点亮，攻击期逐颗射出）----
-# 颜色规律固定为 红→黄→蓝→绿 循环：红=高伤(10)，黄=常规(5)，蓝=命中减速 5 秒，绿=无伤但回 5 血
+# ---- 蓄力星点：立体星点池（蓄力时逐个点亮，攻击期逐颗射出，与射出后的外观同一套网格）----
+# 颜色规律固定为 红→黄→蓝→绿 循环：红=高伤(10)+快 1.5×，黄=常规(5)，蓝=5 伤 + 减速 5 秒 + 慢 0.7×，绿=无伤但回 5 血
 func _build_stars() -> void:
 	for i in MAX_STARS:
 		var mi := MeshInstance3D.new()
-		var pm := PlaneMesh.new()
-		pm.size = Vector2(1.0, 1.0)
-		mi.mesh = pm
+		mi.mesh = SLAM_FX.star_mesh()       # 高 1 米，scale 即米数
 		var kind := SLAM_FX.star_kind(i)
 		var col: Color = SLAM_FX.star_color(kind)
 		var mat := StandardMaterial3D.new()
-		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-		mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-		mat.albedo_texture = SLAM_FX.star_texture()
+		mat.vertex_color_use_as_albedo = true
+		mat.albedo_color = col
+		mat.metallic = 0.2
+		mat.roughness = 0.3
 		mat.emission_enabled = true
 		mat.emission = col
-		mat.emission_energy_multiplier = 3.6
-		# unshaded：emission 不参与着色，必须用 albedo_color 乘到贴图上才看得见颜色
-		mat.albedo_color = col
+		mat.emission_energy_multiplier = 2.4
 		mi.material_override = mat
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mi.visible = false
@@ -729,11 +724,13 @@ func _fire_star(i: int, player: Node) -> void:
 	var from := st.global_position
 	st.visible = false
 	var kind := star_kind_of(i)
+	# 红 1.5×、蓝 0.7×：颜色决定快慢，弹道补偿也得按各自速度算
+	var spd := STAR_SPEED * SLAM_FX.star_speed_mult(kind)
 	var to := from + Vector3(0.0, -8.0, 0.0)
 	if player != null and is_instance_valid(player):
 		to = player.global_position + Vector3(0.0, 0.6, 0.0)
 		# 弹道补偿：星点带重力下坠，按飞行时间把瞄准点抬高，离得远也打得到你脚下
-		var fly_t := from.distance_to(to) / STAR_SPEED
+		var fly_t := from.distance_to(to) / spd
 		to.y += 0.5 * SLAM_FX.STAR_GRAVITY * fly_t * fly_t
 	var dir := to - from
 	if dir.length_squared() < 0.0001:
@@ -742,6 +739,7 @@ func _fire_star(i: int, player: Node) -> void:
 	if scene == null:
 		scene = get_tree().root
 	# 生命参数只作兜底上限：星点现在是碰到地板才消失，不再飞到一半自己没了
+	# （速度传基准值即可：spawn_star 内部会按颜色种类再乘 1.5 / 0.7）
 	SLAM_FX.spawn_star(scene, from, dir.normalized(), STAR_SPEED, STAR_MAX_FLY,
 		st.scale.x, star_damage_of(kind), kind)
 
@@ -757,6 +755,8 @@ func _layout_stars(prog: float) -> void:
 		var target := lerpf(1.0, 1.7, prog) * (1.0 + 0.15 * sin(_t * 9.0 + float(i)))
 		_stars[i].position = Vector3(cos(a) * radius, h, sin(a) * radius)
 		_stars[i].scale = Vector3.ONE * lerpf(s, target, 0.2)
+		# 立体星点：各自快转 + 少量翻滚，相位错开，蓄力期就看得出是"一圈星点"
+		_stars[i].rotation = Vector3(_t * 1.1 + float(i), _t * 3.4 + float(i) * 0.7, 0.0)
 
 
 func _hide_stars() -> void:
