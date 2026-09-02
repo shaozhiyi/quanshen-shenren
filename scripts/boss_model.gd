@@ -171,13 +171,16 @@ static func build_truck(tint := Color(1, 1, 1)) -> Node3D:
 			var pivot := Node3D.new()
 			pivot.position = Vector3(x, 0.78, z)
 			var tire := _cyl(0.78, 0.55, rubber, 26)
-			tire.rotation_degrees = Vector3(90, 0, 0)     # 轴转到 X 方向，滚动即绕局部 X
+			# 圆柱轴默认沿局部 Y；绕 Z 转 90° 才把轴送到 X（左右轮轴方向）。
+			# 绕 X 转 90° 会把轴送到 Z（车头-车尾），轮子就变成横躺的滚筒，
+			# 再按 rotation.x 滚动就成了整只轮子前翻 —— 别改回 90,0,0。
+			tire.rotation_degrees = Vector3(0, 0, 90)
 			pivot.add_child(tire)
 			var drum := _cyl(0.40, 0.60, rim, 18)
-			drum.rotation_degrees = Vector3(90, 0, 0)
+			drum.rotation_degrees = Vector3(0, 0, 90)
 			pivot.add_child(drum)
 			var hub := _cyl(0.14, 0.66, steel, 12)
-			hub.rotation_degrees = Vector3(90, 0, 0)
+			hub.rotation_degrees = Vector3(0, 0, 90)
 			pivot.add_child(hub)
 			wheels.add_child(pivot)
 	return root
