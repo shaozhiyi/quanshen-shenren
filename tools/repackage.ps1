@@ -20,15 +20,21 @@ $exe   = Join-Path $build '游戏大乱斗.exe'
 $tmp   = Join-Path $build 'out_game.exe'
 $readme= Join-Path $build '玩法说明.txt'
 
-if (-not (Test-Path -LiteralPath $tmp)) { throw "找不到 $tmp，请先执行 --export-release 导出。" }
+$rebuilt = Test-Path -LiteralPath $tmp
+if (-not $rebuilt) {
+  Write-Output 'SKIP_RENAME: 没有 build/out_game.exe，跳过导出改名，仅重新同步 web/files（适合只改了玩法说明的情况）。'
+  if (-not (Test-Path -LiteralPath $exe)) { throw "既没有 $tmp 也没有 $exe，请先导出。" }
+}
 
 # 旧 exe 进回收站（可从回收站恢复）
-if (Test-Path -LiteralPath $exe) {
+if ($rebuilt -and (Test-Path -LiteralPath $exe)) {
   [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteFile($exe, 'OnlyErrorDialogs', 'SendToRecycleBin')
   Write-Output ("TRASHED_OLD_EXE exists_now=" + (Test-Path -LiteralPath $exe))
 }
 
-Move-Item -LiteralPath $tmp -Destination $exe
+if ($rebuilt) {
+  Move-Item -LiteralPath $tmp -Destination $exe
+}
 Write-Output ("NEW_EXE_BYTES " + (Get-Item -LiteralPath $exe).Length)
 
 # 同步下载页产物
