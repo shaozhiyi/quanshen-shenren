@@ -79,7 +79,7 @@ via Poly Pizza，改红）已经**移出工程**，暂存在我的工作目录 `
    真模型到位后，程序化低模与白字贴图会自动不再使用（想保留白字，把它当纹理贴进自己的模型即可）。
 
 > **换完模型怎么生效**：双击 `启动游戏.exe`（跑源码）会提示重新导入，进游戏立刻是新车；
-> 但 `build/游戏大乱斗.exe` 分享包已经把资源打进 exe 内部的 pck，换完模型需要重新导出一次
+> 但 `build/游戏大乱斗.exe` 已经把资源打进 exe 内部的 pck，换完模型需要重新导出一次
 > （`Godot --headless --path . --export-release "Windows Desktop" build/out_game.exe`）才会带上。
 
 ### 喂给 Hyper3D 的提示词（可直接粘）

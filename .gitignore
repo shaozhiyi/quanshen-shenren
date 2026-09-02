@@ -5,6 +5,9 @@
 # 导出产物（体积大，可由工程重新导出）
 /build/
 
+# 下载页的待上传产物（exe 与玩法说明副本，由 repackage 脚本从 build/ 同步）
+/web/files/
+
 # 自检/冒烟测试临时日志
 /.smoke*.log
 
