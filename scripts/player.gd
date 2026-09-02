@@ -44,7 +44,8 @@ signal invincibility_changed(active: bool, duration: float)
 var _inv: Node            # 背包/装备覆盖层（HUD/Inventory）
 var _arena_boss: Node     # 当前正在交手的那只 BOSS
 var _field: Node          # BossField：按名册生成多只 BOSS
-var _arena: Node
+var _arena: Node                      # 本次开战实际使用的那套空间
+var _arenas := {}                     # theme_key("white"/"highway") -> 空间节点
 var _in_arena := false
 var _saved_pos := Vector3.ZERO
 var _saved_yaw := 0.0
@@ -82,7 +83,7 @@ func _ready() -> void:
 	_field = get_node_or_null("../BossField")
 	if _field != null and _field.has_method("spawn_all"):
 		_field.call("spawn_all", _spawn_pos)
-	_arena = get_node_or_null("../Arena")
+	_collect_arenas()
 	_watch_bosses()
 	_sword = get_node_or_null("Camera3D/Sword")
 	if _sword != null:
@@ -230,6 +231,23 @@ func near_boss() -> bool:
 	return not _in_arena and nearest_boss() != null
 
 
+func _collect_arenas() -> void:
+	## 场景里可以并列多套 BOSS 空间，按各自 theme_key 登记；老场景只有一个 Arena 也能跑
+	_arenas = {}
+	for a in get_tree().get_nodes_in_group("arena"):
+		if a.has_method("theme_key"):
+			_arenas[String(a.call("theme_key"))] = a
+	_arena = _arenas.get("white", get_node_or_null("../Arena"))
+
+
+func _pick_arena(b: Node) -> Node:
+	## 每只 BOSS 用自己的战场（名册 arena 字段）；没登记的主题退回纯白空间
+	var want := "white"
+	if b != null and b.has_method("arena_name"):
+		want = String(b.call("arena_name"))
+	return _arenas.get(want, _arena)
+
+
 func _try_interact_boss() -> void:
 	if _in_arena:
 		_exit_arena()
@@ -243,6 +261,9 @@ func _enter_arena() -> void:
 	if b == null:
 		return
 	_arena_boss = b
+	var picked := _pick_arena(b)
+	if picked != null:
+		_arena = picked
 	_saved_pos = global_position
 	_saved_yaw = rotation.y
 	var cam := get_node_or_null("Camera3D") as Camera3D
@@ -257,10 +278,9 @@ func _enter_arena() -> void:
 		_saved_env = owe.environment
 		owe.environment = _arena.arena_env
 	_arena.set_active(true)
-	var center: Vector3 = _arena.ARENA_CENTER
-	_arena_boss.teleport_to(center + Vector3(0, 0, -10))
+	_arena_boss.teleport_to(_arena.call("boss_spawn"))
 	_arena_boss.set_arena_mode(true)
-	global_position = center + Vector3(0, 1.05, 6)
+	global_position = _arena.call("player_spawn")
 	velocity = Vector3.ZERO
 	rotation.y = 0.0
 	if cam != null:
@@ -664,9 +684,11 @@ func _physics_process(delta: float) -> void:
 			_end_invincibility()
 	# 掉出世界的保险
 	if _in_arena:
-		# BOSS 空间：掉出超平坦地板下方则回到空间中心
-		if global_position.y < _arena.ARENA_CENTER.y - 20.0:
-			global_position = _arena.ARENA_CENTER + Vector3(0, 1.05, 4)
+		# BOSS 空间：掉出地板下方则回到该空间自己的出生点（纯白/国道都适用）
+		var ac: Vector3 = _arena.call("center") if _arena.has_method("center") else global_position
+		if global_position.y < ac.y - 20.0:
+			global_position = _arena.call("player_spawn") if _arena.has_method("player_spawn") \
+				else ac + Vector3(0, 1.05, 4)
 			velocity = Vector3.ZERO
 	elif global_position.y < -20.0:
 		global_position = _spawn_pos

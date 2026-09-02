@@ -12,6 +12,7 @@
 [ext_resource type="Script" path="res://scripts/bow.gd" id="12_bow"]
 [ext_resource type="Script" path="res://scripts/arena.gd" id="13_arena"]
 [ext_resource type="Script" path="res://scripts/game_inventory.gd" id="14_ginventory"]
+[ext_resource type="Script" path="res://scripts/highway_arena.gd" id="16_highwayarena"]
 
 [sub_resource type="Environment" id="environment"]
 background_mode = 1
@@ -57,6 +58,9 @@ script = ExtResource("15_bossfield")
 
 [node name="Arena" type="Node3D" parent="."]
 script = ExtResource("13_arena")
+
+[node name="HighwayArena" type="Node3D" parent="."]
+script = ExtResource("16_highwayarena")
 
 [node name="Player" type="CharacterBody3D" parent="."]
 position = Vector3(0, 2, 0)

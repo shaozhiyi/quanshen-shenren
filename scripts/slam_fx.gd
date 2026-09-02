@@ -266,15 +266,21 @@ func _try_hit_player(from: Vector3, to: Vector3) -> void:
 
 
 func _floor_y(p: Vector3) -> float:
-	## 星点下方最近的地面：地形表面；若它还在 BOSS 空间地板上方，则空间地板更优先
+	## 星点下方最近的地面：地形表面；若它还在某套 BOSS 空间地板上方，则该地板更优先
 	## （空间边框 800 米，大地图坐标几乎全落在里面，不能无条件取地板，
 	##  否则地形上方飞的星点会被 100 米高的空间地板当场拦下）
 	var y := -1000.0
 	var ground := get_tree().get_first_node_in_group("ground")
 	if ground != null and ground.has_method("height_at"):
 		y = float(ground.call("height_at", p.x, p.z))
-	var arena := get_tree().get_first_node_in_group("arena")
-	if arena != null and arena.has_method("inside") and bool(arena.call("inside", p)):
+	## 场景里可以并列多套空间（纯白 / 大运国道）：逐套问 inside()，只认罩住它且激活中的那套
+	for arena in get_tree().get_nodes_in_group("arena"):
+		if arena == null or not arena.has_method("inside") or not arena.has_method("floor_y"):
+			continue
+		if not bool(arena.call("inside", p)):
+			continue
+		if arena.has_method("is_active") and not bool(arena.call("is_active")):
+			continue
 		var af := float(arena.call("floor_y"))
 		if p.y >= af - 0.5:
 			y = maxf(y, af)

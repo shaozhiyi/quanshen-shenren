@@ -46,6 +46,8 @@ var _visual_y := 0.12                 # 整个外观离地高度（贴图盒原�
 var _box_size := Vector3.ZERO         # 碰撞盒；零向量 = 按 scale_factor 推导
 # ---- 战斗风格（名册可选字段）----
 var _hp_by_diff: Array = []           # 三档定值血量（非空则忽略 DIFF_HP_MULT）
+const ARENA_FALLBACK_CENTER := Vector3(0.0, 100.0, 0.0)
+var _arena_name := "white"            # 进战时切到哪套空间（"white"/"highway"）
 var _has_skills := true               # false = 暂无技能，只驶近 + 贴身光环
 var _chase_speed := 0.0               # 无技能档的驶近速度（米/秒）
 var _bob_amp := 0.1                   # 待机上下浮动幅度
@@ -234,8 +236,21 @@ func player_node() -> Node:
 	return _find("player", "../Player")
 
 
+func arena_name() -> String:
+	## 这只 BOSS 的专属战场（玩家按 E 时据此挑空间节点）
+	return _arena_name
+
+
 func arena_node() -> Node:
-	return _find("arena", "../Arena")
+	## 现在可能同时挂着好几套空间（纯白 / 大运国道），一律取"正激活"的那套；
+	## 没有激活的再退回分组第一个（保持老代码行为）
+	var first: Node = null
+	for a in get_tree().get_nodes_in_group("arena"):
+		if first == null:
+			first = a
+		if a.has_method("is_active") and bool(a.call("is_active")):
+			return a
+	return first if first != null else get_node_or_null("../Arena")
 
 
 func ground_node() -> Node:
@@ -345,6 +360,7 @@ func _load_def() -> void:
 		max_hp = float(_hp_by_diff[0])     # 基准血量取普通档定值，供 _base_max_hp 继承
 	_has_skills = bool(_def.get("skills", true))
 	_chase_speed = float(_def.get("chase", 0.0))
+	_arena_name = String(_def.get("arena", "white"))
 
 
 func _ready() -> void:
@@ -773,10 +789,18 @@ func _set_phase(p: int) -> void:
 
 
 func _clamp_arena() -> void:
-	## 追踪时别把 BOSS 甩出场地（半宽 400，留 40 边距）
-	var lim := 360.0
-	position.x = clampf(position.x, -lim, lim)
-	position.z = clampf(position.z, -lim, lim)
+	## 追踪时别把 BOSS 甩出场地（按当前空间自己的中心与半宽，留 40 米边距）
+	var arena := arena_node()
+	var c := ARENA_FALLBACK_CENTER
+	var half := 400.0
+	if arena != null:
+		if arena.has_method("center"):
+			c = arena.call("center")
+		if arena.has_method("bounds_half"):
+			half = float(arena.call("bounds_half"))
+	var lim := maxf(half - 40.0, 20.0)
+	position.x = clampf(position.x, c.x - lim, c.x + lim)
+	position.z = clampf(position.z, c.z - lim, c.z + lim)
 
 
 func _do_slam_impact(player: Node) -> void:

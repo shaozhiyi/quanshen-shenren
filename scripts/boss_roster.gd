@@ -23,6 +23,8 @@ extends RefCounted
 ##   box          碰撞盒 [X宽, Y高, Z长]（米，与 Vector3 同序；车头朝 +Z 所以"长"在 Z）。
 ##                不写则沿用 0.09/0.25/0.06 × scale
 ##   hp_by_diff   三档血量 [普通, 困难, 噩梦]。写了就不再乘 DIFF_HP_MULT
+##   arena        进战时切到哪套战斗空间："white" = 超平坦纯白（默认）
+##                "highway" = 大运国道（两条无限延伸的国道，见 highway_arena.gd）
 ##   skills       false = 暂无技能（只驶近 + 贴身光环），默认 true
 ##   chase        无技能档的驶近速度（米/秒），默认 0 = 原地不动
 ##   bob_amp      待机浮动幅度；visual_y 外观离地高度
@@ -60,6 +62,7 @@ const DEFS := {
 		"chase": 3.6,                   # 缓慢驶近（玩家步行 5.0，跑得掉）
 		"bob_amp": 0.02,                # 几乎贴地，只留一点悬挂起伏
 		"visual_y": 0.0,
+		"arena": "highway",             # 它的专属战场：两条无限延伸的国道
 		"reward": "dogmilk",            # 拉的一车货
 		"reward_counts": [2, 3, 4],
 		"band": [60.0, 100.0],          # 车身 10 米多长，出生点离玩家更远些

@@ -108,5 +108,30 @@ func set_active(b: bool) -> void:
 	visible = b
 
 
+func is_active() -> bool:
+	return visible
+
+
+func theme_key() -> String:
+	return "white"
+
+
+func center() -> Vector3:
+	return ARENA_CENTER
+
+
+func bounds_half() -> float:
+	return HALF
+
+
+## 玩家/BOSS 在空间内的落点（国道空间要靠这个把双方摆到同一条车道上）
+func player_spawn() -> Vector3:
+	return ARENA_CENTER + Vector3(0.0, 1.05, 6.0)
+
+
+func boss_spawn() -> Vector3:
+	return ARENA_CENTER + Vector3(0.0, 0.0, -10.0)
+
+
 func inside(p: Vector3) -> bool:
 	return absf(p.x - ARENA_CENTER.x) < HALF and absf(p.z - ARENA_CENTER.z) < HALF
