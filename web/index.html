@@ -3,118 +3,39 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>野生狗奶大乱斗 · 下载</title>
-<meta name="description" content="野生狗奶大乱斗：第一人称 3D 搞笑动作游戏，免安装单文件下载（Windows 64 位）。">
+<title>神人乱斗</title>
+<meta name="robots" content="noindex">
 <style>
-  :root{
-    --ink:#e9edf7; --ink-dim:#9aa6c2; --ink-faint:#6d7a99;
-    --bg:#080b16; --panel:#111726; --panel-2:#0d1320; --line:#222c44;
-    --red:#e2483f; --gold:#f0c04a; --blue:#4a86f0; --green:#41c96f;
-    --maxw:1080px;
-  }
+  :root{--ink:#e9edf7;--dim:#9aa6c2;--faint:#6d7a99}
   *{box-sizing:border-box}
-  html{scroll-behavior:smooth}
-  body{
-    margin:0; background:var(--bg); color:var(--ink);
-    font-family:"Microsoft YaHei","PingFang SC","Hiragino Sans GB","Noto Sans CJK SC",system-ui,-apple-system,"Segoe UI",sans-serif;
-    font-size:16px; line-height:1.8; -webkit-font-smoothing:antialiased;
-  }
-  #road{position:fixed; inset:0; width:100%; height:100%; z-index:0; display:block}
-  .veil{position:fixed; inset:0; z-index:1; pointer-events:none;
-    background:radial-gradient(125% 85% at 50% 4%, rgba(8,11,22,0) 0%, rgba(8,11,22,.22) 48%, rgba(8,11,22,.62) 100%)}
-  main{position:relative; z-index:2}
-  .wrap{max-width:var(--maxw); margin:0 auto; padding:0 22px}
-
-  /* ---------- hero ---------- */
-  header{padding:14vh 0 8vh; text-align:center}
-  .kicker{display:inline-block; font-size:12.5px; letter-spacing:.28em; color:var(--ink-faint);
-    border:1px solid var(--line); border-radius:999px; padding:5px 15px; margin-bottom:26px}
-  h1{margin:0; font-size:clamp(38px,8.2vw,76px); line-height:1.12; letter-spacing:.02em; font-weight:800;
-    background:linear-gradient(180deg,#fff 20%,#c3d0f5 60%,#7c8dbd 100%);
-    -webkit-background-clip:text; background-clip:text; color:transparent}
-  .motto{margin:20px auto 0; max-width:34em; color:var(--ink-dim); font-size:16.5px}
-  .motto b{color:var(--gold); font-weight:600}
-  .cta{margin-top:42px; display:flex; flex-wrap:wrap; gap:14px; justify-content:center; align-items:center}
-  .btn{display:inline-flex; align-items:center; gap:11px; text-decoration:none; border-radius:12px;
-    padding:17px 34px; font-size:18px; font-weight:700; letter-spacing:.04em;
-    transition:transform .16s ease, box-shadow .16s ease, filter .16s ease}
-  .btn-main{color:#fff; background:linear-gradient(180deg,#ef5a4f,#c22f28);
-    box-shadow:0 12px 34px -12px rgba(226,72,63,.85), inset 0 1px 0 rgba(255,255,255,.28)}
-  .btn-main:hover{transform:translateY(-2px); filter:brightness(1.08)}
-  .btn-main:active{transform:translateY(0)}
-  .btn svg{width:19px;height:19px;flex:none}
-  .btn-ghost{color:var(--ink-dim); background:rgba(255,255,255,.045); border:1px solid var(--line);
-    padding:16px 24px; font-size:15.5px; font-weight:600}
-  .btn-ghost:hover{color:var(--ink); border-color:#3b4a70; background:rgba(255,255,255,.08)}
-  .meta{margin-top:18px; color:var(--ink-faint); font-size:13.5px; letter-spacing:.02em}
-  .meta span{color:var(--ink-dim)}
-  .meta i{font-style:normal; padding:0 9px; opacity:.4}
-
-  /* ---------- sections ---------- */
-  section{padding:34px 0}
-  .panel{background:linear-gradient(180deg,rgba(17,23,38,.90),rgba(13,19,32,.86));
-    border:1px solid var(--line); border-radius:16px; padding:26px 28px; margin-bottom:18px;
-    backdrop-filter:blur(6px)}
-  h2{margin:0 0 4px; font-size:22px; letter-spacing:.03em; display:flex; align-items:center; gap:11px}
-  h2::before{content:""; width:4px; height:19px; border-radius:2px; background:var(--red); flex:none}
-  h2.blue::before{background:var(--blue)} h2.gold::before{background:var(--gold)} h2.green::before{background:var(--green)}
-  .sub{margin:0 0 20px; color:var(--ink-faint); font-size:14px}
-  h3{margin:26px 0 10px; font-size:16px; color:var(--ink); letter-spacing:.02em}
-  h3:first-of-type{margin-top:6px}
-  p{margin:9px 0}
-  a{color:#8fb4ff}
-  ul,ol{margin:9px 0; padding-left:22px}
-  li{margin:5px 0}
-  .dim{color:var(--ink-dim)} .faint{color:var(--ink-faint)}
-  code,.key{font-family:"Consolas","SFMono-Regular",Menlo,monospace}
-  .key{display:inline-block; min-width:34px; text-align:center; padding:2px 10px; margin:1px 2px;
-    font-size:13px; color:var(--ink); background:#1b2437; border:1px solid #2d3a56; border-bottom-width:2px;
-    border-radius:6px; white-space:nowrap}
-  code{background:#161e30; border:1px solid var(--line); border-radius:5px; padding:1px 7px; font-size:13.5px; color:#ffd9a8}
-
-  table{width:100%; border-collapse:collapse; margin:14px 0; font-size:14.5px}
-  th,td{text-align:left; padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:top}
-  th{color:var(--ink-faint); font-weight:600; font-size:12.5px; letter-spacing:.14em; border-bottom-color:#2c3a58}
-  tbody tr:hover{background:rgba(255,255,255,.025)}
-  td.k{white-space:nowrap}
-  .dot{display:inline-block; width:11px; height:11px; border-radius:3px; transform:rotate(45deg);
-    margin-right:8px; vertical-align:1px; box-shadow:0 0 12px currentColor}
-
-  .grid{display:grid; gap:14px}
-  .g3{grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
-  .g2{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
-  .card{background:var(--panel-2); border:1px solid var(--line); border-radius:13px; padding:18px 20px}
-  .card b.num{display:block; font-size:12px; letter-spacing:.2em; color:var(--red); margin-bottom:7px}
-  .card h4{margin:0 0 6px; font-size:16px}
-  .card p{margin:0; font-size:14px; color:var(--ink-dim); line-height:1.75}
-  .note{border-left:3px solid var(--gold); background:rgba(240,192,74,.07); border-radius:0 10px 10px 0;
-    padding:13px 18px; margin:16px 0; font-size:14.5px; color:#f3e3bd}
-  .note.warn{border-left-color:var(--red); background:rgba(226,72,63,.08); color:#f6d3d0}
-  .note b{color:#fff}
-
-  /* 国道横断面示意 */
-  .xsec{display:flex; align-items:stretch; gap:3px; margin:18px 0 6px; font-size:10.5px; text-align:center}
-  .xsec div{padding:11px 1px; border-radius:4px; color:#0c111c; font-weight:600; line-height:1.35; overflow:hidden}
-  .x-f{flex:.7;background:#6f7990} .x-g{flex:.8;background:#5b6478}
-  .x-d{flex:2;background:#2b3345;color:#94a2c4!important}
-  .x-y{flex:.85;background:#e6c154} .x-w{flex:.85;background:#eef2ff}
-  .x-m{flex:1.15;background:#8d97ad}
-  .xsec-cap{color:var(--ink-faint); font-size:12.5px; text-align:center}
-
-  .bar-demo{display:flex; align-items:center; gap:11px; margin:8px 0; font-size:13.5px}
-  .bar-demo em{font-style:normal; width:56px; color:var(--ink-faint); flex:none}
-  .bar{height:9px; border-radius:6px; background:#1a2233; flex:1; overflow:hidden; border:1px solid var(--line)}
-  .bar i{display:block; height:100%; border-radius:6px}
-
-  footer{padding:44px 0 72px; text-align:center; color:var(--ink-faint); font-size:13.5px}
-  footer .again{display:inline-block; margin-bottom:20px}
-  hr{border:0; border-top:1px solid var(--line); margin:22px 0}
-  .toc{display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:34px}
-  .toc a{font-size:13px; color:var(--ink-faint); text-decoration:none; border:1px solid var(--line);
-    border-radius:999px; padding:5px 14px}
-  .toc a:hover{color:var(--ink); border-color:#3b4a70}
-  @media (max-width:640px){ header{padding:11vh 0 5vh} .panel{padding:22px 18px} th,td{padding:9px 8px}
-    .xsec{font-size:9.5px} }
+  html,body{height:100%}
+  body{margin:0;background:#080b16;color:var(--ink);
+    font-family:"Microsoft YaHei","PingFang SC","Hiragino Sans GB","Noto Sans CJK SC",system-ui,"Segoe UI",sans-serif;
+    -webkit-font-smoothing:antialiased}
+  #road{position:fixed;inset:0;width:100%;height:100%;z-index:0;display:block}
+  .veil{position:fixed;inset:0;z-index:1;pointer-events:none;
+    background:radial-gradient(125% 90% at 50% 18%,rgba(8,11,22,0) 0%,rgba(8,11,22,.30) 52%,rgba(8,11,22,.78) 100%)}
+  main{position:relative;z-index:2;min-height:100%;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center;padding:40px 22px}
+  h1{margin:0;font-size:clamp(46px,11vw,104px);line-height:1.06;letter-spacing:.06em;font-weight:800;
+    background:linear-gradient(180deg,#fff 18%,#c3d0f5 58%,#7c8dbd 100%);
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .btn{display:inline-flex;align-items:center;gap:12px;margin-top:52px;text-decoration:none;
+    color:#fff;font-weight:700;letter-spacing:.06em;font-size:clamp(17px,2.6vw,21px);
+    padding:19px 44px;border-radius:13px;
+    background:linear-gradient(180deg,#ef5a4f,#c22f28);
+    box-shadow:0 14px 38px -12px rgba(226,72,63,.85),inset 0 1px 0 rgba(255,255,255,.28);
+    transition:transform .16s ease,filter .16s ease}
+  .btn:hover{transform:translateY(-2px);filter:brightness(1.08)}
+  .btn:active{transform:translateY(0)}
+  .btn svg{width:20px;height:20px;flex:none}
+  .size{margin:18px 0 0;color:var(--faint);font-size:13.5px;letter-spacing:.03em}
+  .size span{color:var(--dim)}
+  .doc{margin-top:30px;font-size:14px}
+  .doc a{color:var(--dim);text-decoration:none;border-bottom:1px dashed #3b4a70;padding-bottom:2px}
+  .doc a:hover{color:var(--ink);border-bottom-color:var(--dim)}
+  footer{position:fixed;bottom:16px;left:0;right:0;z-index:2;text-align:center;
+    color:#4c5876;font-size:12px;letter-spacing:.04em}
 </style>
 </head>
 <body>
@@ -122,370 +43,123 @@
 <div class="veil" aria-hidden="true"></div>
 
 <main>
-<header class="wrap">
-  <span class="kicker">WILD&nbsp;DOGMILK&nbsp;BRAWL&nbsp;·&nbsp;WIN64</span>
-  <h1>野生狗奶大乱斗</h1>
-  <p class="motto">「生命惧怕时间，时间惧怕<b>野生狗奶</b>。」<br>
-    第一人称 3D · 随机地形 · 两只 BOSS 两套战场 · 挥剑、拉弓、躲星点</p>
+  <h1>神人乱斗</h1>
 
-  <div class="cta">
-    <a class="btn btn-main" href="files/game.exe" download="游戏大乱斗.exe">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M12 3v13"/><path d="M6 11l6 6 6-6"/><path d="M4 21h16"/>
-      </svg>
-      下载游戏本体
-    </a>
-    <a class="btn btn-ghost" href="files/readme.txt" download="玩法说明.txt">玩法说明全文</a>
-  </div>
-  <p class="meta">
-    <span id="size">165.9&nbsp;MB</span><i>·</i>免安装单文件<i>·</i>Windows 10/11 64 位<i>·</i>版本 r10<i>·</i>更新 2026-09-02
-  </p>
-
-  <nav class="toc">
-    <a href="#start">开始玩</a><a href="#keys">操作</a><a href="#hud">状态栏</a>
-    <a href="#stars">星点四色</a><a href="#boss">两只 BOSS</a><a href="#gear">装备强化</a>
-    <a href="#save">存档</a><a href="#faq">常见问题</a><a href="#credit">素材与版权</a><a href="#log">更新日志</a>
-  </nav>
-</header>
-
-<div class="wrap">
-
-<section id="start">
-  <div class="panel">
-    <h2>三步开玩</h2>
-    <p class="sub">不需要安装、不需要联网、不用解压 —— 就是一个 exe。</p>
-    <div class="grid g3">
-      <div class="card"><b class="num">01</b><h4>下载</h4><p>点上面那个红按钮，浏览器直接开始下载 <code>游戏大乱斗.exe</code>（约 166 MB）。</p></div>
-      <div class="card"><b class="num">02</b><h4>放行 SmartScreen</h4><p>双击时 Windows 若弹「已保护你的电脑」，点 <b>更多信息 → 仍要运行</b>。没做代码签名所以必弹一次，不是病毒。</p></div>
-      <div class="card"><b class="num">03</b><h4>新游戏</h4><p>主菜单点<b>新游戏</b>：随机生成一片地形并自动分配存档槽。想重玩同一片地图就<b>输入种子</b>。</p></div>
-    </div>
-    <div class="note">建议放在一个<strong>可写的文件夹</strong>里再双击（桌面或新建目录都行）。存档写在 exe 同级的 <code>save/</code>，丢进 <code>Program Files</code> 会写不进去。</div>
-  </div>
-</section>
-
-<section id="keys">
-  <div class="panel">
-    <h2 class="blue">操作一览</h2>
-    <p class="sub">进入世界后 <span class="key">ESC</span> 释放/捕获鼠标；背包开着时 <span class="key">ESC</span> 是先关包。</p>
-    <div class="grid g2">
-      <table>
-        <tbody>
-          <tr><td class="k"><span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span></td><td>移动</td></tr>
-          <tr><td class="k">双击方向键</td><td><b>奔跑</b>：速度 ×2（10 米/秒），松开所有方向键自动退出</td></tr>
-          <tr><td class="k"><span class="key">Z</span></td><td><b>冲刺</b>：沿当前按住的方向爆发位移（没按就朝正前方），0.5 秒冷却，带视野速度线与身后风痕</td></tr>
-          <tr><td class="k"><span class="key">空格</span>/<span class="key">Q</span></td><td>跳跃；空中再按一次＝<b>二段跳</b>（力度略弱，脚下散开一圈白色光环）</td></tr>
-          <tr><td class="k">鼠标</td><td>转视角</td></tr>
-          <tr><td class="k"><span class="key">X</span></td><td>挥剑戳击（月牙剑气 + 挥剑音效）</td></tr>
-          <tr><td class="k"><span class="key">C</span></td><td>主/副武器切换：剑 ↔ 弓箭</td></tr>
-        </tbody>
-      </table>
-      <table>
-        <tbody>
-          <tr><td class="k">按住<span class="key">左键</span></td><td>拉弓瞄准蓄力（视野拉近），2 秒满；松手放箭。满蓄 70 攻、速射最低 12，每箭 0.5 秒冷却</td></tr>
-          <tr><td class="k"><span class="key">E</span></td><td>靠近 BOSS：进入它的空间开战，战斗中再按撤退；背包里选中物品按 E 丢弃</td></tr>
-          <tr><td class="k"><span class="key">R</span></td><td>靠近 BOSS 时切换挑战难度（需先击败它一次才解锁）</td></tr>
-          <tr><td class="k"><span class="key">Tab</span></td><td>背包 + 装备栏 —— <b>打开即整局暂停</b>：BOSS 停手、飞行中的箭与星点全冻在原地，慢慢拖装备</td></tr>
-          <tr><td class="k">双击物品</td><td>武器/防具＝强化这一件（吃 1 块强化石）；消耗品＝使用一次</td></tr>
-          <tr><td class="k"><span class="key">F5</span></td><td>立即存档到 <code>save/</code> 下的 JSON</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="note">所有反馈都靠数值、颜色和特效本身表达，<strong>游戏里不会弹任何浮动提示文字</strong>。</div>
-  </div>
-</section>
-
-<section id="hud">
-  <div class="panel">
-    <h2 class="green">左上角状态栏</h2>
-    <p class="sub">自上而下四行，配色各有意指。</p>
-    <div class="bar-demo"><em>LV1</em><div class="bar"><i style="width:12%;background:#3d4a66"></i></div><span class="faint">等级徽章（本版固定 1 级）</span></div>
-    <div class="bar-demo"><em>血量</em><div class="bar"><i style="width:76%;background:linear-gradient(90deg,#e2483f,#ff7a6e)"></i></div><span class="faint">76/100 · 亮红 → 70 以下橙红 → 10 以下暗红 · 无敌期整条变金、数字显示「永久」</span></div>
-    <div class="bar-demo"><em>魔法</em><div class="bar"><i style="width:100%;background:linear-gradient(90deg,#2f63c9,#6aa4ff)"></i></div><span class="faint">200/200 · 上限固定 200，<b>这一版还没有技能会消耗它</b>，是给之后的技能系统预留的槽位</span></div>
-    <div class="bar-demo"><em>经验</em><div class="bar"><i style="width:2%;background:#41c96f"></i></div><span class="faint">升级系统尚未制作，所以它一直是空的（绿色只是配色）</span></div>
-    <p class="faint" style="font-size:13.5px">魔法与等级/经验会一并写进存档，读档原样恢复。</p>
-  </div>
-</section>
-
-<section id="stars">
-  <div class="panel">
-    <h2>星点：颜色就是预告</h2>
-    <p class="sub">野生狗奶升空后一轮射出 24 颗立体星点，固定按 红→黄→蓝→绿 循环、每色 6 颗。它们是真正的多面晶簇网格，边飞边自转、棱面反光，外面再套一圈发光晕。</p>
-    <table>
-      <thead><tr><th>颜色</th><th>命中效果</th><th>飞行速度</th><th>怎么应对</th></tr></thead>
-      <tbody>
-        <tr><td class="k"><i class="dot" style="background:#e2483f;color:#e2483f"></i>红</td><td>扣 <b>10</b> 血</td><td>×1.5 ≈ 63 米/秒</td><td>最难躲，要提前跑</td></tr>
-        <tr><td class="k"><i class="dot" style="background:#f0c04a;color:#f0c04a"></i>黄</td><td>扣 <b>5</b> 血</td><td>基准 42 米/秒</td><td>常规走位</td></tr>
-        <tr><td class="k"><i class="dot" style="background:#4a86f0;color:#4a86f0"></i>蓝</td><td>扣 <b>5</b> 血 + 移速 −50% 持续 5 秒</td><td>×0.7 ≈ 29 米/秒</td><td>好躲，但被蹭到很难受</td></tr>
-        <tr><td class="k"><i class="dot" style="background:#41c96f;color:#41c96f"></i>绿</td><td><b>回 5</b> 血</td><td>基准</td><td>打歪了也别躲它</td></tr>
-      </tbody>
-    </table>
-    <p class="dim">伤害都吃防具减伤（×0.7 后向下取整），无敌期一律免疫（绿色也照回）。星点走抛物线、不追踪，但带<b>弹道补偿</b>——按各自速度算下坠量抬高瞄准点，离得远也打得到你脚下；<b>只有落到地板上才消失</b>，落地溅一圈同色小光环。保持跑动或冲刺仍能躲掉大部分。</p>
-  </div>
-</section>
-
-<section id="boss">
-  <div class="panel">
-    <h2>两只 BOSS，两套战场</h2>
-    <p class="sub">大地图上 BOSS 无敌——走近按 <span class="key">E</span> 进入它自己的空间才能造成伤害。打完它不会消失：击杀后你 3 秒被送出，它原地满血复活，随时再战。</p>
-
-    <h3>① 野生狗奶 · 纯白空间（完整技能循环）</h3>
-    <p class="dim">超平坦纯白世界，循环三段：<b>前摇约 11 秒</b>（24 颗星点绕身渐次亮起、越转越紧，唱完「忘你不舍 寻你不休」的瞬间升空）→ <b>攻击约 14 秒</b>（升到 20 米高空，场景日→夜→昼一轮日月交替，期间持续掉血并把蓄起的星点逐颗射向你当时站的位置）→ <b>砸落</b>（高空停留 2 秒持续追踪你的位置，追得略有滞后；随后追踪固定，地面亮起直径 12 米的红圈再等 1 秒，整只奶盒加速砸下，圈内 20 血，砸完留辐射状地裂与扩散光环）。</p>
-    <p class="faint" style="font-size:14px">躲法：红圈一亮就往圈外跑（半径 6 米，奔跑或冲刺都很稳），或者用二段跳从圈边跳出去。砸完它随机挪一次位置（最远 100 米）进入下一轮。</p>
-
-    <h3>② 野生重卡 · 专属战场「大运国道」<span class="faint" style="font-weight:400">（新，暂无技能）</span></h3>
-    <p class="dim">草原上多了一辆橙色 8×4 自卸重卡（高顶驾驶室 + 竖筋货箱 + 侧面竖排「大运重卡」白字，四轴八轮），车头永远对着你。这一版它只做两件事：以 3.6 米/秒缓慢朝你驶来（约 6.3 米处停下，不会把车头插进你身体），以及你贴到车身 7.3 米内时持续蹭到尾气伤害（普通 3 ｜困难 4.5 ｜噩梦 6 血/秒）。血量按难度固定 <b>2000 / 2500 / 3000</b>（剑一击 50、满蓄弓 70），击败掉一车野生狗奶 ×2/×3/×4。定位是厚血沙包：想试「剑 +10 能不能一刀 80」，打它比打狗奶安全得多。</p>
-    <p class="dim">走近按 E 进去，看到的不是白房间，而是两条并排的黄昏国道：</p>
-    <div class="xsec" aria-hidden="true">
-      <div class="x-f">护栏</div><div class="x-g">路肩</div><div class="x-w">白实线</div><div class="x-d">车道</div><div class="x-w">白虚线</div><div class="x-d">车道</div><div class="x-y">黄实线</div><div class="x-m">隔离带</div><div class="x-y">黄实线</div><div class="x-d">车道</div><div class="x-w">白虚线</div><div class="x-d">车道</div><div class="x-w">白实线</div><div class="x-g">路肩</div><div class="x-f">护栏</div>
-    </div>
-    <p class="xsec-cap">横断面示意：中央隔离带（水泥带 + 两侧波形护栏）｜单向两条车道，靠隔离带一侧画黄实线、外侧画白实线、中间白虚线分车道｜你和重卡都落在右侧行车道（靠右行驶，不压虚线）</p>
-    <ul class="dim">
-      <li>路两侧每 32 米一盏路灯、每 48 米一根电线杆，头顶龙门架挂蓝底白字路牌「大运国道 G108 · DAYUN RD」。</li>
-      <li>天色黄昏、远处一层浓雾（能见度约 200 米），看不到路的尽头；灯光被"池化"——4 盏灯永远吸附到你附近那几盏灯头，你跑到哪灯就亮到哪，看起来这条国道<b>无限延伸</b>。</li>
-      <li>隔离带、护栏、灯杆、龙门架全都<b>不参与碰撞</b>：不会被路沿卡住，整块地板随便跑位、二段跳、冲刺拉距离。</li>
-      <li>与大地图的纯白空间互不干扰：打狗奶仍是纯白空间，两套战场各自独立。</li>
-    </ul>
-    <div class="note">想加第三套战场：照抄 <code>scripts/highway_arena.gd</code> 实现同一组接口，再在名册里给那只 BOSS 写 <code>arena = "你的主题名"</code>，玩家与 HUD 代码都不用改。</div>
-  </div>
-</section>
-
-<section id="gear">
-  <div class="panel">
-    <h2 class="gold">掉落与装备强化</h2>
-    <div class="grid g2">
-      <div>
-        <h3>击杀掉落</h3>
-        <ul class="dim">
-          <li><b>野生狗奶</b>：按难度 ×2/×3/×4，双击饮用 → 10 秒无敌（血条变金、数字显示「永久」）。</li>
-          <li><b>装备强化石</b>：必掉 1 块，之后以 4% 概率再掉 1 块，成功则 3.95%、3.90%… 逐次递减，一旦失败就停（平均一次约 1.04 块）。</li>
-        </ul>
-        <h3>背包规则</h3>
-        <ul class="dim">
-          <li>装备栏三格（武器 / 副武器 / 防具）+ 背包 3×9；拖到对应栏即穿卸，类型不符放不进；捡起装备时那一栏空着会自动穿上。</li>
-          <li>消耗品自动堆叠，每格最多 20，放不下自动开第二格（23 瓶 = ×20 + ×3）。</li>
-          <li>选中后按 E 丢弃 → 地上生成掉落箱，走近再按 E 回收（整堆一起丢/一起捡）。</li>
-          <li>可强化的装备在格子左上角显示自己的 <code>+N</code>，三件互不牵连。</li>
-        </ul>
-      </div>
-      <div>
-        <h3>强化规则（每件各自计级，最高 +10）</h3>
-        <table>
-          <thead><tr><th>部位</th><th>每级效果</th><th>举例</th></tr></thead>
-          <tbody>
-            <tr><td class="k">武器</td><td>攻击力 +10%</td><td>剑 50 → +3 级 65；满级 +10 → ×2.0（弓 12~50 同比放大）</td></tr>
-            <tr><td class="k">防具</td><td>受伤再 −3%</td><td>基础 ×0.7 → +3 级 ×0.61，最低到 ×0.40</td></tr>
-          </tbody>
-        </table>
-        <p class="faint" style="font-size:14px">打开背包双击那一件即强化，自动吃掉 1 块强化石；满级那件再点不会被扣石头；双击强化石本身只是查看。防具的伤害不足 1 点的零头会累计到之后扣，所以 BOSS 光环 3 血/秒 → 约 2.1 血/秒。</p>
-      </div>
-    </div>
-
-    <h3>三档难度（可重复挑战）</h3>
-    <table>
-      <thead><tr><th>难度</th><th>野生狗奶血量</th><th>光环伤害</th><th>击败掉落</th><th>星点颜色</th></tr></thead>
-      <tbody>
-        <tr><td class="k">普通</td><td>1000</td><td>×1.0（3 血/秒）</td><td>狗奶 ×2</td><td>金色</td></tr>
-        <tr><td class="k">困难</td><td>1600</td><td>×1.5（4.5 血/秒）</td><td>狗奶 ×3</td><td>橙红</td></tr>
-        <tr><td class="k">噩梦</td><td>2400</td><td>×2.0（6 血/秒）</td><td>狗奶 ×4</td><td>紫色</td></tr>
-      </tbody>
-    </table>
-    <p class="faint" style="font-size:14px">（上表是野生狗奶：血量 = 名册基准 × 难度倍率。重卡不走倍率，名册里直接给了三档定值 2000 / 2500 / 3000。）第一次挑战固定普通档，击败一次后才开放 <span class="key">R</span> 调档；中途撤退同样重置为满血，别指望打一半跑路攒伤害。玩家血量归零不算卡死：以 30% 血苏醒，若正在 BOSS 空间内会被送出（这局作废）。</p>
-  </div>
-</section>
-
-<section id="save">
-  <div class="panel">
-    <h2 class="blue">存档、种子与小地图</h2>
-    <p class="dim">按 <span class="key">F5</span> 立即存档，文件写在 exe 同级的 <code>save/</code>，格式是易读的 JSON（如 <code>野生狗奶_20260828_081838.json</code>）：地形种子与起伏参数、玩家血量/坐标/朝向/手上武器/击杀数/每件装备的强化等级、装备栏与 27 格背包（含每格堆叠数量）、魔法与等级经验、每只 BOSS 的难度与击败次数。也可以用记事本直接改里面的数值；文件损坏时读档只会提示失败，不会崩。</p>
-    <ul class="dim">
-      <li><b>读取存档</b>：列出全部存档（时间｜种子｜血量｜击杀数），点一条接着玩。读档先用存档种子重建同一片世界，再把状态套回去（BOSS 满血待战）。</li>
-      <li><b>地形随机</b>：山脊走向、山谷位置、石子分布都由一个地形种子决定（三层域偏移 + 起伏幅度 13~17 米 + 山体疏密）。同一种子 = 完全相同的地形与石头分布，左下角会显示本局种子。</li>
-      <li><b>BOSS 落点</b>：出生点跟着地形随机，但限制在玩家出生点的一段环形带内（狗奶 35~65 米、重卡 55~95 米），要求坡度平缓、彼此至少相隔 30 米，所以开局抬头基本就能看到它们。</li>
-      <li><b>小地图</b>：右上角显示周围地形（深＝低谷，浅＝山脊），白点是你；进入 BOSS 空间时自动隐藏。</li>
-    </ul>
-  </div>
-</section>
-
-<section id="faq">
-  <div class="panel">
-    <h2>常见问题</h2>
-    <table>
-      <thead><tr><th>现象</th><th>说明 / 处理</th></tr></thead>
-      <tbody>
-        <tr><td class="k">Windows 弹「已保护你的电脑」</td><td>正常。程序未做代码签名，点 <b>更多信息 → 仍要运行</b>。杀软若误报，把这个 exe 加入信任即可。</td></tr>
-        <tr><td class="k">双击没反应 / 存不了档</td><td>多半是放在了只读目录。移到桌面或新建一个可写文件夹再双击。</td></tr>
-        <tr><td class="k">视角转不动</td><td>按 <span class="key">ESC</span> 捕获鼠标（背包开着时 ESC 是先关包，再按一次才轮到捕获）。</td></tr>
-        <tr><td class="k">完全没有声音</td><td>音效文件缺失时游戏照常运行、只是静音。战斗配乐可自行替换：把歌曲命名为 <code>song.mp3</code> 放到 exe 同级的 <code>assets/audio/</code> 即自动接管。</td></tr>
-        <tr><td class="k">帧率偏低</td><td>本作美术优先、地形起伏较大，集显机型会明显吃力；可在系统里把分辨率调低。</td></tr>
-        <tr><td class="k">会弹一堆提示吗</td><td>不会。反馈只靠血条颜色、数字、图标角标（+N / ×N）和特效本身。</td></tr>
-      </tbody>
-    </table>
-  </div>
-</section>
-
-<section id="credit">
-  <div class="panel">
-    <h2 class="green">素材与版权</h2>
-    <ul class="dim">
-      <li>音效：jc-sounds「Fantasy SFX Pack Vol 1」（OpenGameArt，<b>CC-BY 4.0</b>，含挥剑 / 拉弓 / 放箭），署名见 <code>assets/audio/CREDITS.txt</code>。</li>
-      <li>天空、地面等环境素材来自 Poly Haven 等 CC0 来源。</li>
-      <li>全部代码、重卡外观、星点网格、剑气与冲刺特效、路牌贴图（含「大运国道」字样）均为本项目自制。</li>
-      <li>地形、雾、灯光、护栏、灯杆由引擎程序化生成。引擎：Godot 4.7.2 标准版（Forward+）。</li>
-      <li>游戏不含任何联网、统计或广告代码，纯离线运行。</li>
-    </ul>
-    <div class="note warn">
-      <b>关于战斗配乐：</b>当前 exe 内嵌了一段《吹梦到西洲》副歌剪辑（从「忘你不舍」起头，前摇与攻击自动对齐乐句）。这属于<strong>他人有版权的作品</strong>，本页仅供个人学习交流下载，<strong>请勿二次分发、上传其它平台或用于任何商用与公开传播</strong>。想要彻底干净：把 <code>assets/audio/song.mp3</code> 换成你自己有授权的曲子（或直接删掉，游戏会安静地跑），再用 <code>scripts/boss.gd</code> 顶部的 MUSIC_AT / WINDUP_TIME / ATTACK_TIME 对齐时长即可。
-    </div>
-  </div>
-</section>
-
-<section id="log">
-  <div class="panel">
-    <h2 class="gold">更新日志</h2>
-    <h3>r10 · 2026-09-02</h3>
-    <ul class="dim">
-      <li>新增野生重卡的专属战场「大运国道」：两条无限延伸的国道 + 黄昏浓雾 + 池化路灯 + 中央隔离带 + 龙门架路牌。</li>
-      <li>战场系统从单套扩成多套主题：名册里一个 <code>arena</code> 字段决定某只 BOSS 进哪套，各套自带出生点与昼夜接口。</li>
-    </ul>
-    <h3>r9</h3>
-    <ul class="dim"><li>修复魔法条满值只显示一半：血条 / 魔法条 / 经验条统一按百分比绘制，真实上限只用于文字。</li></ul>
-    <h3>r8</h3>
-    <ul class="dim">
-      <li>星点从贴纸换成立体多面晶簇，边飞边自转，并按颜色分速（红 ×1.5 / 蓝 ×0.7）；改为落到地板才消失并溅同色光环。</li>
-      <li>新增冲刺视野速度线与身后风痕、挥剑月牙剑气；补齐挥剑 / 拉弓 / 放箭三种音效。</li>
-      <li>打开背包＝整局暂停；HUD 重排为 LV 徽章 + 红血条 + 蓝魔法条 + 细绿经验条（血条由绿改红）。</li>
-    </ul>
-    <hr>
-    <p class="faint" style="font-size:14px">更早：冲刺改 Z 单键、双击方向键改奔跑；野生重卡换装橙色 8×4 自卸车；三档难度与可重复挑战；F5 JSON 存档；随机地形与种子；小地图；防具与强化石体系。</p>
-  </div>
-</section>
-
-</div>
-
-<footer class="wrap">
-  <a class="btn btn-main again" href="files/game.exe" download="游戏大乱斗.exe">
+  <a class="btn" href="files/game.exe" download="神人乱斗.exe">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
       <path d="M12 3v13"/><path d="M6 11l6 6 6-6"/><path d="M4 21h16"/>
     </svg>
     下载游戏本体
   </a>
-  <p>野生狗奶大乱斗 · 免安装单文件 · Windows 10/11 64 位<br>
-  生命惧怕时间，时间惧怕野生狗奶。—— by 千问办公生成</p>
-</footer>
+
+  <p class="size"><span id="size">165.9&nbsp;MB</span> · 免安装单文件 · Windows 10/11 64 位</p>
+
+  <p class="doc"><a href="files/readme.txt" download="说明.txt">说明.txt</a></p>
 </main>
 
+<footer>双击运行；Windows 若拦截，点「更多信息 → 仍要运行」</footer>
+
 <script>
-/* ============ 黄昏国道背景：纯程序化 canvas，无图片、无外链 ============ */
+/* 黄昏国道背景：纯程序化 canvas，无图片、无外链 */
 (function(){
-  var cv = document.getElementById('road'); if(!cv) return;
-  var g = cv.getContext('2d');
-  var W=0, H=0, HZ=0, T=0, reduce=false;
-  try{ reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){}
+  var cv=document.getElementById('road'); if(!cv) return;
+  var g=cv.getContext('2d');
+  var W=0,H=0,HZ=0,T=0,reduce=false;
+  try{ reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){}
 
   function resize(){
-    var dpr = Math.min(window.devicePixelRatio||1, 1.8);
-    W = cv.clientWidth; H = cv.clientHeight;
-    cv.width = Math.max(1,Math.floor(W*dpr)); cv.height = Math.max(1,Math.floor(H*dpr));
+    var dpr=Math.min(window.devicePixelRatio||1,1.8);
+    W=cv.clientWidth; H=cv.clientHeight;
+    cv.width=Math.max(1,Math.floor(W*dpr)); cv.height=Math.max(1,Math.floor(H*dpr));
     g.setTransform(dpr,0,0,dpr,0,0);
-    HZ = H*0.36;
+    HZ=H*0.40;
     if(reduce) draw();
   }
-  /* 透视：u=0 消失点 → u=1 画面底部 */
-  function pf(u){ return Math.pow(u, 2.6); }
-  function yAt(u){ return HZ + (H-HZ)*pf(u); }
+  function pf(u){ return Math.pow(u,2.6); }            /* 0=消失点 1=画面底 */
+  function yAt(u){ return HZ+(H-HZ)*pf(u); }
   function hw(u){ return W*0.155*pf(u); }
   function gap(){ return W*0.014; }
 
   function sky(){
-    var s = g.createLinearGradient(0,0,0,HZ+2);
+    var s=g.createLinearGradient(0,0,0,HZ+2);
     s.addColorStop(0.00,'#0a0d1c'); s.addColorStop(0.52,'#18223c');
     s.addColorStop(0.82,'#3b3352'); s.addColorStop(1.00,'#7a4f4a');
     g.fillStyle=s; g.fillRect(0,0,W,HZ+2);
     g.fillStyle='#fff';
     for(var i=0;i<48;i++){
-      var fx = ((i*97.13)%1000)/1000, fy = ((i*53.71)%1000)/1000;
-      g.globalAlpha = 0.10 + 0.34*Math.abs(Math.sin(i*1.7 + T*0.0009));
-      g.beginPath(); g.arc(fx*W, fy*HZ*0.66, (i%7===0)?1.5:0.9, 0, 6.2832); g.fill();
+      var fx=((i*97.13)%1000)/1000, fy=((i*53.71)%1000)/1000;
+      g.globalAlpha=0.10+0.34*Math.abs(Math.sin(i*1.7+T*0.0009));
+      g.beginPath(); g.arc(fx*W,fy*HZ*0.66,(i%7===0)?1.5:0.9,0,6.2832); g.fill();
     }
     g.globalAlpha=1;
     var sun=g.createRadialGradient(W*0.5,HZ,0,W*0.5,HZ,Math.max(40,W*0.36));
     sun.addColorStop(0,'rgba(255,190,130,.32)'); sun.addColorStop(1,'rgba(255,190,130,0)');
     g.fillStyle=sun; g.fillRect(0,0,W,HZ+4);
   }
-
   function ground(){
     var s=g.createLinearGradient(0,HZ,0,H);
     s.addColorStop(0,'#4a4356'); s.addColorStop(0.30,'#241f2e'); s.addColorStop(1,'#0b0e18');
     g.fillStyle=s; g.fillRect(0,HZ,W,H-HZ+1);
   }
-
-  /* 一侧行车带：side=-1 左幅，+1 右幅 */
   function way(side){
     var cx=W*0.5, gp=gap();
-    function inner(u){ return cx + side*(gp + hw(u)*0.05); }
-    function outer(u){ return cx + side*(gp + hw(u)*2.05); }
-    function mid(u){   return cx + side*(gp + hw(u)*1.05); }
+    function inner(u){ return cx+side*(gp+hw(u)*0.05); }
+    function outer(u){ return cx+side*(gp+hw(u)*2.05); }
+    function mid(u){ return cx+side*(gp+hw(u)*1.05); }
     g.beginPath();
     g.moveTo(inner(0.012),yAt(0.012)); g.lineTo(inner(1),yAt(1));
     g.lineTo(outer(1),yAt(1)); g.lineTo(outer(0.012),yAt(0.012)); g.closePath();
     var asp=g.createLinearGradient(0,HZ,0,H);
     asp.addColorStop(0,'#4b5266'); asp.addColorStop(0.35,'#2b3143'); asp.addColorStop(1,'#191f2e');
     g.fillStyle=asp; g.fill();
-    line(inner, '#e6c154'); line(outer, '#eef2ff');
+    line(inner,'#e6c154'); line(outer,'#eef2ff');
     function line(fn,col){
       g.beginPath(); g.moveTo(fn(0.02),yAt(0.02)); g.lineTo(fn(1),yAt(1));
       g.strokeStyle=col; g.globalAlpha=0.72; g.lineWidth=1.2; g.stroke(); g.globalAlpha=1;
     }
-    /* 车道虚线：向观众流动 */
     var n=14, phase=(T*0.00017)%1;
     for(var i=0;i<n;i++){
-      var a=(i+phase)/n, b=(i+phase)/n + 0.55/n;
-      if(b>1) continue;
+      var a=(i+phase)/n, b=a+0.55/n; if(b>1) continue;
       var u0=a*a, u1=b*b;
       g.beginPath(); g.moveTo(mid(u0),yAt(u0)); g.lineTo(mid(u1),yAt(u1));
       g.strokeStyle='#f6f9ff'; g.globalAlpha=0.34+0.62*pf(u0);
-      g.lineWidth=Math.max(0.9, 6.2*pf(u0)); g.stroke();
+      g.lineWidth=Math.max(0.9,6.2*pf(u0)); g.stroke();
     }
     g.globalAlpha=1;
   }
-
   function poles(){
     var n=10, phase=(T*0.00017)%1;
     for(var s=-1;s<=1;s+=2){
       for(var i=0;i<n;i++){
-        var u=(i + (s>0?phase:phase+0.5))/n; if(u>1) continue;
+        var u=(i+(s>0?phase:phase+0.5))/n; if(u>1) continue;
         u=u*u;
         var y=yAt(u), p=Math.max(pf(u),0.0001);
-        var x=W*0.5 + s*(gap() + hw(u)*2.42);
-        var hgt=Math.max(3, 104*p+2);
+        var x=W*0.5+s*(gap()+hw(u)*2.42);
+        var hgt=Math.max(3,104*p+2);
         g.strokeStyle='rgba(150,162,190,'+(0.10+0.42*p)+')';
-        g.lineWidth=Math.max(0.6, 2.1*p);
+        g.lineWidth=Math.max(0.6,2.1*p);
         g.beginPath(); g.moveTo(x,y); g.lineTo(x,y-hgt); g.stroke();
-        var hx=x - s*Math.max(1, 11*p);
+        var hx=x-s*Math.max(1,11*p);
         g.fillStyle='rgba(255,226,170,'+(0.14+0.66*p)+')';
         g.beginPath(); g.arc(hx,y-hgt,Math.max(0.8,3.2*p),0,6.2832); g.fill();
-        var R=Math.max(9, 62*p);
+        var R=Math.max(9,62*p);
         var gl=g.createRadialGradient(hx,y-hgt,0,hx,y-hgt,R);
         gl.addColorStop(0,'rgba(255,212,150,'+(0.20+0.34*p)+')'); gl.addColorStop(1,'rgba(255,212,150,0)');
         g.fillStyle=gl; g.beginPath(); g.arc(hx,y-hgt,R,0,6.2832); g.fill();
-        /* 地面反光 */
         var sp=g.createRadialGradient(hx,y,0,hx,y,Math.max(6,40*p));
         sp.addColorStop(0,'rgba(255,206,150,'+(0.10+0.20*p)+')'); sp.addColorStop(1,'rgba(255,206,150,0)');
         g.fillStyle=sp; g.beginPath(); g.arc(hx,y,Math.max(6,40*p),0,6.2832); g.fill();
       }
     }
   }
-
   function haze(){
     var f=g.createLinearGradient(0,HZ-6,0,HZ+(H-HZ)*0.26);
     f.addColorStop(0,'rgba(126,110,124,0.92)'); f.addColorStop(1,'rgba(126,110,124,0)');
     g.fillStyle=f; g.fillRect(0,HZ-8,W,(H-HZ)*0.32);
-    /* 中央隔离带 */
     g.beginPath();
     g.moveTo(W*0.5,HZ); g.lineTo(W*0.5-W*0.021,H); g.lineTo(W*0.5+W*0.021,H); g.closePath();
     g.fillStyle='rgba(186,196,220,.46)'; g.fill();
   }
-
   function draw(){
     g.clearRect(0,0,W,H);
     sky(); ground(); way(-1); way(1); haze(); poles();
@@ -494,20 +168,17 @@
     v.addColorStop(1,'rgba(8,11,22,.46)');
     g.fillStyle=v; g.fillRect(0,0,W,H);
   }
-
-  function loop(){ T += 16; draw(); requestAnimationFrame(loop); }
-  window.addEventListener('resize', resize);
+  function loop(){ T+=16; draw(); requestAnimationFrame(loop); }
+  window.addEventListener('resize',resize);
   resize();
   if(!reduce) requestAnimationFrame(loop);
 
-  /* 用真实体积覆盖标题里的默认值（HEAD 失败就保留写好的 197.9 MB） */
+  /* 用真实体积覆盖写死的数字 */
   var el=document.getElementById('size');
-  if(window.fetch && el){
+  if(window.fetch&&el){
     fetch('files/game.exe',{method:'HEAD'}).then(function(r){
-      var len=r.ok ? r.headers.get('content-length') : null;
-      if(len){ var n=parseInt(len,10); if(n>0){
-        el.innerHTML = (n/1048576).toFixed(1).replace(/\.0$/,'')+'&nbsp;MB';
-      } }
+      var len=r.ok?r.headers.get('content-length'):null;
+      if(len){ var n=parseInt(len,10); if(n>0) el.innerHTML=(n/1048576).toFixed(1)+'&nbsp;MB'; }
     }).catch(function(){});
   }
 })();

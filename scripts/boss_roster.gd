@@ -24,7 +24,7 @@ extends RefCounted
 ##                不写则沿用 0.09/0.25/0.06 × scale
 ##   hp_by_diff   三档血量 [普通, 困难, 噩梦]。写了就不再乘 DIFF_HP_MULT
 ##   arena        进战时切到哪套战斗空间："white" = 超平坦纯白（默认）
-##                "highway" = 大运国道（两条无限延伸的国道，见 highway_arena.gd）
+##                "highway" = 国道（两条无限延伸的国道，见 highway_arena.gd）
 ##   skills       false = 暂无技能（只驶近 + 贴身光环），默认 true
 ##   chase        无技能档的驶近速度（米/秒），默认 0 = 原地不动
 ##   bob_amp      待机浮动幅度；visual_y 外观离地高度
@@ -42,11 +42,11 @@ const DEFS := {
 		"band": [35.0, 65.0],
 		"song": "res://assets/audio/song.mp3",
 	},
-	# ---- 第二只：野生重卡（暂无技能，先把血量/模型管线跑通）----
+	# ---- 第二只：大运（暂无技能，先把血量/模型管线跑通）----
 	# 外观：把 Hyper3D 生成的车存成 res://assets/models/truck.glb 即自动生效；
 	#       该文件不存在时先用 placeholder "truck" 的程序化低模顶上。
 	"truck": {
-		"name": "野生重卡",
+		"name": "大运",
 		"model": "res://assets/models/truck.glb",
 		"placeholder": "truck",
 		"model_scale": 1.0,             # 真模型到位后再按实际尺寸调

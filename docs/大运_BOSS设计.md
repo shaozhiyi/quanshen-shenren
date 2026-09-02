@@ -1,4 +1,4 @@
-# 新 BOSS 设计 · 野生重卡
+# 新 BOSS 设计 · 大运
 
 > 状态：**已进游戏可打**（暂无技能，先把血量与模型管线跑通）
 > 名册 id：`truck` ｜ 定义位置：`scripts/boss_roster.gd` ｜ 实体逻辑：`scripts/boss.gd`
@@ -79,7 +79,7 @@ via Poly Pizza，改红）已经**移出工程**，暂存在我的工作目录 `
    真模型到位后，程序化低模与白字贴图会自动不再使用（想保留白字，把它当纹理贴进自己的模型即可）。
 
 > **换完模型怎么生效**：双击 `启动游戏.exe`（跑源码）会提示重新导入，进游戏立刻是新车；
-> 但 `build/游戏大乱斗.exe` 已经把资源打进 exe 内部的 pck，换完模型需要重新导出一次
+> 但 `build/神人乱斗.exe` 已经把资源打进 exe 内部的 pck，换完模型需要重新导出一次
 > （`Godot --headless --path . --export-release "Windows Desktop" build/out_game.exe`）才会带上。
 
 ### 喂给 Hyper3D 的提示词（可直接粘）
@@ -129,7 +129,7 @@ meters long, 3.0 meters wide, 3.8 meters tall, moderate polygon count, one textu
 
 ---
 
-## 三点五、它的专属战场「大运国道」
+## 三点五、它的专属战场「国道」
 别的 BOSS 进战切到超平坦纯白空间；重卡进战切到 `scripts/highway_arena.gd` 搭的
 **两条无限延伸的国道**（名册里 `"arena": "highway"` 一句话指定，玩家/HUD 代码不动）。
 

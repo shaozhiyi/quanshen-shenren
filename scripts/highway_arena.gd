@@ -1,10 +1,10 @@
 extends Node3D
-## 大运国道战斗空间：两条无限延伸的国道（重卡专属 BOSS 空间）。
+## 国道战斗空间：两条无限延伸的国道（大运专属 BOSS 空间）。
 ##
 ## 与纯白空间（arena.gd）并列，对外 API 完全一致：
 ##   ARENA_CENTER / center() / floor_y() / inside() / set_active() / is_active() /
 ##   bounds_half() / theme_key() / arena_env / set_day_night()
-## 玩家按 E 进哪套空间由名册字段 arena 决定（重卡 = "highway"，其余 = "white"）。
+## 玩家按 E 进哪套空间由名册字段 arena 决定（大运 = "highway"，其余 = "white"）。
 ##
 ## "无限延伸"怎么做到（全部程序化，不依赖外部模型）：
 ##   1) 路面与田野是 800 米的大面片，配浓雾（能见度约 200 米）根本看不到尽头；
@@ -13,7 +13,7 @@ extends Node3D
 ##   4) 真正的"无限"来自池化路灯：4 盏 OmniLight 每帧吸附到离玩家最近的几盏灯头，
 ##      跑到哪灯都在头顶前后亮着，永远数不完。
 ## 只有地面那块厚盒参与碰撞（隔离带、护栏、灯杆、龙门架都是纯视觉），
-## 免得战斗时玩家或重卡被路沿卡住。
+## 免得战斗时玩家或大运被路沿卡住。
 
 const ARENA_CENTER := Vector3(0.0, 100.0, -3000.0)
 const FLOOR_SIZE := 800.0
@@ -215,7 +215,7 @@ func _build_poles() -> void:
 	add_child(_multimesh(pole, mats, _base_mat(Color(0.30, 0.27, 0.24))))
 
 
-# ---- 龙门架路牌：蓝底白字「大运国道 G108」----
+# ---- 龙门架路牌：蓝底白字「国道 G108」----
 func _build_gantries() -> void:
 	var sign_tex: Texture2D = null
 	if ResourceLoader.exists("res://assets/props/road/g108_sign.png"):
@@ -274,7 +274,7 @@ func _process(_delta: float) -> void:
 		_lamps[i].global_position = _lamp_heads[int(pairs[i][1])]
 
 
-## 白天↔深夜（重卡目前没有攻击相位，接口先留着；夜里灯更亮）
+## 白天↔深夜（大运目前没有攻击相位，接口先留着；夜里灯更亮）
 func set_day_night(night: float) -> void:
 	_night = clampf(night, 0.0, 1.0)
 	_sun.light_energy = lerpf(1.15, 0.06, _night)
@@ -440,7 +440,7 @@ func is_active() -> bool:
 	return visible
 
 
-## 双方都放在右行的那条车道中心（x=+12.5）：重卡顺着国道朝你开过来，
+## 双方都放在右行的那条车道中心（x=+12.5）：大运顺着国道朝你开过来，
 ## 而不是压在 9.5 的车道分界虚线上
 func player_spawn() -> Vector3:
 	return ARENA_CENTER + Vector3(LANE_RIGHT, 1.05, 8.0)

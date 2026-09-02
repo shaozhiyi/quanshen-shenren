@@ -11,7 +11,7 @@ extends Node3D
 ## 时间轴按公开歌词时间戳标定；配乐路径由名册 song 字段给出（缺失/为空则静默同轴）。
 ## 可重复挑战：死亡沉地 3 秒后自动离开空间即复活回原位，每次开战都从满血开始（撤退同样重置）。
 ## 难度：三档（普通/困难/噩梦），血量·光环伤害·掉落收益逐级递增；首次仅普通，击败一次后按 R 调节。
-##      名册给了 hp_by_diff 的 BOSS 直接用三档定值（如重卡 2000/2500/3000），不吃倍率。
+##      名册给了 hp_by_diff 的 BOSS 直接用三档定值（如大运 2000/2500/3000），不吃倍率。
 
 const ROSTER := preload("res://scripts/boss_roster.gd")
 const BOSS_MODEL := preload("res://scripts/boss_model.gd")
@@ -146,7 +146,7 @@ func apply_difficulty() -> void:
 	## 按当前难度重算血量与光环伤害（星点颜色是固定的红黄蓝绿规律，不随难度变）
 	difficulty = clampi(difficulty, 0, DIFF_NAMES.size() - 1)
 	if _hp_by_diff.size() == DIFF_NAMES.size():
-		max_hp = float(_hp_by_diff[difficulty])       # 名册给了定值（重卡 2000/2500/3000）
+		max_hp = float(_hp_by_diff[difficulty])       # 名册给了定值（大运 2000/2500/3000）
 	else:
 		max_hp = _base_max_hp * float(DIFF_HP_MULT[difficulty])
 	hp = max_hp
@@ -242,7 +242,7 @@ func arena_name() -> String:
 
 
 func arena_node() -> Node:
-	## 现在可能同时挂着好几套空间（纯白 / 大运国道），一律取"正激活"的那套；
+	## 现在可能同时挂着好几套空间（纯白 / 国道），一律取"正激活"的那套；
 	## 没有激活的再退回分组第一个（保持老代码行为）
 	var first: Node = null
 	for a in get_tree().get_nodes_in_group("arena"):
@@ -873,7 +873,7 @@ func _update_wander(delta: float) -> void:
 
 
 func _update_chase(delta: float) -> float:
-	## 暂无技能档（野生重卡）：只缓慢朝玩家驶近 + 贴身光环掉血。
+	## 暂无技能档（大运）：只缓慢朝玩家驶近 + 贴身光环掉血。
 	## 不飞天、不蓄力、不砸地、不射星点，也不改动日月。返回本帧速度（米/秒）。
 	var player := player_node()
 	if player == null or _dead:
