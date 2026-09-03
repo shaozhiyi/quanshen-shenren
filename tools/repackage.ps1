@@ -4,8 +4,8 @@
       1) 先导出：Godot_v4.7.2 --headless --path . --export-release "Windows Desktop" build/out_game.exe
       2) 再打包：powershell -NoProfile -ExecutionPolicy Bypass -File tools\repackage.ps1
     做的事：
-      · 把 build/ 里旧的 神人乱斗.exe 送进回收站（不永久删除）
-      · 把 build/out_game.exe 改名为 build/神人乱斗.exe
+      · 把 build/ 里旧的 全是神人.exe 送进回收站（不永久删除）
+      · 把 build/out_game.exe 改名为 build/全是神人.exe
       · 同步一份到 web/files/game.exe，并把 build/说明.txt 同步成 web/files/readme.txt
         （下载页 web/index.html 就是从这里取文件；发布网页时整个 web/ 目录上传）
       · 报告最终字节数
@@ -16,7 +16,7 @@ $ErrorActionPreference = 'Stop'
 $root  = Split-Path -Parent $PSScriptRoot
 $build = Join-Path $root 'build'
 $webf  = Join-Path $root 'web\files'
-$exe   = Join-Path $build '神人乱斗.exe'
+$exe   = Join-Path $build '全是神人.exe'
 $tmp   = Join-Path $build 'out_game.exe'
 $readme= Join-Path $build '说明.txt'
 

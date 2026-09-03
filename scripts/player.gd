@@ -742,6 +742,20 @@ func _physics_process(delta: float) -> void:
 		_dash_cd -= delta
 
 	move_and_slide()
+	_confine_to_arena()
+
+
+func _confine_to_arena() -> void:
+	## 「无法离开国道」：BOSS 空间可以自己声明一道横向约束（国道用它把玩家夹在
+	## 中央隔离带与路肩护栏之间）。纯白空间与大地图不限制，所以只在空间内且
+	## 该空间实现了 confine() 时才生效。
+	if not _in_arena or _arena == null or not _arena.has_method("confine"):
+		return
+	var clamped: Vector3 = _arena.call("confine", global_position)
+	if clamped != global_position:
+		global_position = clamped
+		if absf(velocity.x) > 0.01:
+			velocity.x = 0.0
 
 
 func air_jumps_left() -> int:

@@ -25,8 +25,12 @@ extends RefCounted
 ##   hp_by_diff   三档血量 [普通, 困难, 噩梦]。写了就不再乘 DIFF_HP_MULT
 ##   arena        进战时切到哪套战斗空间："white" = 超平坦纯白（默认）
 ##                "highway" = 国道（两条无限延伸的国道，见 highway_arena.gd）
-##   skills       false = 暂无技能（只驶近 + 贴身光环），默认 true
+##   skills       false = 不走"星点 + 升空 + 砸地"那套循环（默认 true）
 ##   chase        无技能档的驶近速度（米/秒），默认 0 = 原地不动
+##   blink_wait   >0 才有的独立小技能「等待出现」：原地停这几秒（轮子停 + 脚下亮预警圈），
+##                到点瞬移到玩家附近。配了它就叠在 chase 之上，与 skills 字段互不影响
+##   blink_units  瞬移落点离玩家多远 = 玩家一次冲刺的位移 × 这个数（3.6 米 × 2 = 7.2 米）
+##   blink_gap    一次瞬移落地后的冷却秒数，防止它无限连跳
 ##   bob_amp      待机浮动幅度；visual_y 外观离地高度
 
 const DEFS := {
@@ -42,7 +46,7 @@ const DEFS := {
 		"band": [35.0, 65.0],
 		"song": "res://assets/audio/song.mp3",
 	},
-	# ---- 第二只：大运（暂无技能，先把血量/模型管线跑通）----
+	# ---- 第二只：大运（厚血沙包，只有一招「等待出现」瞬移）----
 	# 外观：把 Hyper3D 生成的车存成 res://assets/models/truck.glb 即自动生效；
 	#       该文件不存在时先用 placeholder "truck" 的程序化低模顶上。
 	"truck": {
@@ -58,8 +62,12 @@ const DEFS := {
 		"box": [3.0, 3.8, 10.6],        # 宽 3.0 · 高 3.8 · 长 10.6（米，车头朝 +Z）
 		"hp_by_diff": [2000.0, 2500.0, 3000.0],   # 普通 / 困难 / 噩梦
 		"aura": 0.3,                    # 贴身尾气：每 0.1 秒 0.3 血（困难 ×1.5、噩梦 ×2）
-		"skills": false,                # 暂无技能：不飞天、不砸地、不射星点
+		"skills": false,                # 不走星点/升空/砸地那套循环
 		"chase": 3.6,                   # 缓慢驶近（玩家步行 5.0，跑得掉）
+		# ---- 它的技能：等 2 秒 → 出现在玩家前方 2 个冲刺距离处（跑远了就抄近路）----
+		"blink_wait": 2.0,
+		"blink_units": 2.0,             # 3.6 米 × 2 = 7.2 米
+		"blink_gap": 3.0,
 		"bob_amp": 0.02,                # 几乎贴地，只留一点悬挂起伏
 		"visual_y": 0.0,
 		"arena": "highway",             # 它的专属战场：两条无限延伸的国道

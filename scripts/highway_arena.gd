@@ -28,6 +28,10 @@ const LAMP_STEP := 32.0         # 路灯间距
 const POLE_STEP := 48.0         # 远处电线杆间距
 const LANE_RIGHT := 12.5        # 右侧行车道中心（靠右行驶，不压车道虚线）
 const LAMP_POOL := 4            # 池化光源数量
+# ---- 「无法离开国道」：能把人夹住的横向范围（相对中心 x，米）----
+# 左边界 = 中央隔离带护栏内侧，右边界 = 路肩护栏内侧；各留余量免得人物贴进护栏
+const WALK_MIN_X := MEDIAN_HALF + 0.7      # 4.2
+const WALK_MAX_X := SHOULDER_OUT - 0.6     # 18.4
 
 var arena_env: Environment
 
@@ -452,3 +456,14 @@ func boss_spawn() -> Vector3:
 
 func inside(p: Vector3) -> bool:
 	return absf(p.x - ARENA_CENTER.x) < HALF and absf(p.z - ARENA_CENTER.z) < HALF
+
+
+## 「无法离开国道」：玩家横向被夹在右幅车道内——左边是中央隔离带护栏、右边是路肩护栏，
+## 顺着公路跑（z）完全自由。护栏本身仍不做碰撞体，靠这里逐帧夹，免得人物被路沿卡死。
+func confine(p: Vector3) -> Vector3:
+	var lo := ARENA_CENTER.x + WALK_MIN_X
+	var hi := ARENA_CENTER.x + WALK_MAX_X
+	var x := clampf(p.x, lo, hi)
+	if is_equal_approx(x, p.x):
+		return p
+	return Vector3(x, p.y, p.z)

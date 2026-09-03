@@ -32,7 +32,7 @@ static func save_dir() -> String:
 
 static func slot_path(label: String) -> String:
 	var safe := label.replace(" ", "_")
-	return save_dir().path_join("神人乱斗_%s.json" % safe)
+	return save_dir().path_join("全是神人_%s.json" % safe)
 
 
 static func new_slot() -> String:

@@ -135,3 +135,9 @@ func boss_spawn() -> Vector3:
 
 func inside(p: Vector3) -> bool:
 	return absf(p.x - ARENA_CENTER.x) < HALF and absf(p.z - ARENA_CENTER.z) < HALF
+
+
+## 空间自定义的横向约束：国道用它把玩家夹在"中央隔离带 ~ 路肩护栏"之间。
+## 纯白世界是超平坦广场，没有这种限制，原样返回即可。
+func confine(p: Vector3) -> Vector3:
+	return p

@@ -50,6 +50,12 @@ const ARENA_FALLBACK_CENTER := Vector3(0.0, 100.0, 0.0)
 var _arena_name := "white"            # 进战时切到哪套空间（"white"/"highway"）
 var _has_skills := true               # false = 暂无技能，只驶近 + 贴身光环
 var _chase_speed := 0.0               # 无技能档的驶近速度（米/秒）
+# ---- 瞬移技能（大运）：原地等 blink_wait 秒 → 落到玩家附近 → 冷却 blink_gap 秒 ----
+var _blink_wait := 0.0                # 0 = 没这招
+var _blink_units := 2.0               # 落点距离 = 玩家冲刺距离 × 这个数
+var _blink_gap := 3.0                 # 一次落地后的冷却
+var _blink_t := 0.0                   # >0：正在原地等待出现（倒计时）
+var _blink_cd := 0.0                  # >0：刚瞬移完，暂时不再起手
 var _bob_amp := 0.1                   # 待机上下浮动幅度
 
 # ---- 难度档位：每升一档血量与伤害增加，收益（狗奶掉落）同步增加 ----
@@ -93,6 +99,9 @@ const STAR_MAX_FLY := 8.0       # 星点存在兜底上限：正常情况下飞�
 const STAR_DAMAGE := 5.0        # 黄色星点命中伤害（基准；仍吃防具减伤/无敌免疫）
 const STAR_RED_BONUS := 5.0     # 红色星点比基准再多这么多（=10）
 const SLAM_FX := preload("res://scripts/slam_fx.gd")
+const PLAYER_SCRIPT := preload("res://scripts/player.gd")
+## 玩家一次冲刺能位移多远（米）= 18 × 0.2 = 3.6。名册 blink_units 按它的倍数算瞬移落点。
+const DASH_DIST := float(PLAYER_SCRIPT.DASH_SPEED) * float(PLAYER_SCRIPT.DASH_DURATION)
 var _phase := 0                 # 0待机 1前摇 2攻击(飞天) 4空中追踪 5红圈预警 6砸落
 var _phase_t := 0.0
 var _stars_fired := 0           # 本轮攻击已射出的星点数
@@ -361,6 +370,10 @@ func _load_def() -> void:
 	_has_skills = bool(_def.get("skills", true))
 	_chase_speed = float(_def.get("chase", 0.0))
 	_arena_name = String(_def.get("arena", "white"))
+	# 瞬移技能（只给"暂无技能"档的 BOSS 用）：配了 blink_wait 才算有这招
+	_blink_wait = float(_def.get("blink_wait", 0.0))
+	_blink_units = float(_def.get("blink_units", 2.0))
+	_blink_gap = float(_def.get("blink_gap", 3.0))
 
 
 func _ready() -> void:
@@ -616,7 +629,7 @@ func _process(delta: float) -> void:
 		if _has_skills:
 			_update_windup(delta)
 		else:
-			spd = _update_chase(delta)
+			spd = _update_truck_ai(delta)     # 大运：缓慢驶近 + 「等待出现」瞬移
 	_animate_wheels(delta, spd)
 
 
@@ -873,8 +886,8 @@ func _update_wander(delta: float) -> void:
 
 
 func _update_chase(delta: float) -> float:
-	## 暂无技能档（大运）：只缓慢朝玩家驶近 + 贴身光环掉血。
-	## 不飞天、不蓄力、不砸地、不射星点，也不改动日月。返回本帧速度（米/秒）。
+	## 暂无技能档（大运）的驶近：只缓慢朝玩家开过去。不飞天、不蓄力、不砸地、不射星点，
+	## 也不改动日月。掉血在 _tick_aura() 里单独结算。返回本帧速度（米/秒）。
 	var player := player_node()
 	if player == null or _dead:
 		return 0.0
@@ -889,11 +902,72 @@ func _update_chase(delta: float) -> float:
 		position += to.normalized() * step
 	_clamp_arena()
 	position.y = _arena_base_y
-	# 只有贴到车身附近才被尾气/碾压蹭到，站远了就是纯打靶
-	if d <= aura_radius():
-		_dmg_t += delta
-		while _dmg_t >= 0.1:
-			_dmg_t -= 0.1
-			if player.has_method("take_damage"):
-				player.take_damage(_aura_dmg)
 	return step / maxf(delta, 0.0001)
+
+
+func _tick_aura(delta: float) -> void:
+	## 贴身尾气：玩家进了 aura_radius 就持续掉血。刻意与"车动不动"解耦——
+	## 等待出现期间车是停着的，但黑烟照样熏人（否则玩家站着等它跳反而最安全）。
+	var player := player_node()
+	if player == null or _dead:
+		return
+	if global_position.distance_to(player.global_position) > aura_radius():
+		return
+	_dmg_t += delta
+	while _dmg_t >= 0.1:
+		_dmg_t -= 0.1
+		if player.has_method("take_damage"):
+			player.take_damage(_aura_dmg)
+
+
+func _update_truck_ai(delta: float) -> float:
+	## 大运的一帧决策：正在「等待出现」就整帧冻住（连驶近也不走，否则会出现
+	## 轮子停着、车身还在往前滑的怪相）；否则缓慢驶近，并判断这帧要不要起手。
+	## 返回本帧用于车轮滚动的速度（米/秒）。
+	_tick_aura(delta)          # 掉血与"动不动"无关，放在最前面，冻结分支也照算
+	if _blink_t > 0.0:
+		_blink_t -= delta
+		if _blink_t <= 0.0:
+			_blink_landing()
+		return 0.0
+	var spd := _update_chase(delta)
+	if _blink_cd > 0.0:
+		_blink_cd -= delta
+	elif _blink_wait > 0.0:
+		var player := player_node()
+		if player != null:
+			var dist := _blink_units * DASH_DIST
+			# 出手条件刻意限制成"玩家比落点还远"：它是你跑远了才抄近路，
+			# 不会凭空贴到你脸上把尾气伤害锁死
+			if global_position.distance_to(player.global_position) > dist:
+				_blink_t = _blink_wait
+				SLAM_FX.spawn_ring(get_parent(), global_position + Vector3(0.0, 0.06, 0.0),
+					dist, Color(1.0, 0.52, 0.18), _blink_wait)   # 给玩家整段反应时间
+				return 0.0
+	return spd
+
+
+func _blink_landing() -> void:
+	## 落点 = 玩家正前方 blink_units 个冲刺距离，再让战场的 confine() 把它夹回路面
+	## （国道因此不会出现"卡车穿到隔离带另一侧"这种怪事）。
+	_blink_cd = _blink_gap
+	var player := player_node() as Node3D
+	if player == null:
+		return
+	var dist := _blink_units * DASH_DIST
+	var fwd: Vector3 = -player.global_transform.basis.z
+	fwd.y = 0.0
+	if fwd.length_squared() < 0.01:
+		fwd = global_position - player.global_position
+		fwd.y = 0.0
+	if fwd.length_squared() < 0.01:
+		fwd = Vector3(0.0, 0.0, 1.0)
+	var at: Vector3 = player.global_position + fwd.normalized() * dist
+	var arena := arena_node()
+	if arena != null and arena.has_method("confine"):
+		at = arena.call("confine", at)
+	at.y = _arena_base_y
+	global_position = at
+	# 落地的动静：地裂 + 一圈扩散冲击波（纯特效，不掉血）
+	SLAM_FX.spawn_slam(get_parent(), at + Vector3(0.0, 0.05, 0.0), maxf(dist * 0.6, 4.0),
+		Color(1.0, 0.60, 0.25))

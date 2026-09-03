@@ -133,7 +133,7 @@ func _build_ui() -> void:
 
 	# 顶部标题
 	var title := Label.new()
-	title.text = "神人乱斗"
+	title.text = "全是神人"
 	title.position = Vector2(0, 46)
 	title.size = Vector2(1280, 62)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
