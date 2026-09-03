@@ -53,10 +53,10 @@ var _has_skills := true               # false = 载具档，只驶近 + 尾气 +
 var _chase_speed := 0.0               # 载具档的驶近速度（米/秒）
 # ---- 「锁定冲撞」（大运）：锁位冻结 charge_lock 秒 → 沿锁定方向直线猛冲 ----
 var _charge_lock := 0.0               # 0 = 没这招；>0 = 锁定（预警）时长
-var _charge_units := 4.0              # 撞击行程 = 玩家冲刺距离 × 这个数
-var _charge_mult := 1.5               # 撞击速度 = 玩家奔跑速度 × 这个数
+var _charge_units := 8.0              # 撞击行程 = 玩家冲刺距离 × 这个数
+var _charge_mult := 3.0               # 撞击速度 = 玩家奔跑速度 × 这个数
 var _charge_gap := 2.5                # 一次冲完后的冷却
-var _charge_dmg := 20.0               # 撞上的伤害（一次冲撞只结算一次，仍吃减伤/无敌）
+var _charge_dmg := 60.0               # 撞上的伤害（一次冲撞只结算一次，仍吃减伤/无敌）
 var _charge_t := 0.0                  # >0：正在原地锁定（倒计时）
 var _charge_run := false              # true：正在冲
 var _charge_left := 0.0               # 本轮还剩多少米没冲完
@@ -1023,7 +1023,7 @@ func _tick_aura(delta: float) -> void:
 
 # ---- 「锁定冲撞」：锁位冻结 → 沿撞击路径铺红色预警带 → 直线猛冲（全程不转向）----
 func charge_dist() -> float:
-	## 撞击行程 = 玩家一次冲刺的位移 × charge_units（默认 3.6 × 4 ≈ 14.4 米）
+	## 撞击行程 = 玩家一次冲刺的位移 × charge_units（默认 3.6 × 8 ≈ 28.8 米）
 	return _charge_units * DASH_DIST
 
 
@@ -1033,7 +1033,7 @@ func charge_reach() -> float:
 
 
 func charge_speed_ref() -> float:
-	## 冲撞速度 = 玩家奔跑速度（步行速度 × 2）× charge_speed_mult，默认 10 × 1.5 = 15 米/秒
+	## 冲撞速度 = 玩家奔跑速度（步行速度 × 2）× charge_speed_mult，默认 10 × 3 = 30 米/秒
 	var p := player_node()
 	var walk := 5.0
 	if p != null and p.get("move_speed") != null:
@@ -1111,7 +1111,7 @@ func _end_charge() -> void:
 
 
 func _touch_player(from: Vector3, to: Vector3) -> bool:
-	## 命中判定用"本帧起点→终点"这段车辙 + 半车宽：15 米/秒时一帧就跨 0.25 米，
+	## 命中判定用"本帧起点→终点"这段车辙 + 半车宽：30 米/秒时一帧就跨半米，
 	## 贴着车侧的人不会漏判，帧率低也不会直接穿过去。伤害仍吃防具减伤与无敌免疫。
 	var player := player_node()
 	if player == null or _dead:
