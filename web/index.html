@@ -18,25 +18,17 @@
     background:radial-gradient(125% 90% at 50% 12%,rgba(8,11,22,0) 0%,rgba(8,11,22,.26) 50%,rgba(8,11,22,.74) 100%)}
   main{position:relative;z-index:2;min-height:100%;display:flex;flex-direction:column;
     align-items:center;justify-content:center;text-align:center;padding:48px 22px}
-  .kicker{display:inline-block;font-size:12px;letter-spacing:.30em;color:var(--faint);
-    border:1px solid var(--line);border-radius:999px;padding:5px 16px;margin-bottom:26px}
   h1{margin:0;font-size:clamp(44px,10.5vw,96px);line-height:1.08;letter-spacing:.04em;font-weight:800;
     background:linear-gradient(180deg,#fff 18%,#c3d0f5 58%,#7c8dbd 100%);
     -webkit-background-clip:text;background-clip:text;color:transparent}
-  .motto{margin:22px auto 0;max-width:34em;color:var(--dim);font-size:16.5px}
-  .motto b{color:#f0c04a;font-weight:600}
-  .cta{margin-top:44px;display:flex;flex-wrap:wrap;gap:14px;justify-content:center;align-items:center}
-  .btn{display:inline-flex;align-items:center;gap:11px;text-decoration:none;border-radius:12px;
-    padding:17px 34px;font-size:18px;font-weight:700;letter-spacing:.04em;
-    transition:transform .16s ease,filter .16s ease,background .16s ease,border-color .16s ease}
+  .btn{display:inline-flex;align-items:center;gap:11px;margin-top:52px;text-decoration:none;border-radius:12px;
+    padding:17px 44px;font-size:19px;font-weight:700;letter-spacing:.10em;
+    transition:transform .16s ease,filter .16s ease}
   .btn svg{width:19px;height:19px;flex:none}
   .btn-main{color:#fff;background:linear-gradient(180deg,#ef5a4f,#c22f28);
     box-shadow:0 12px 34px -12px rgba(226,72,63,.85),inset 0 1px 0 rgba(255,255,255,.28)}
   .btn-main:hover{transform:translateY(-2px);filter:brightness(1.08)}
   .btn-main:active{transform:translateY(0)}
-  .btn-ghost{color:var(--dim);background:rgba(255,255,255,.045);border:1px solid var(--line);
-    padding:16px 26px;font-size:15.5px;font-weight:600}
-  .btn-ghost:hover{color:var(--ink);border-color:#3b4a70;background:rgba(255,255,255,.08)}
   .size{margin:20px 0 0;color:var(--faint);font-size:13.5px;letter-spacing:.02em}
   .size span{color:var(--dim)}
   .size i{font-style:normal;padding:0 9px;opacity:.4}
@@ -47,23 +39,16 @@
 <div class="veil" aria-hidden="true"></div>
 
 <main>
-  <span class="kicker">WIN64 · 免安装单文件</span>
   <h1>全是神人</h1>
 
-  <p class="motto">「生命惧怕时间，时间惧怕<b>野生狗奶</b>。」<br>
-    第一人称 3D · 随机地形 · 两只 BOSS 两套战场 · 挥剑、拉弓、躲星点</p>
+  <a class="btn btn-main" id="dl" href="files/game.exe" download="全是神人.exe">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M12 3v13"/><path d="M6 11l6 6 6-6"/><path d="M4 21h16"/>
+    </svg>
+    下载
+  </a>
 
-  <div class="cta">
-    <a class="btn btn-main" href="files/game.exe" download="全是神人.exe">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M12 3v13"/><path d="M6 11l6 6 6-6"/><path d="M4 21h16"/>
-      </svg>
-      下载游戏本体
-    </a>
-    <a class="btn btn-ghost" href="files/readme.txt" download="说明.txt">说明.txt</a>
-  </div>
-
-  <p class="size"><span id="size">165.9&nbsp;MB</span><i>·</i>免安装单文件<i>·</i>Windows 10/11 64 位<i>·</i>版本 r13<i>·</i>更新 2026-09-03</p>
+  <p class="size"><span id="size">165.9&nbsp;MB</span><i>·</i>同时下载「说明.txt」<i>·</i>Windows 10/11 64 位<i>·</i>内部使用</p>
 </main>
 
 <script>
@@ -188,6 +173,22 @@
       if(len){ var n=parseInt(len,10); if(n>0) el.innerHTML=(n/1048576).toFixed(1)+'&nbsp;MB'; }
     }).catch(function(){});
   }
+})();
+</script>
+<script>
+/* 一个按钮同时下两个文件：本体走原生 href+download（脚本被禁也还能下），
+   点击后再补一发隐藏的 a 标签下「说明.txt」。浏览器第一次会问「允许下载多个文件」，
+   点允许就行；只允许一次的话，说明.txt 会在下一次点击时才下来。 */
+(function(){
+  var dl=document.getElementById('dl'); if(!dl) return;
+  dl.addEventListener('click',function(){
+    setTimeout(function(){
+      var a=document.createElement('a');
+      a.href='files/readme.txt'; a.download='说明.txt'; a.style.display='none';
+      document.body.appendChild(a); a.click();
+      setTimeout(function(){ if(a && a.parentNode) a.parentNode.removeChild(a); }, 3000);
+    }, 500);
+  });
 })();
 </script>
 </body>
