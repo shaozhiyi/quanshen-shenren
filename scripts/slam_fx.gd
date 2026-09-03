@@ -15,6 +15,7 @@ const WAVE_LIFE := 0.55          # 扩散光环时长
 
 static var _crack_tex: ImageTexture
 static var _ring_tex: ImageTexture
+static var _lane_tex: ImageTexture
 static var _star_tex: ImageTexture
 static var _star_mesh: ArrayMesh         # 立体星点（8 面晶簇），全场景共用一份
 static var _slash_tex: ImageTexture
@@ -620,6 +621,36 @@ static func ring_texture() -> ImageTexture:
 				img.set_pixel(x, y, Color(1, 1, 1, clampf(a, 0.0, 1.0)))
 	_ring_tex = ImageTexture.create_from_image(img)
 	return _ring_tex
+
+
+static func lane_texture() -> ImageTexture:
+	## 冲撞预警带（大运）：128×256，横向 = 车宽方向、纵向 = 撞击方向且可纵向平铺。
+	## 两侧一道红色实线边 + 中间一排排朝前的箭头 + 极淡的危险区填充。
+	## 箭头朝 +v（贴图的 v 与 PlaneMesh 的 +Z 同向，所以面片的正前方就是箭头方向）。
+	if _lane_tex != null:
+		return _lane_tex
+	var w := 128
+	var h := 256
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	for y in h:
+		var v := float(y) / float(h - 1)
+		var cv := fmod(v, 0.5) / 0.5        # 一格一个箭头：箭头尖朝 v 更大的一侧
+		for x in w:
+			var u := float(x) / float(w - 1)
+			var side := absf(u - 0.5) * 2.0        # 0 = 正中，1 = 两侧边线
+			var a := 0.0
+			var edge := maxf(clampf(1.0 - absf(u - 0.045) / 0.030, 0.0, 1.0),
+				clampf(1.0 - absf(u - 0.955) / 0.030, 0.0, 1.0))
+			a = maxf(a, edge * 0.95)
+			# 箭头：中线处尖、两侧下垂（^ 形），粗约 0.075 格
+			var apex := 0.70 - 0.46 * side
+			a = maxf(a, clampf(1.0 - absf(cv - apex) / 0.075, 0.0, 1.0) * (1.0 - side * 0.55))
+			a = maxf(a, 0.13 * (1.0 - side * 0.75))   # 内侧淡淡的底色，边界处收掉
+			if a > 0.01:
+				img.set_pixel(x, y, Color(1, 0.92, 0.90, clampf(a, 0.0, 1.0)))
+	_lane_tex = ImageTexture.create_from_image(img)
+	return _lane_tex
 
 
 static func _stamp(img: Image, cx: float, cy: float, rad: float, col: Color) -> void:

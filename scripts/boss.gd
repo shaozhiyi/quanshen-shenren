@@ -2,7 +2,8 @@ extends Node3D
 ## 野生狗奶等 BOSS 的通用实体：外观可以是「六面贴图盒」，也可以是名册 model 字段指向的
 ## 外部 3D 模型（.glb/.gltf/.tscn，Hyper3D 出的车即走这条路），模型文件缺失时用
 ## scripts/boss_model.gd 的程序化低模顶上，数值/外观全部来自 scripts/boss_roster.gd。
-## 名册 skills=false 的 BOSS 暂无技能：不飞天不砸地不射星点，只缓慢驶近 + 贴身光环掉血。
+## 名册 skills=false 的 BOSS 是"载具档"：不飞天不砸地不射星点，只缓慢驶近 + 贴身尾气掉血，
+## 外加一招「锁定冲撞」（原地冻结锁位 → 沿撞击路径铺红色预警带 → 直线猛冲，全程不转向）。
 ## 大地图无敌；按 E 进入 BOSS 空间后可战。有技能的空内循环：
 ## 待机 → 前摇（配乐乐句A + 星点渐多环绕蓄力）→ 攻击（20 米飞天 + 日月交替 + 玩家掉血
 ##      + 逐颗射出星点，单发命中 5 血）
@@ -48,15 +49,31 @@ var _box_size := Vector3.ZERO         # 碰撞盒；零向量 = 按 scale_factor
 var _hp_by_diff: Array = []           # 三档定值血量（非空则忽略 DIFF_HP_MULT）
 const ARENA_FALLBACK_CENTER := Vector3(0.0, 100.0, 0.0)
 var _arena_name := "white"            # 进战时切到哪套空间（"white"/"highway"）
-var _has_skills := true               # false = 暂无技能，只驶近 + 贴身光环
-var _chase_speed := 0.0               # 无技能档的驶近速度（米/秒）
-# ---- 瞬移技能（大运）：原地等 blink_wait 秒 → 落到玩家附近 → 冷却 blink_gap 秒 ----
-var _blink_wait := 0.0                # 0 = 没这招
-var _blink_units := 2.0               # 落点距离 = 玩家冲刺距离 × 这个数
-var _blink_gap := 3.0                 # 一次落地后的冷却
-var _blink_t := 0.0                   # >0：正在原地等待出现（倒计时）
-var _blink_cd := 0.0                  # >0：刚瞬移完，暂时不再起手
+var _has_skills := true               # false = 载具档，只驶近 + 尾气 + 锁定冲撞
+var _chase_speed := 0.0               # 载具档的驶近速度（米/秒）
+# ---- 「锁定冲撞」（大运）：锁位冻结 charge_lock 秒 → 沿锁定方向直线猛冲 ----
+var _charge_lock := 0.0               # 0 = 没这招；>0 = 锁定（预警）时长
+var _charge_units := 4.0              # 撞击行程 = 玩家冲刺距离 × 这个数
+var _charge_mult := 1.5               # 撞击速度 = 玩家奔跑速度 × 这个数
+var _charge_gap := 2.5                # 一次冲完后的冷却
+var _charge_dmg := 20.0               # 撞上的伤害（一次冲撞只结算一次，仍吃减伤/无敌）
+var _charge_t := 0.0                  # >0：正在原地锁定（倒计时）
+var _charge_run := false              # true：正在冲
+var _charge_left := 0.0               # 本轮还剩多少米没冲完
+var _charge_cd := 0.0                 # >0：刚冲完，暂时不再起手
+var _charge_hit := false              # 本轮已经撞上过，不重复掉血
+var _charge_speed := 0.0              # 本轮实际冲撞速度（起手时按玩家奔跑速度算）
+var _charge_dir := Vector3(0.0, 0.0, 1.0)   # 锁定瞬间钉死的撞击方向（XZ 单位向量）
+var _aim_locked := false              # 锁定/冲撞期间车头不再转向
+var _faces_player := true             # false = 载具档：车头只对着行驶方向
+var _heading := 0.0                   # 载具档的车头朝向（弧度 yaw，+Z 为零）
 var _bob_amp := 0.1                   # 待机上下浮动幅度
+const TURN_RATE := 2.6                # 载具档未锁定时的转向速度（弧度/秒的近似系数）
+# ---- 撞击路径预警带（红色条带，替代原来的圆形光环）----
+var _lane: MeshInstance3D             # 挂在 BOSS 的父节点上：车冲出去它留在原地
+var _lane_mat: StandardMaterial3D
+var _lane_len := 0.0
+var _lane_t := 0.0
 
 # ---- 难度档位：每升一档血量与伤害增加，收益（狗奶掉落）同步增加 ----
 const DIFF_NAMES := ["普通", "困难", "噩梦"]
@@ -100,7 +117,7 @@ const STAR_DAMAGE := 5.0        # 黄色星点命中伤害（基准；仍吃防�
 const STAR_RED_BONUS := 5.0     # 红色星点比基准再多这么多（=10）
 const SLAM_FX := preload("res://scripts/slam_fx.gd")
 const PLAYER_SCRIPT := preload("res://scripts/player.gd")
-## 玩家一次冲刺能位移多远（米）= 18 × 0.2 = 3.6。名册 blink_units 按它的倍数算瞬移落点。
+## 玩家一次冲刺能位移多远（米）= 18 × 0.2 = 3.6。名册 charge_units 按它的倍数算撞击行程。
 const DASH_DIST := float(PLAYER_SCRIPT.DASH_SPEED) * float(PLAYER_SCRIPT.DASH_DURATION)
 var _phase := 0                 # 0待机 1前摇 2攻击(飞天) 4空中追踪 5红圈预警 6砸落
 var _phase_t := 0.0
@@ -134,6 +151,7 @@ func set_arena_mode(b: bool) -> void:
 	_slam_target = Vector3.ZERO
 	_show_marker(false)
 	_hide_stars()
+	_reset_charge()        # 载具档：半截冲撞/预警带不能留到下一次开战
 	if _music != null and _music.playing:
 		_music.stop()
 	if b:
@@ -219,6 +237,7 @@ func respawn() -> void:
 	_slam_hit = false
 	_show_marker(false)
 	_hide_stars()
+	_reset_charge()
 	apply_difficulty()
 	go_home()
 
@@ -370,10 +389,13 @@ func _load_def() -> void:
 	_has_skills = bool(_def.get("skills", true))
 	_chase_speed = float(_def.get("chase", 0.0))
 	_arena_name = String(_def.get("arena", "white"))
-	# 瞬移技能（只给"暂无技能"档的 BOSS 用）：配了 blink_wait 才算有这招
-	_blink_wait = float(_def.get("blink_wait", 0.0))
-	_blink_units = float(_def.get("blink_units", 2.0))
-	_blink_gap = float(_def.get("blink_gap", 3.0))
+	# 冲撞技能（只给载具档的 BOSS 用）：配了 charge_lock 才算有这招
+	_charge_lock = float(_def.get("charge_lock", 0.0))
+	_charge_units = float(_def.get("charge_units", 4.0))
+	_charge_mult = float(_def.get("charge_speed_mult", 1.5))
+	_charge_gap = float(_def.get("charge_gap", 2.5))
+	_charge_dmg = float(_def.get("charge_damage", 20.0))
+	_faces_player = not bool(_def.get("no_turn", false))
 
 
 func _ready() -> void:
@@ -424,6 +446,8 @@ func _ready() -> void:
 	if _has_skills:
 		_build_stars()
 		_build_marker()
+	elif _charge_lock > 0.0:
+		_build_lane()          # 载具档的撞击路径预警带（红色条带，不是光环）
 	_refresh_labels()
 	# 可选战斗配乐：由名册 song 字段指定（为空或文件缺失则静默走同一时间轴）
 	_music = AudioStreamPlayer.new()
@@ -497,6 +521,67 @@ func _build_marker() -> void:
 	_marker_mat = mat
 	_marker.visible = false
 	add_child(_marker)
+
+
+func _build_lane() -> void:
+	## 撞击路径预警带：贴地的长条面片，宽 = 车宽留点边、长 = 撞击行程，
+	## 从车头一直铺到撞击终点——玩家只要走出这条带子就不会被撞。
+	## 刻意挂在 BOSS 的父节点上（不是子节点）：车冲出去之后带子留在原地，
+	## 不会跟着车一起往前滑。纯特效，投影关掉免得在路面上糊出一块方影。
+	_lane = MeshInstance3D.new()
+	_lane_len = charge_dist()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(_box_size.x + 0.6, _lane_len)
+	_lane.mesh = pm
+	_lane.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD   # 沥青上是发光红带，不是灰雾
+	mat.albedo_texture = SLAM_FX.lane_texture()
+	mat.albedo_color = Color(1.0, 0.20, 0.14, 0.0)
+	mat.uv1_scale = Vector3(1.0, _lane_len / 3.0, 1.0)   # 每 3 米一组朝前的箭头
+	_lane.material_override = mat
+	_lane_mat = mat
+	_lane.visible = false
+	var holder := get_parent()
+	if holder != null:
+		holder.add_child(_lane)
+
+
+func _layout_lane() -> void:
+	## 按锁定的车头朝向把带子摆到地面上（+Z = 车头方向，所以沿 fwd 推出中心点）
+	if _lane == null:
+		return
+	var fwd := Vector3(sin(_heading), 0.0, cos(_heading))
+	_lane.rotation.y = _heading
+	_lane.global_position = global_position + fwd * (_box_size.z * 0.5 + _lane_len * 0.5) \
+		+ Vector3(0.0, _arena_base_y + 0.07 - global_position.y, 0.0)
+
+
+func _show_lane(b: bool) -> void:
+	if _lane == null:
+		return
+	_lane.visible = b
+	if b:
+		_lane_t = 0.0
+		if _lane_mat != null:
+			_lane_mat.albedo_color = Color(1.0, 0.20, 0.14, 0.0)
+		_layout_lane()
+
+
+func _update_lane(delta: float) -> void:
+	## 预警期：红带快速淡入、箭头朝撞击方向流动，临撞前 0.35 秒开始急促闪烁
+	if _lane == null or not _lane.visible or _lane_mat == null:
+		return
+	_lane_t += delta
+	var fade_in := clampf(_lane_t / 0.35, 0.0, 1.0)
+	var panic := 1.0
+	if _charge_lock > 0.0 and _charge_t < 0.35:
+		panic = 0.55 + 0.45 * absf(sin(_lane_t * 26.0))
+	_lane_mat.albedo_color = Color(1.0, 0.20, 0.14, 0.92 * fade_in * panic)
+	_lane_mat.uv1_offset.y -= delta * 1.1      # 偏移递减 = 图案朝 +v（车头方向）流动
 
 
 # ---- 蓄力星点：立体星点池（蓄力时逐个点亮，攻击期逐颗射出，与射出后的外观同一套网格）----
@@ -606,6 +691,7 @@ func _die() -> void:
 	_label.text = "%s 已被缴获" % boss_name
 	_hp_label.visible = false
 	_music_tail = 0.0
+	_reset_charge()      # 死在半截冲撞里：立刻收掉预警带，也别再往前滑
 	if _music != null and _music.playing:
 		_music.stop()
 	died.emit(self)          # 先记账再通知，玩家侧按 reward_count() 发奖
@@ -617,19 +703,25 @@ func _process(delta: float) -> void:
 		# 沉地消失
 		_visual.position.y = maxf(_visual.position.y - delta * 1.2, -box_height() * 0.9)
 		return
-	# 正面（+Z）始终转向玩家：梗脸永远对着你
+	# 正面（+Z）转向：贴图盒 BOSS 是"梗脸永远对着你"，载具档按车头条线走
 	var player := player_node()
 	var spd := 0.0
 	if player != null:
 		var d: Vector3 = player.global_position - global_position
-		_visual.rotation.y = lerp_angle(_visual.rotation.y, atan2(d.x, d.z), minf(1.0, delta * 3.0))
+		if _faces_player:
+			_visual.rotation.y = lerp_angle(_visual.rotation.y, atan2(d.x, d.z), minf(1.0, delta * 3.0))
+		else:
+			# 载具档：车头只对着行驶方向；一旦锁定冲撞就整段钉死，直到撞完才恢复转向
+			if not _aim_locked:
+				_heading = lerp_angle(_heading, atan2(d.x, d.z), minf(1.0, delta * TURN_RATE))
+			_visual.rotation.y = _heading
 	_visual.position.y = _visual_y + _bob_amp * sin(_t * 1.4)
 	_visual.position.x = 0.0
 	if _arena_mode:
 		if _has_skills:
 			_update_windup(delta)
 		else:
-			spd = _update_truck_ai(delta)     # 大运：缓慢驶近 + 「等待出现」瞬移
+			spd = _update_truck_ai(delta)     # 大运：缓慢驶近 + 「锁定冲撞」
 	_animate_wheels(delta, spd)
 
 
@@ -886,7 +978,7 @@ func _update_wander(delta: float) -> void:
 
 
 func _update_chase(delta: float) -> float:
-	## 暂无技能档（大运）的驶近：只缓慢朝玩家开过去。不飞天、不蓄力、不砸地、不射星点，
+	## 载具档（大运）的驶近：只缓慢朝玩家开过去。不飞天、不蓄力、不砸地、不射星点，
 	## 也不改动日月。掉血在 _tick_aura() 里单独结算。返回本帧速度（米/秒）。
 	var player := player_node()
 	if player == null or _dead:
@@ -899,15 +991,24 @@ func _update_chase(delta: float) -> float:
 	var step := 0.0
 	if d > stop and _chase_speed > 0.0:
 		step = minf(_chase_speed * delta, d - stop)     # 留出停车距离，不会顶进玩家模型
-		position += to.normalized() * step
+		_move_truck(to.normalized() * step)
 	_clamp_arena()
-	position.y = _arena_base_y
 	return step / maxf(delta, 0.0001)
+
+
+func _move_truck(step: Vector3) -> void:
+	## 大运的位移一律过一遍战场的 confine()：它是"焊死在国道上"的车，不会斜着压进
+	## 中央隔离带、也不会冲出右侧路肩（纯白空间没有这个方法 = 不限制）。
+	position += step
+	var arena := arena_node()
+	if arena != null and arena.has_method("confine"):
+		position = arena.call("confine", position)
+	position.y = _arena_base_y
 
 
 func _tick_aura(delta: float) -> void:
 	## 贴身尾气：玩家进了 aura_radius 就持续掉血。刻意与"车动不动"解耦——
-	## 等待出现期间车是停着的，但黑烟照样熏人（否则玩家站着等它跳反而最安全）。
+	## 锁定预警期间车是停着的，但黑烟照样熏人（否则玩家站着等它撞反而最安全）。
 	var player := player_node()
 	if player == null or _dead:
 		return
@@ -920,54 +1021,147 @@ func _tick_aura(delta: float) -> void:
 			player.take_damage(_aura_dmg)
 
 
+# ---- 「锁定冲撞」：锁位冻结 → 沿撞击路径铺红色预警带 → 直线猛冲（全程不转向）----
+func charge_dist() -> float:
+	## 撞击行程 = 玩家一次冲刺的位移 × charge_units（默认 3.6 × 4 ≈ 14.4 米）
+	return _charge_units * DASH_DIST
+
+
+func charge_reach() -> float:
+	## 这一撞最远能碰到你多远：车头再往前冲完整段行程，加上车头本身离车身中心半个车长
+	return charge_dist() + _box_size.z * 0.5
+
+
+func charge_speed_ref() -> float:
+	## 冲撞速度 = 玩家奔跑速度（步行速度 × 2）× charge_speed_mult，默认 10 × 1.5 = 15 米/秒
+	var p := player_node()
+	var walk := 5.0
+	if p != null and p.get("move_speed") != null:
+		walk = float(p.get("move_speed"))
+	return walk * float(PLAYER_SCRIPT.RUN_MULT) * _charge_mult
+
+
+func _reset_charge() -> void:
+	## 进/出空间、死亡、复活时把冲撞状态清干净（预警带也一并收掉）
+	_charge_t = 0.0
+	_charge_run = false
+	_charge_left = 0.0
+	_charge_cd = 0.0
+	_charge_hit = false
+	_charge_speed = 0.0
+	_aim_locked = false
+	_charge_dir = Vector3(sin(_heading), 0.0, cos(_heading))
+	_show_lane(false)
+
+
+func charging() -> bool:
+	return _charge_run
+
+
+func locked() -> bool:
+	return _charge_t > 0.0
+
+
+func _begin_lock(player: Node) -> void:
+	## 锁位：车头对准玩家此刻的位置，方向就此钉死（之后不会再转向），
+	## 同时沿撞击路径在地面铺一条红色预警带 —— 玩家有 charge_lock 秒走出这条带子
+	var dir: Vector3 = player.global_position - global_position
+	dir.y = 0.0
+	if dir.length_squared() < 0.01:
+		dir = Vector3(sin(_heading), 0.0, cos(_heading))
+	_charge_dir = dir.normalized()
+	_heading = atan2(_charge_dir.x, _charge_dir.z)
+	_aim_locked = true
+	_charge_hit = false
+	_charge_speed = charge_speed_ref()
+	_charge_t = _charge_lock
+	_show_lane(true)
+
+
+func _fire_charge() -> void:
+	## 预警结束，真的开撞。红带留在原地淡出（车正好从它上面压过去）
+	_charge_t = 0.0
+	_charge_run = true
+	_charge_left = charge_dist()
+
+
+func _tick_charge(delta: float) -> float:
+	## 冲撞中：只沿锁定那一刻的方向直线推进，全程不踩方向盘；撞上一次算一次伤害
+	var step := minf(_charge_speed * delta, maxf(_charge_left, 0.0))
+	var from := global_position
+	_move_truck(_charge_dir * step)
+	_charge_left -= step
+	_fade_lane(delta)
+	if not _charge_hit and _touch_player(from, global_position):
+		_charge_hit = true
+	if _charge_left <= 0.001:
+		_end_charge()
+	return _charge_speed
+
+
+func _end_charge() -> void:
+	_charge_run = false
+	_charge_left = 0.0
+	_charge_cd = _charge_gap
+	_aim_locked = false
+	_show_lane(false)
+	# 撞到底的动静：地裂 + 一蓬尘（伤害是在冲撞过程中判的，这里纯特效）
+	var at := Vector3(global_position.x, _arena_base_y + 0.05, global_position.z)
+	SLAM_FX.spawn_slam(get_parent(), at, maxf(charge_dist() * 0.35, 4.0), Color(1.0, 0.60, 0.25))
+
+
+func _touch_player(from: Vector3, to: Vector3) -> bool:
+	## 命中判定用"本帧起点→终点"这段车辙 + 半车宽：15 米/秒时一帧就跨 0.25 米，
+	## 贴着车侧的人不会漏判，帧率低也不会直接穿过去。伤害仍吃防具减伤与无敌免疫。
+	var player := player_node()
+	if player == null or _dead:
+		return false
+	var a := Vector2(from.x, from.z)
+	var b := Vector2(to.x, to.z)
+	var p := Vector2(player.global_position.x, player.global_position.z)
+	var ab := b - a
+	var len2 := ab.length_squared()
+	var t := 0.0 if len2 < 0.000001 else clampf((p - a).dot(ab) / len2, 0.0, 1.0)
+	if (a + ab * t).distance_to(p) > _box_size.x * 0.5 + 0.7:
+		return false
+	if player.has_method("take_damage"):
+		player.take_damage(_charge_dmg)
+	return true
+
+
+func _fade_lane(delta: float) -> void:
+	if _lane == null or not _lane.visible or _lane_mat == null:
+		return
+	var col: Color = _lane_mat.albedo_color
+	col.a = maxf(col.a - delta * 1.6, 0.0)
+	_lane_mat.albedo_color = col
+
+
 func _update_truck_ai(delta: float) -> float:
-	## 大运的一帧决策：正在「等待出现」就整帧冻住（连驶近也不走，否则会出现
-	## 轮子停着、车身还在往前滑的怪相）；否则缓慢驶近，并判断这帧要不要起手。
+	## 大运的一帧决策：尾气照算 → 正在冲撞就直线推进 → 正在锁定就整帧冻住（连驶近也不走，
+	## 否则会出现轮子停着、车身还在往前滑的怪相）→ 都不在就缓慢驶近并判断要不要锁位。
 	## 返回本帧用于车轮滚动的速度（米/秒）。
-	_tick_aura(delta)          # 掉血与"动不动"无关，放在最前面，冻结分支也照算
-	if _blink_t > 0.0:
-		_blink_t -= delta
-		if _blink_t <= 0.0:
-			_blink_landing()
+	_tick_aura(delta)          # 掉血与"动不动"无关，放在最前面，冻结/冲撞分支也照算
+	if _charge_run:
+		return _tick_charge(delta)
+	if _charge_t > 0.0:
+		_charge_t -= delta
+		_update_lane(delta)
+		if _charge_t <= 0.0:
+			_fire_charge()
 		return 0.0
 	var spd := _update_chase(delta)
-	if _blink_cd > 0.0:
-		_blink_cd -= delta
-	elif _blink_wait > 0.0:
+	if _charge_cd > 0.0:
+		_charge_cd -= delta
+	elif _charge_lock > 0.0:
 		var player := player_node()
-		if player != null:
-			var dist := _blink_units * DASH_DIST
-			# 出手条件刻意限制成"玩家比落点还远"：它是你跑远了才抄近路，
-			# 不会凭空贴到你脸上把尾气伤害锁死
-			if global_position.distance_to(player.global_position) > dist:
-				_blink_t = _blink_wait
-				SLAM_FX.spawn_ring(get_parent(), global_position + Vector3(0.0, 0.06, 0.0),
-					dist, Color(1.0, 0.52, 0.18), _blink_wait)   # 给玩家整段反应时间
-				return 0.0
+		# 出手条件：玩家站进了"车头再往前冲一段"能够到的那条带子里
+		if player != null and _dist_xz(global_position, player.global_position) <= charge_reach():
+			_begin_lock(player)
+			return 0.0
 	return spd
 
 
-func _blink_landing() -> void:
-	## 落点 = 玩家正前方 blink_units 个冲刺距离，再让战场的 confine() 把它夹回路面
-	## （国道因此不会出现"卡车穿到隔离带另一侧"这种怪事）。
-	_blink_cd = _blink_gap
-	var player := player_node() as Node3D
-	if player == null:
-		return
-	var dist := _blink_units * DASH_DIST
-	var fwd: Vector3 = -player.global_transform.basis.z
-	fwd.y = 0.0
-	if fwd.length_squared() < 0.01:
-		fwd = global_position - player.global_position
-		fwd.y = 0.0
-	if fwd.length_squared() < 0.01:
-		fwd = Vector3(0.0, 0.0, 1.0)
-	var at: Vector3 = player.global_position + fwd.normalized() * dist
-	var arena := arena_node()
-	if arena != null and arena.has_method("confine"):
-		at = arena.call("confine", at)
-	at.y = _arena_base_y
-	global_position = at
-	# 落地的动静：地裂 + 一圈扩散冲击波（纯特效，不掉血）
-	SLAM_FX.spawn_slam(get_parent(), at + Vector3(0.0, 0.05, 0.0), maxf(dist * 0.6, 4.0),
-		Color(1.0, 0.60, 0.25))
+func _dist_xz(a: Vector3, b: Vector3) -> float:
+	## 水平距离（不算高差）：玩家站在地板上会比车身原点高 1 米多，按 3D 距离判会偏
+	return Vector2(a.x - b.x, a.z - b.z).length()
