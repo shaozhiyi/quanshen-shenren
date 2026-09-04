@@ -283,6 +283,13 @@ func _enh_name(id: String) -> String:
 	return id
 
 
+## 坐标显示约定：X = 横轴、Y = 纵轴（前后方向）、Z = 高度。
+## 引擎内部是 X/Z 水平 + Y 竖直，这里只换"给人看"的顺序（把高度放到第三个数），
+## 存档、小地图、物理一律仍按引擎轴，别跟着换。
+func _coord_text(v: Vector3) -> String:
+	return "X: %.1f  Y: %.1f  Z: %.1f" % [v.x, v.z, v.y]
+
+
 func _process(delta: float) -> void:
 	if _player != null and _coord_label != null:
 		# 战斗空间在世界里偏出去几千米，所以战斗内报"战斗坐标"（开战那一刻 = 0,0,0），
@@ -292,8 +299,7 @@ func _process(delta: float) -> void:
 			battle = bool(_player.call("coords_are_battle"))
 		var p: Vector3 = _player.call("display_coords") \
 			if _player.has_method("display_coords") else _player.global_position
-		_coord_label.text = "%s X: %.1f  Y: %.1f  Z: %.1f" % [
-			"战斗" if battle else "世界", p.x, p.y, p.z]
+		_coord_label.text = "%s %s" % ["战斗" if battle else "世界", _coord_text(p)]
 		# 小地图仅在玩家移动≥6m时重采样（静止时零开销）
 		if _ground != null and _ground.has_method("height_at_fast"):
 			if _player.global_position.distance_squared_to(_last_map_pos) >= 36.0:
