@@ -179,6 +179,21 @@ player_spawn / boss_spawn / confine / arena_env / set_day_night`），
 `slam_fx._floor_y()` 会遍历所有 arena 分组、只认"罩住该点且激活中"的那一套，
 所以多套空间可以安全并存。
 
+## 三点六、它的战斗配乐「天真」
+
+名册 `song = "res://assets/audio/song_truck.mp3"`，与狗奶那首各占一个槽位、互不干扰。
+载具档**没有**"前摇/攻击/砸落"的乐句时间轴，所以这首歌不按乐句打点，就是纯背景乐：
+
+- `boss.gd` 的 `_ready()` 里，只要 `skills = false` 且流是 `AudioStreamMP3`，
+  就把 `loop = true`（`loop_offset = 0.0`）打开——三档厚血仗可能拖过整首歌，不能放完就没声；
+  注意 `loop_mode` 那套枚举是 `AudioStreamWAV` 的，MP3 只有 `loop` + `loop_offset`，写错直接 Parse Error。
+- `set_arena_mode(true)` 里 `_music.play(0.0)`：按 E 进国道的瞬间开唱；
+  撤退与击杀走同一个函数开头的 `_music.stop()`，所以不会出现"回到大地图还在放国道歌"。
+- 换歌只需覆盖同名文件，不需要改任何常数（狗奶那首要对齐 `MUSIC_AT / WINDUP_TIME / ATTACK_TIME`）。
+
+版权与狗奶那首同理：文件由本机音乐账号自备，只适合内部交流，对外分享包请剔除这两个 mp3
+（`assets/audio/CREDITS.txt` 里已记明来源与限制）。
+
 ## 四、以后给它加技能（留好的接口）
 
 `boss.gd` 的相位机是现成的：狗奶用 `_has_skills = true` 走

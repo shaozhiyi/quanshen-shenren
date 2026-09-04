@@ -19,6 +19,12 @@ song.mp3
   非素材站资源：战斗背景音乐请自行从个人音乐账号放入并命名为 song.mp3（缺失则自动静默）。
   版权归原发行方，不随分享包分发。详见同目录 README.txt。
 
+song_truck.mp3
+  非素材站资源：大运（国道战）的背景乐，由本机音乐文件放入，ID3 标题为「天真」
+  （无艺术家标签），192 kbps、约 3 分 35 秒。载具档没有乐句时间轴，
+  代码里把它设成 AudioStreamMP3.loop = true，进战场从头循环播放，撤退/击杀即停。
+  版权同 song.mp3：归原发行方，仅供个人/内部交流，不随对外分享包分发。
+
 备查（未随包发布的候选，若日后想换口味可直接取用）
   Kenney「RPG Audio」 https://kenney.nl/assets/rpg-audio （CC0 0，无需署名）
     knifeSlice.ogg（挥击）、creak2.ogg（弓臂吱声）、metalLatch.ogg（脆响）、drawKnife1.ogg（拔刀风声）

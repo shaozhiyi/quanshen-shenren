@@ -10,6 +10,7 @@ extends Node3D
 ##      → 空中追踪 2 秒（跟着玩家位置走）→ 锁定红圈 1 秒 → 砸落（圈内 -20 + 地裂）
 ##      → 落地后随机游走，进入下一轮。
 ## 时间轴按公开歌词时间戳标定；配乐路径由名册 song 字段给出（缺失/为空则静默同轴）。
+##      载具档（skills=false）没有乐句时间轴：它的 song 是进战从头循环播放的背景乐。
 ## 可重复挑战：死亡沉地 3 秒后自动离开空间即复活回原位，每次开战都从满血开始（撤退同样重置）。
 ## 难度：三档（普通/困难/噩梦），血量·光环伤害·掉落收益逐级递增；首次仅普通，击败一次后按 R 调节。
 ##      名册给了 hp_by_diff 的 BOSS 直接用三档定值（如大运 2000/2500/3000），不吃倍率。
@@ -157,6 +158,8 @@ func set_arena_mode(b: bool) -> void:
 	if b:
 		_arena_base_y = position.y
 		apply_difficulty()   # 每次开战都是一场完整的挑战
+		if _has_music and not _has_skills:
+			_music.play(0.0)   # 载具档：进战场就开唱（循环），撤退/击杀走上面的 stop 收尾
 	else:
 		if _dead:
 			respawn()        # 击杀后离开空间 → 原地复活，可再次挑战
@@ -455,6 +458,13 @@ func _ready() -> void:
 	_has_music = _song_path != "" and ResourceLoader.exists(_song_path)
 	if _has_music:
 		_music.stream = load(_song_path)
+		if not _has_skills and _music.stream is AudioStreamMP3:
+			# 载具档没有"前摇/攻击"的乐句时间轴，这首歌就是整场战斗的背景乐 → 循环放，
+			# 免得厚血仗打到一半没音乐（狗奶那档仍只走一遍副歌，靠 _music_tail 收尾）
+			# 注意 AudioStreamMP3 只有 bool loop + loop_offset（秒），loop_mode 那套枚举是 WAV 的
+			var mp3 := _music.stream as AudioStreamMP3
+			mp3.loop = true
+			mp3.loop_offset = 0.0
 
 
 func _build_visual() -> void:

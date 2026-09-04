@@ -12,7 +12,8 @@ extends RefCounted
 ##   aura        普通档光环每 0.1 秒伤害；同样受 DIFF_AURA_MULT 缩放
 ##   reward      掉落物品 id；reward_counts 是三档各自的掉落数量
 ##   band        出生点距玩家的水平距离带 [最小, 最大]（米）
-##   song        战斗配乐（空字符串 = 无声，走同一时间轴）
+##   song        战斗配乐（空字符串 = 无声）。技能档按乐句时间轴放一遍副歌；
+##               载具档（skills=false）是进战即从头循环播放的背景乐，撤退/击杀立刻停
 ##
 ## ---- 可选字段（不写就用默认值，老 BOSS 完全不受影响）----
 ##   model        3D 模型路径（.glb/.gltf/.tscn）。有它就直接用模型，不再拼贴图盒；
@@ -80,7 +81,7 @@ const DEFS := {
 		"reward": "dogmilk",            # 拉的一车货
 		"reward_counts": [2, 3, 4],
 		"band": [60.0, 100.0],          # 车身 10 米多长，出生点离玩家更远些
-		"song": "",
+		"song": "res://assets/audio/song_truck.mp3",   # 载具档专属战斗曲：进战整首循环，不按乐句打点
 	},
 	# 下一只 BOSS 照抄一条写在这里即可（换 face_dir 用新贴图，
 	# 或先用 tint 着色区分），boss.gd / 玩家 / HUD 都不用改。
