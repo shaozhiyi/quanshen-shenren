@@ -5,7 +5,7 @@ extends Node3D
 ## 名册 skills=false 的 BOSS 是"载具档"：不飞天不砸地不射星点，只缓慢驶近 + 贴身尾气掉血，
 ## 外加一招「锁定冲撞」（原地冻结锁位 → 沿撞击路径铺红色预警带 → 直线猛冲，全程不转向）。
 ## 大地图无敌；按 E 进入 BOSS 空间后可战。有技能的空内循环：
-## 待机 → 前摇（配乐乐句A + 星点渐多环绕蓄力）→ 攻击（20 米飞天 + 日月交替 + 玩家掉血
+## 待机 → 前摇（配乐乐句A + 星点渐多环绕蓄力）→ 攻击（20 米飞天 + 日月交替两轮 + 玩家掉血
 ##      + 逐颗射出星点，单发命中 5 血）
 ##      → 空中追踪 2 秒（跟着玩家位置走）→ 锁定红圈 1 秒 → 砸落（圈内 -20 + 地裂）
 ##      → 落地后随机游走，进入下一轮。
@@ -100,6 +100,7 @@ var _home_pos := Vector3.ZERO     # 大地图原位（进出空间时恢复）
 const MUSIC_AT := 0.0           # 音频直接从副歌"忘你不舍"起头，故起点=0
 const WINDUP_TIME := 11.10      # 前摇时长：曲内"忘你不舍 寻你不休"唱完（下句入点）即升空
 const ATTACK_TIME := 14.18      # 攻击时长：四个乐句
+const DAY_NIGHT_CYCLES := 2.0   # 攻击窗口内日月交替几轮（1→2 = 快一倍，时长不变）
 const CHARGE_GAP := 8.0         # 每轮释放完后待机（秒）
 const MAX_STARS := 24           # 蓄满星点数
 const FLY_HEIGHT := 20.25       # 飞天高度（13.5 × 1.5）
@@ -796,7 +797,8 @@ func _update_windup(delta: float) -> void:
 				_fire_star(_stars_fired, player)
 			_layout_stars(1.0)
 			if arena != null:
-				arena.set_day_night((1.0 - cos(TAU * at)) * 0.5)   # 昼→夜→昼 整周期
+				# 攻击窗口内跑 DAY_NIGHT_CYCLES 个整周期（=2 → 昼→夜→昼→夜→昼，交替快一倍）
+				arena.set_day_night((1.0 - cos(TAU * at * DAY_NIGHT_CYCLES)) * 0.5)
 			_dmg_t += delta
 			while _dmg_t >= 0.1:
 				_dmg_t -= 0.1
