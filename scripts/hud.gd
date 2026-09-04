@@ -1,5 +1,5 @@
 extends CanvasLayer
-## 左上角 HUD：等级徽章 + 血条（红）+ 魔法条（蓝）+ 经验条（绿）+ 世界坐标 + 小地图。
+## 左上角 HUD：等级徽章 + 血条（红）+ 魔法条（蓝）+ 经验条（绿）+ 坐标（世界/战斗两套）+ 小地图。
 ## 条控件用 HealthBarX（Godot 素材库，MIT 协议，纯矢量绘制）。
 ## 血条监听 hp_changed 实时更新；无敌期把血条整体染成金色（与普通红血区分）。
 ## 魔法上限 200 是给之后的技能系统预留的；经验条本版不涨（升级系统未做）。
@@ -91,14 +91,14 @@ func _ready() -> void:
 	_exp_bar.set_value(_exp_ratio() * 100.0, false)
 	_exp_shown = _exp_ratio()
 
-	# 世界坐标显示（状态区下方）
+	# 坐标显示（状态区下方）：大地图报世界坐标，进 BOSS 空间改报战斗坐标
 	_coord_label = Label.new()
 	_coord_label.position = coord_position
 	_coord_label.add_theme_font_size_override("font_size", 15)
 	_coord_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.92))
 	_coord_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
 	_coord_label.add_theme_constant_override("outline_size", 3)
-	_coord_label.text = "X: 0.0  Y: 0.0  Z: 0.0"
+	_coord_label.text = "世界 X: 0.0  Y: 0.0  Z: 0.0"
 	add_child(_coord_label)
 
 	# 本局地形种子（同一种子 = 同一片地形与石头分布，可复现/分享）
@@ -285,8 +285,15 @@ func _enh_name(id: String) -> String:
 
 func _process(delta: float) -> void:
 	if _player != null and _coord_label != null:
-		var p := _player.global_position
-		_coord_label.text = "X: %.1f  Y: %.1f  Z: %.1f" % [p.x, p.y, p.z]
+		# 战斗空间在世界里偏出去几千米，所以战斗内报"战斗坐标"（开战那一刻 = 0,0,0），
+		# 大地图才报世界坐标；前缀写出来，免得两种数混在一起看不懂
+		var battle := false
+		if _player.has_method("coords_are_battle"):
+			battle = bool(_player.call("coords_are_battle"))
+		var p: Vector3 = _player.call("display_coords") \
+			if _player.has_method("display_coords") else _player.global_position
+		_coord_label.text = "%s X: %.1f  Y: %.1f  Z: %.1f" % [
+			"战斗" if battle else "世界", p.x, p.y, p.z]
 		# 小地图仅在玩家移动≥6m时重采样（静止时零开销）
 		if _ground != null and _ground.has_method("height_at_fast"):
 			if _player.global_position.distance_squared_to(_last_map_pos) >= 36.0:

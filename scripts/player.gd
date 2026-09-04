@@ -48,6 +48,8 @@ var _arena: Node                      # 本次开战实际使用的那套空间
 var _arenas := {}                     # theme_key("white"/"highway") -> 空间节点
 var _in_arena := false
 var _saved_pos := Vector3.ZERO
+var _battle_origin := Vector3.INF   # 开战那一刻玩家所站点 = 战斗坐标原点（大世界坐标与之无关）
+var _battle_anchored := false       # false = 还没落地（出生时悬空 0.15 米，落地才算真正的原点）
 var _saved_yaw := 0.0
 var _saved_pitch := 0.0
 var _saved_env: Environment
@@ -226,6 +228,26 @@ func in_arena() -> bool:
 	return _in_arena
 
 
+# ---- 两套坐标：大世界的 global_position 与"战斗坐标"（开战那一刻所站点为原点）----
+# 战斗空间在世界里偏得很远（纯白空间中心 y=100、国道中心 z=-3000），
+# 直接把 global 报给人看会出现"刚进战场就 -2986 米"这种读不懂的数，
+# 所以战斗内一律换算成相对起点的位移：开局 (0,0,0)，跑出去多远就是多少米。
+func coords_are_battle() -> bool:
+	## true = 现在该看战斗坐标（在 BOSS 空间里）；false = 大地图，看世界坐标
+	return _in_arena and _battle_origin != Vector3.INF
+
+
+func battle_origin() -> Vector3:
+	return _battle_origin
+
+
+func display_coords() -> Vector3:
+	## HUD 与日志统一走这里，调用方不用自己判断在不在战斗里
+	if not coords_are_battle():
+		return global_position
+	return global_position - _battle_origin
+
+
 func near_boss() -> bool:
 	## 大地图上靠近某只存活 BOSS 时，HUD 显示按 E 提示
 	return not _in_arena and nearest_boss() != null
@@ -281,6 +303,8 @@ func _enter_arena() -> void:
 	_arena_boss.teleport_to(_arena.call("boss_spawn"))
 	_arena_boss.set_arena_mode(true)
 	global_position = _arena.call("player_spawn")
+	_battle_origin = global_position     # 战斗坐标原点：每次开战都从 (0,0,0) 重新算
+	_battle_anchored = false             # 落地后再校正一次（出生悬空 0.15 米）
 	velocity = Vector3.ZERO
 	rotation.y = 0.0
 	if cam != null:
@@ -291,6 +315,8 @@ func _enter_arena() -> void:
 func _exit_arena() -> void:
 	## 离开 BOSS 空间：恢复大地图与 BOSS 原位、玩家位姿
 	_in_arena = false
+	_battle_origin = Vector3.INF     # 回到大世界：坐标重新按世界算
+	_battle_anchored = false
 	if _arena_boss != null and is_instance_valid(_arena_boss):
 		_arena_boss.set_arena_mode(false)
 		_arena_boss.go_home()
@@ -743,6 +769,16 @@ func _physics_process(delta: float) -> void:
 
 	move_and_slide()
 	_confine_to_arena()
+	_anchor_battle_origin()
+
+
+func _anchor_battle_origin() -> void:
+	## 出生点悬空 0.15 米，落地这一刻才是"开战时我站在哪儿"。把原点校正到这里，
+	## 战斗坐标才真的从 (0,0,0) 起算（否则会眼看它从 0 慢慢滑到 -0.15）。
+	if not _in_arena or _battle_anchored or not is_on_floor():
+		return
+	_battle_origin = global_position
+	_battle_anchored = true
 
 
 func _confine_to_arena() -> void:
