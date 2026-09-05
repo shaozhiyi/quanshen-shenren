@@ -103,6 +103,40 @@ func height_at_fast(x: float, z: float) -> float:
 	return lerpf(lerpf(h00, h10, tx), lerpf(h01, h11, tx), tz)
 
 
+func grid_ready() -> bool:
+	## 高度网格（= 地面 mesh 的顶点表）是否已经建好，surface_height 才有准头
+	return _grid_n > 1 and _grid.size() == _grid_n * _grid_n
+
+
+func surface_height(x: float, z: float) -> float:
+	## 贴物专用：返回地面 mesh **真正铺出来**的那个高度，不是解析式高度。
+	## height_at 带 5 层倍频，最高频那几层在 3.9 米一格的顶点网格上根本没采到，
+	## 于是渲染出来的地面是被抹平的版本，两者实测平均差 0.13 米、最大差 0.85 米
+	## ——石子按解析高度摆就整片悬空。这里按 _fill_grid_tris 的同一条副对角线
+	## 在网格里做三角线性插值，与视觉面/碰撞面严格同一张皮。
+	if not grid_ready():
+		return _height_at(x, z)
+	var fx := clampf((x + _grid_half) / _grid_cell, 0.0, float(_grid_n - 1) - 0.001)
+	var fz := clampf((z + _grid_half) / _grid_cell, 0.0, float(_grid_n - 1) - 0.001)
+	var ix := int(fx)
+	var iz := int(fz)
+	var tx := fx - float(ix)
+	var tz := fz - float(iz)
+	var r0 := iz * _grid_n + ix
+	var r1 := r0 + _grid_n
+	var h00: float = _grid[r0]
+	var h10: float = _grid[r0 + 1]
+	var h01: float = _grid[r1]
+	var h11: float = _grid[r1 + 1]
+	if tx + tz <= 1.0:
+		# 三角形 A(x0,z0)-B(x1,z0)-C(x0,z1)
+		return h00 + (h10 - h00) * tx + (h01 - h00) * tz
+	# 三角形 B(x1,z0)-D(x1,z1)-C(x0,z1)
+	var u := tx + tz - 1.0
+	var v := 1.0 - tx
+	return h10 + (h11 - h10) * u + (h01 - h10) * v
+
+
 func normal_at(x: float, z: float) -> Vector3:
 	## 地表法线（中心差分，与 shader 顶点法线同公式），供草/杂物沿坡倾斜
 	var e := 0.5
@@ -202,7 +236,8 @@ func _sample_grid_row(hgrid: PackedFloat32Array, n: int, half: float, cell: floa
 
 
 func _cache_grid(hgrid: PackedFloat32Array, n: int, half: float, cell: float) -> void:
-	## 保留网格供廉价双线性查询（小地图等概览用途；贴物仍须用解析 height_at 保对齐）
+	## 保留网格供廉价查询：height_at_fast 双线性（小地图等概览）、
+	## surface_height 三角插值（贴石子/放 BOSS，与视觉面严格同一张皮）
 	_grid = hgrid
 	_grid_n = n
 	_grid_half = half

@@ -98,6 +98,7 @@ var _visual: Node3D
 var _hp_label: Label3D
 var _label: Label3D
 var _base_y := 0.0
+var _reseated := false            # 大地图落座是否已按真实地面校正过（见 _reseat_to_surface）
 var _arena_mode := false          # 只有进入 BOSS 空间才可被攻击
 var _home_pos := Vector3.ZERO     # 大地图原位（进出空间时恢复）
 
@@ -294,6 +295,36 @@ func ground_node() -> Node:
 	return _find("ground", "../Ground")
 
 
+func _ground_y(ground: Node, x: float, z: float) -> float:
+	## 落地高度：优先地面 mesh 真正铺出来的那张皮（surface_height），
+	## 解析式 height_at 带网格没采到的高频噪声，最多差 0.85 米，只作兜底
+	if ground.has_method("surface_height"):
+		return float(ground.call("surface_height", x, z))
+	return float(ground.call("height_at", x, z))
+
+
+func _reseat_to_surface() -> void:
+	## 出生那会儿地形的高度网格还没建完（分片建碰撞要几百毫秒），_base_y 只能取解析值。
+	## 网格一就绪就按真实地面重坐一次；在空间里打或死亡中则先不动，等回到大地图再补。
+	_reseated = true
+	if _arena_mode or _dead:
+		# 正在空间里打 / 还没复活：绝不能动根节点坐标，等回到大地图再补坐
+		_reseated = false
+		return
+	var ground := ground_node()
+	if ground == null or not ground.has_method("grid_ready"):
+		return
+	if not bool(ground.call("grid_ready")):
+		_reseated = false        # 还没建好，下一帧再试
+		return
+	var sy := _ground_y(ground, world_x, world_z)
+	if absf(sy - _base_y) < 0.001:
+		return
+	_base_y = sy
+	position = Vector3(world_x, _base_y, world_z)
+	_home_pos = position
+
+
 func is_dead() -> bool:
 	return _dead
 
@@ -321,7 +352,7 @@ func place_near(spawn_point: Vector3, ground: Node, avoid: Array = []) -> bool:
 			continue
 		if ground.has_method("normal_at") and ground.call("normal_at", x, z).y < spawn_max_slope:
 			continue
-		var y: float = ground.call("height_at", x, z)
+		var y: float = _ground_y(ground, x, z)
 		if absf(y - spawn_point.y) > 26.0:
 			continue   # 别把 BOSS 甩到深谷或绝壁顶上，玩家抬头找不到
 		var clash := false
@@ -420,7 +451,7 @@ func _ready() -> void:
 	apply_difficulty()               # 先按名册把血量/光环伤害/星点色算好，避免未开战时读到默认 0.3
 	var ground := ground_node()
 	if ground != null and ground.has_method("height_at"):
-		_base_y = ground.height_at(world_x, world_z)
+		_base_y = _ground_y(ground, world_x, world_z)
 	position = Vector3(world_x, _base_y, world_z)
 	_home_pos = position
 
@@ -722,6 +753,8 @@ func _process(delta: float) -> void:
 		# 沉地消失
 		_visual.position.y = maxf(_visual.position.y - delta * 1.2, -box_height() * 0.9)
 		return
+	if not _reseated:
+		_reseat_to_surface()     # 地形网格就绪后补一次真实落座（见函数注释）
 	# 正面（+Z）转向：贴图盒 BOSS 是"梗脸永远对着你"，载具档按车头条线走
 	var player := player_node()
 	var spd := 0.0

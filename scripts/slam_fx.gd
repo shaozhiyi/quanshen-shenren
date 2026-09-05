@@ -279,7 +279,11 @@ func _floor_y(p: Vector3) -> float:
 	var y := -1000.0
 	var ground := get_tree().get_first_node_in_group("ground")
 	if ground != null and ground.has_method("height_at"):
-		y = float(ground.call("height_at", p.x, p.z))
+		# 用地面 mesh 真正铺出来的高度，否则星点会悬在半空消失、落地光圈飘着
+		if ground.has_method("surface_height"):
+			y = float(ground.call("surface_height", p.x, p.z))
+		else:
+			y = float(ground.call("height_at", p.x, p.z))
 	## 场景里可以并列多套空间（纯白 / 国道）：逐套问 inside()，只认罩住它且激活中的那套
 	for arena in get_tree().get_nodes_in_group("arena"):
 		if arena == null or not arena.has_method("inside") or not arena.has_method("floor_y"):
