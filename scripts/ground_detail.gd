@@ -5,16 +5,21 @@ extends Node3D
 ## 用它摆石头会整片悬空。另外要等高度网格建好再摆，否则 surface_height 也退回解析式。
 ## 布局写成纯函数 rock_layout()：MultiMesh 的实例数据在 GDScript 侧只写不读
 ## （get_instance_transform 恒返回单位阵），自检只能核对这份布局，顺带也方便调试。
+## 15 万颗画得动，靠的是按 tile_split×tile_split 拆成多个 MultiMesh 地块 +
+## 每块设 visibility_range_end 做距离剔除（整图一块时剔除粒度太粗，等于全画）。
 
 @export var rock_count := 0                  # 0 = 按 rocks_per_1000m2 自动算
-@export var rocks_per_1000m2 := 206.0        # 密度：整张 500×500 地图 → 约 5 万颗（每 4.8 ㎡ 一颗）
+@export var rocks_per_1000m2 := 620.0        # 密度：整张 500×500 地图 → 约 15 万颗（每 1.6 ㎡ 一颗）
 @export var area_half := 0.0                 # 0 = 铺满整张地图（留一点边距）
 @export var edge_margin := 4.0               # 离地形边界/围墙的安全边距（米）
 @export var rock_size_w := Vector2(0.20, 0.45)    # 石子宽（米，直径；底模半径 1 米 → 缩放=宽的一半）
 @export var rock_size_h := Vector2(0.08, 0.20)    # 石子高（米；底模高 1 米 → 缩放=整高）
+@export var tile_split := 16                 # 每边切几块：16×16=256 块，逐块做视锥/距离剔除
+@export var view_range_end := 150.0          # 超过这个距离的地块整块不画（150 米外石子只剩几像素）
 
 const ROCK_SHADER := preload("res://shaders/rock.gdshader")
 const SINK := 0.25        # 石头按自身半高往下埋这么多，看起来才"长在地上"
+const TILES_PER_FRAME := 32        # 每建这么多地块让出一帧，加载界面才不会冻住
 
 
 func _ready() -> void:
@@ -40,21 +45,57 @@ func _build_details() -> void:
 	var t0 := Time.get_ticks_msec()
 	var layout := rock_layout(ground)
 	var t1 := Time.get_ticks_msec()
+	var mesh := _make_rock_mesh()
+	var half := _map_half(ground)
+	var buckets := _split_tiles(layout, half)
+	var built := 0
+	for bucket in buckets:
+		var list: Array[Transform3D] = bucket
+		if list.is_empty():
+			continue
+		add_child(_make_tile(list, mesh))
+		built += 1
+		if built % TILES_PER_FRAME == 0:
+			await get_tree().process_frame
+			if not is_inside_tree():
+				return
+	print("[ground_detail] 石子 %d 颗 / %d 块地块，铺满 %.0f×%.0f 米，%d 米外整块不画（算布局 %d ms + 建地块 %d ms）" % [
+		layout.size(), built, half * 2.0, half * 2.0, int(view_range_end),
+		t1 - t0, Time.get_ticks_msec() - t1])
+
+
+## 按位置把石子分进 tile_split×tile_split 个格子（每格一个 MultiMesh，才能逐格剔除）
+func _split_tiles(layout: Array[Transform3D], half: float) -> Array:
+	var n := maxi(tile_split, 1)
+	var buckets: Array = []
+	for _i in n * n:
+		var empty: Array[Transform3D] = []
+		buckets.append(empty)
+	var step := half * 2.0 / float(n)
+	for t in layout:
+		var bx := clampi(int((t.origin.x + half) / step), 0, n - 1)
+		var bz := clampi(int((t.origin.z + half) / step), 0, n - 1)
+		var list: Array[Transform3D] = buckets[bz * n + bx]
+		list.append(t)
+	return buckets
+
+
+func _make_tile(list: Array[Transform3D], mesh: Mesh) -> MultiMeshInstance3D:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_custom_data = true
-	mm.mesh = _make_rock_mesh()
-	mm.instance_count = layout.size()
-	for i in layout.size():
-		mm.set_instance_transform(i, layout[i])
-		mm.set_instance_custom_data(i, Color(_tint_for(layout[i]), 0.0, 0.0, 0.0))
+	mm.mesh = mesh
+	mm.instance_count = list.size()
+	for i in list.size():
+		mm.set_instance_transform(i, list[i])
+		mm.set_instance_custom_data(i, Color(_tint_for(list[i]), 0.0, 0.0, 0.0))
 	var mi := MultiMeshInstance3D.new()
 	mi.multimesh = mm
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(mi)
-	print("[ground_detail] 石子 %d 颗，铺满 %.0f×%.0f 米（算布局 %d ms + 填实例 %d ms）" % [
-		layout.size(), _map_half(ground) * 2.0, _map_half(ground) * 2.0,
-		t1 - t0, Time.get_ticks_msec() - t1])
+	# 距离剔除：整块地块中心超过 view_range_end 就不提交绘制（ShaderMaterial 不支持
+	# 淡入淡出，所以直接硬切；150 米外一颗石子只剩几个像素，边界看不出来）
+	mi.visibility_range_end = view_range_end
+	return mi
 
 
 # ---- 本局石子布局（纯函数：地形种子 → 每颗石子的变换）----
