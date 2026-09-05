@@ -28,7 +28,9 @@ static func _box(size: Vector3, pos: Vector3, mat: Material) -> MeshInstance3D:
 
 
 static func _cyl(r: float, h: float, mat: Material, steps := 20) -> MeshInstance3D:
-	## 圆柱：默认轴沿 Y；调用方自己旋转到需要朝向
+	## 圆柱：默认轴沿局部 Y，调用方自己旋转到需要朝向。
+	## 车轮这种"轴要横过来（沿 X）"必须绕 Z 转 90°：绕 X 转 90° 会把轴送到 Z，
+	## 变成横躺在行驶方向上的滚筒，再按 rotation.x 滚 = 整只轮子前翻。
 	var mi := MeshInstance3D.new()
 	var cm := CylinderMesh.new()
 	cm.top_radius = r
