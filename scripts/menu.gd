@@ -2,9 +2,17 @@ extends Node3D
 ## 主菜单：中间一瓶旋转的野生狗奶 + 三个按钮（新游戏 / 读取存档 / 输入种子）。
 ## 全部 UI 用代码搭建（与 HUD、背包一致的风格），存档为 save/ 下的 JSON。
 ## 选好后写入 SaveManager 的 pending_seed / pending_load，再切到 main.tscn 由游戏侧套用。
+## 切场景这段会盖上层 LoadingUI：素材在后台线程读、地形分片生成，动画才有帧可跑。
 
 const GAME_SCENE := "res://scenes/main.tscn"
 const FACE_DIR := "res://assets/props/dogmilk/"
+## 启动时要用到、又不属于场景依赖的大贴图：提前在后台线程读掉（合计约 1 秒主线程活儿）
+const WARM := [
+	"res://assets/ground/leafy_grass_diff_2k.jpg",
+	"res://assets/ground/leafy_grass_nor_gl_2k.jpg",
+	"res://assets/ground/leafy_grass_rough_2k.jpg",
+	"res://assets/sky/kloofendal_48d_partly_cloudy.hdr",
+]
 
 var _bottle: MeshInstance3D
 var _root: Control
@@ -317,7 +325,41 @@ func _on_load(path: String) -> void:
 
 func _start(msg: String) -> void:
 	print("[menu] %s" % msg)
-	get_tree().change_scene_to_file(GAME_SCENE)
+	LoadingUI.show("正在读取素材…")
+	# 先让覆盖层真的画出至少一帧：不然紧接着的同步加载会把第一帧一起吃掉，
+	# 看上去还是"点了没反应"
+	await get_tree().process_frame
+	await get_tree().process_frame
+	# 场景本体 + 几张大贴图一起在后台线程读（三张 2K 草皮贴图实测合计 ~0.9 秒，
+	# 留到主线程加载就会把首帧冻住）；读完后 terrain 里 load() 直接命中缓存
+	var paths: Array[String] = [GAME_SCENE]
+	paths.append_array(WARM)
+	for p in paths:
+		ResourceLoader.load_threaded_request(p)
+	var total := paths.size()
+	var done := 0
+	while done < total:
+		done = 0
+		for p in paths:
+			if ResourceLoader.load_threaded_get_status(p) != ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+				done += 1
+		LoadingUI.stage(0.04 + 0.30 * float(done) / float(total),
+			"正在读取素材 %d/%d" % [done, total])
+		if done < total:
+			await get_tree().process_frame
+	var ps: PackedScene = null
+	for p in paths:
+		if ResourceLoader.load_threaded_get_status(p) != ResourceLoader.THREAD_LOAD_LOADED:
+			continue
+		var r: Resource = ResourceLoader.load_threaded_get(p)
+		if p == GAME_SCENE:
+			ps = r as PackedScene
+	if ps == null:
+		ps = load(GAME_SCENE)      # 后台加载没拿到（首次或失败）就同步兜一遍
+	LoadingUI.stage(0.33, "正在生成世界…")
+	# 交给加载层分帧进场景（每个根节点独占一帧）。这里刻意不 await：
+	# 过程中菜单自己会被释放，续体挂在 LoadingUI 的静态协程上才安全。
+	LoadingUI.enter_game(get_tree(), ps)
 
 
 func _unhandled_input(event: InputEvent) -> void:

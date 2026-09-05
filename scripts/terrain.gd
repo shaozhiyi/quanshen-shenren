@@ -15,6 +15,7 @@ extends Node3D
 @export var freq_range := Vector2(0.0085, 0.0115)   # 随机山体疏密区间（偏密一点，山丘更频繁）
 
 const GROUND_SHADER := preload("res://shaders/ground.gdshader")
+const CHUNK_ROWS := 6               # 分片行数：129 行 ≈ 22 片，每片约 80 毫秒，动画才有得动
 
 var terrain_seed := 0                    # 本局实际生效的种子
 var noise_off0 := Vector2.ZERO           # 三层 fbm 的域偏移（与 shader 同名 uniform 一致）
@@ -32,10 +33,18 @@ func _ready() -> void:
 	add_to_group("ground")
 	_resolve_seed()
 	# mesh 立即生成（渲染需要）；物理体延迟到第一个物理帧创建
+	LoadingUI.stage(0.38, "正在铺地表材质…")
 	_build_terrain_mesh()
 	await get_tree().physics_frame
-	_build_collision()
+	# 加载界面盖着 → 按行切片建碰撞（每片让出一帧，动画才动得起来）；
+	# 没有加载层（直接进场景 / 无头自检）→ 仍一口建完，保持"两帧后就能用"的老约定
+	if LoadingUI.active():
+		await _build_collision_chunked()
+	else:
+		_build_collision()
 	_build_boundary_walls()
+	LoadingUI.stage(0.98, "世界就绪")
+	LoadingUI.finish()
 
 
 func _resolve_seed() -> void:
@@ -139,57 +148,107 @@ func _build_terrain_mesh() -> void:
 
 
 func _build_collision() -> void:
-	## 地形碰撞：三角网格（ConcavePolygonShape3D）采样同一高度场。
-	## 起伏变大后 Box 网格近似会形成台阶卡住玩家，trimesh 在物理帧后创建已验证稳定。
-	var shape := ConcavePolygonShape3D.new()
-	shape.set_faces(_build_collision_faces())
-	var body := StaticBody3D.new()
-	var csc := CollisionShape3D.new()
-	csc.shape = shape
-	body.add_child(csc)
-	add_child(body)
-
-
-func _build_collision_faces() -> PackedVector3Array:
-	## 按网格分辨率采样地形，展开为三角形汤（与视觉 mesh 同密度）。
-	## 先缓存 (segments+1)^2 个顶点高度再连三角形：直接逐顶点调用 _height_at
-	## 会有 6 倍冗余（每格 6 顶点但仅 4 个唯一角点），启动耗时大头即在此。
+	## 一口建完（无加载层时用）：与分片版走同一套逐行函数，结果完全一致
 	var n := segments + 1
 	var half := size * 0.5
 	var cell := size / float(segments)
+	var hgrid := _sample_grid(n, half, cell)
+	_cache_grid(hgrid, n, half, cell)
+	_attach_collision_body(_build_collision_faces(hgrid, n, half, cell))
+
+
+func _build_collision_chunked() -> void:
+	## 分片版（加载界面盖着时用）：高度场是启动耗时大头（约 1.5~1.9 秒），
+	## 按行切片、每片之间 await 一帧，让 LoadingUI 真的能画出新帧。
+	var n := segments + 1
+	var half := size * 0.5
+	var cell := size / float(segments)
+	var t0 := Time.get_ticks_msec()
 	var hgrid := PackedFloat32Array()
 	hgrid.resize(n * n)
 	for iz in n:
-		var z := -half + float(iz) * cell
-		for ix in n:
-			var x := -half + float(ix) * cell
-			hgrid[iz * n + ix] = _height_at(x, z)
-	# 保留网格供廉价双线性查询（小地图等概览用途；贴物仍须用解析 height_at 保对齐）
+		_sample_grid_row(hgrid, n, half, cell, iz)
+		if (iz + 1) % CHUNK_ROWS == 0 or iz == n - 1:
+			LoadingUI.stage(0.40 + 0.40 * float(iz + 1) / float(n), "正在生成地形起伏…")
+			await get_tree().physics_frame
+	_cache_grid(hgrid, n, half, cell)
+	var t1 := Time.get_ticks_msec()
+	var pts := PackedVector3Array()
+	pts.resize(segments * segments * 6)
+	var w := 0
+	for iz in segments:
+		w = _fill_grid_tris(pts, w, hgrid, n, half, cell, iz)
+		if (iz + 1) % CHUNK_ROWS == 0 or iz == segments - 1:
+			LoadingUI.stage(0.80 + 0.14 * float(iz + 1) / float(segments), "正在铺设碰撞面…")
+			await get_tree().physics_frame
+	print("[terrain] 碰撞构建：高度场 %d ms + 三角面 %d ms" % [t1 - t0, Time.get_ticks_msec() - t1])
+	_attach_collision_body(pts)
+
+
+func _sample_grid(n: int, half: float, cell: float) -> PackedFloat32Array:
+	var hgrid := PackedFloat32Array()
+	hgrid.resize(n * n)
+	for iz in n:
+		_sample_grid_row(hgrid, n, half, cell, iz)
+	return hgrid
+
+
+func _sample_grid_row(hgrid: PackedFloat32Array, n: int, half: float, cell: float, iz: int) -> void:
+	## 一行高度（与 ground.gdshader 同式，逐点解析采样，保证视觉/碰撞/贴物对齐）
+	var z := -half + float(iz) * cell
+	for ix in n:
+		var x := -half + float(ix) * cell
+		hgrid[iz * n + ix] = _height_at(x, z)
+
+
+func _cache_grid(hgrid: PackedFloat32Array, n: int, half: float, cell: float) -> void:
+	## 保留网格供廉价双线性查询（小地图等概览用途；贴物仍须用解析 height_at 保对齐）
 	_grid = hgrid
 	_grid_n = n
 	_grid_half = half
 	_grid_cell = cell
 
+
+func _build_collision_faces(hgrid: PackedFloat32Array, n: int, half: float, cell: float) -> PackedVector3Array:
+	## 把高度网格展开为三角形汤（与视觉 mesh 同密度）
 	var pts := PackedVector3Array()
 	pts.resize(segments * segments * 6)
 	var w := 0
 	for iz in segments:
-		var z0 := -half + float(iz) * cell
-		var z1 := z0 + cell
-		for ix in segments:
-			var x0 := -half + float(ix) * cell
-			var x1 := x0 + cell
-			var h00: float = hgrid[iz * n + ix]
-			var h10: float = hgrid[iz * n + ix + 1]
-			var h01: float = hgrid[(iz + 1) * n + ix]
-			var h11: float = hgrid[(iz + 1) * n + ix + 1]
-			pts[w] = Vector3(x0, h00, z0); w += 1
-			pts[w] = Vector3(x1, h10, z0); w += 1
-			pts[w] = Vector3(x0, h01, z1); w += 1
-			pts[w] = Vector3(x1, h10, z0); w += 1
-			pts[w] = Vector3(x1, h11, z1); w += 1
-			pts[w] = Vector3(x0, h01, z1); w += 1
+		w = _fill_grid_tris(pts, w, hgrid, n, half, cell, iz)
 	return pts
+
+
+func _fill_grid_tris(pts: PackedVector3Array, w: int, hgrid: PackedFloat32Array,
+		n: int, half: float, cell: float, iz: int) -> int:
+	## 第 iz 行格子 → 6 个顶点（两个三角形），返回下一个写入位置
+	var z0 := -half + float(iz) * cell
+	var z1 := z0 + cell
+	for ix in segments:
+		var x0 := -half + float(ix) * cell
+		var x1 := x0 + cell
+		var h00: float = hgrid[iz * n + ix]
+		var h10: float = hgrid[iz * n + ix + 1]
+		var h01: float = hgrid[(iz + 1) * n + ix]
+		var h11: float = hgrid[(iz + 1) * n + ix + 1]
+		pts[w] = Vector3(x0, h00, z0); w += 1
+		pts[w] = Vector3(x1, h10, z0); w += 1
+		pts[w] = Vector3(x0, h01, z1); w += 1
+		pts[w] = Vector3(x1, h10, z0); w += 1
+		pts[w] = Vector3(x1, h11, z1); w += 1
+		pts[w] = Vector3(x0, h01, z1); w += 1
+	return w
+
+
+func _attach_collision_body(pts: PackedVector3Array) -> void:
+	## 三角网格物理体：必须在物理帧之后创建，场景加载期创建的碰撞体不会被物理世界接收
+	var shape := ConcavePolygonShape3D.new()
+	shape.set_faces(pts)
+	var body := StaticBody3D.new()
+	var csc := CollisionShape3D.new()
+	csc.shape = shape
+	body.add_child(csc)
+	add_child(body)
 
 
 func _build_boundary_walls() -> void:
