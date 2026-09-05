@@ -1130,6 +1130,9 @@ func _tick_charge(delta: float) -> float:
 	_fade_lane(delta)
 	if not _charge_hit and _touch_player(from, global_position):
 		_charge_hit = true
+		# 撞到了就当场停车：车身这么长，再往前压会把人钉在车头上"犁"出去二十多米，
+		# 既难看又让后面的击退没意义。停车即进入结算（顶开 + 减速 + 收尾光波）。
+		_charge_left = 0.0
 	if _charge_left <= 0.001:
 		_end_charge()
 	return _charge_speed
@@ -1165,20 +1168,32 @@ func _settle_charge_hit() -> void:
 		player.apply_slow(_charge_slow)     # 移速 ×0.5，持续这几秒（重复撞到取更长）
 
 
+const CHARGE_MARGIN := 0.7            # 撞击盒外扩（玩家胶囊半径 + 一点余量）
+
 func _touch_player(from: Vector3, to: Vector3) -> bool:
-	## 命中判定用"本帧起点→终点"这段车辙 + 半车宽：30 米/秒时一帧就跨半米，
-	## 贴着车侧的人不会漏判，帧率低也不会直接穿过去。伤害仍吃防具减伤与无敌免疫。
+	## 命中 = 玩家落在这帧车身的"扫过足迹"里：侧向不超过半车宽，纵向往前不超过
+	## 本帧位移 + 半个车长（车尾方向也算，车身这么长，倒着压到也算撞）。
+	## 早先只按"中心线线段 + 半车宽"判，正面撞上永远不成立：BOSS 身上那块
+	## StaticBody3D 会把玩家挡在车头前约 5.6 米处，而中心线判定只有 ±2.2 米，
+	## 于是车从人身上碾过去也不掉血——玩家被顶着跑一整段，什么也没发生。
+	## 伤害仍走 take_damage（吃防具减伤与无敌免疫）。
 	var player := player_node()
 	if player == null or _dead:
 		return false
-	var a := Vector2(from.x, from.z)
-	var b := Vector2(to.x, to.z)
-	var p := Vector2(player.global_position.x, player.global_position.z)
-	var ab := b - a
-	var len2 := ab.length_squared()
-	var t := 0.0 if len2 < 0.000001 else clampf((p - a).dot(ab) / len2, 0.0, 1.0)
-	if (a + ab * t).distance_to(p) > _box_size.x * 0.5 + 0.7:
+	var dir := Vector2(_charge_dir.x, _charge_dir.z)
+	if dir.length_squared() < 0.0001:
 		return false
+	dir = dir.normalized()
+	var a := Vector2(from.x, from.z)
+	var p := Vector2(player.global_position.x, player.global_position.z)
+	var rel := p - a
+	if absf(rel.x * dir.y - rel.y * dir.x) > _box_size.x * 0.5 + CHARGE_MARGIN:
+		return false                                  # 在车辙外侧
+	var along := rel.dot(dir)
+	var back := _box_size.z * 0.5 + CHARGE_MARGIN
+	var fwd := a.distance_to(Vector2(to.x, to.z)) + back
+	if along < -back or along > fwd:
+		return false                                  # 还没压到，也已经过去了
 	if player.has_method("take_damage"):
 		player.take_damage(_charge_dmg)
 	# 撞上只记账，不当场推人：击退与减速留到这轮冲完（车停住）再一起结算，
