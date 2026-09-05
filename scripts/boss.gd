@@ -143,7 +143,7 @@ var _has_music := false
 var _dmg_t := 0.0
 var _arena_base_y := 0.0
 var _music_tail := 0.0          # 攻击结束后歌曲再多播的剩余秒数
-var _music_on := false          # 本轮战斗"应该有音乐"（定身不许改变它，见 _tick_music）
+var _music_frozen := false      # 定身把歌掐住了没（解冻靠 _resume_music，见 _process）
 var _wander_target := Vector3.ZERO
 var _wandering := false
 
@@ -159,7 +159,6 @@ func set_arena_mode(b: bool) -> void:
 	_phase_t = 0.0
 	_dmg_t = 0.0
 	_music_tail = 0.0
-	_music_on = false      # 清掉"这一轮该放歌"的账，免得 _tick_music 把音乐续到战场外
 	_wandering = false
 	_slam_hit = false
 	_slam_target = Vector3.ZERO
@@ -167,14 +166,12 @@ func set_arena_mode(b: bool) -> void:
 	_show_marker(false)
 	_hide_stars()
 	_reset_charge()        # 载具档：半截冲撞/预警带不能留到下一次开战
-	if _music != null and _music.playing:
-		_music.stop()
+	_halt_music()            # 停乐并解掉定身可能留下的暂停标记
 	if b:
 		_arena_base_y = position.y
 		apply_difficulty()   # 每次开战都是一场完整的挑战
 		if _has_music and not _has_skills:
-			_music.play(0.0)   # 载具档：进战场就开唱（循环），撤退/击杀走上面的 stop 收尾
-			_music_on = true
+			_music.play(0.0)   # 载具档：进战场就开唱（循环），撤退/击杀走上面的 halt 收尾
 	else:
 		if _dead:
 			respawn()        # 击杀后离开空间 → 原地复活，可再次挑战
@@ -251,7 +248,7 @@ func respawn() -> void:
 	_phase_t = 0.0
 	_dmg_t = 0.0
 	_music_tail = 0.0
-	_music_on = false      # 清掉"这一轮该放歌"的账，免得 _tick_music 把音乐续到战场外
+	_halt_music()        # 复活不带上一场的歌，也不带定身留下的暂停标记
 	_wandering = false
 	_slam_hit = false
 	_show_marker(false)
@@ -748,9 +745,9 @@ func take_damage(amount: int, weapon := "") -> void:
 
 
 func stun(sec: float) -> bool:
-	## 法杖蓝球的"只控制、不打断"：不动 _phase / _phase_t / 技能进度，也不停音乐
-	## （歌曲由 _process 里的 _tick_music 按真实时间放着，定身早退拦不到它），
-	## 只是这段时间里不推进、不移动、不转向；再命中取最长那次（不叠加、不延长成无限）
+	## 法杖蓝球的"只控制、不打断"：不动 _phase / _phase_t / 技能进度，
+	## 只是这段时间里不推进、不移动、不转向，正在放的歌也原地掐住（_freeze_music），
+	## 时间一到接着打、接着唱；再命中取最长那次（不叠加、不延长成无限）
 	if _dead or not _arena_mode or sec <= 0.0:
 		return false
 	_stun_t = maxf(_stun_t, sec)
@@ -768,10 +765,8 @@ func _die() -> void:
 	_label.text = "%s 已被缴获" % boss_name
 	_hp_label.visible = false
 	_music_tail = 0.0
-	_music_on = false
 	_reset_charge()      # 死在半截冲撞里：立刻收掉预警带，也别再往前滑
-	if _music != null and _music.playing:
-		_music.stop()
+	_halt_music()            # 击杀瞬间停乐（顺带解掉定身可能掐着的暂停）
 	died.emit(self)          # 先记账再通知，玩家侧按 reward_count() 发奖
 
 
@@ -781,11 +776,14 @@ func _process(delta: float) -> void:
 		# 沉地消失
 		_visual.position.y = maxf(_visual.position.y - delta * 1.2, -box_height() * 0.9)
 		return
-	_tick_music(delta)   # 音乐按真实时间走，定身不许让它提前收尾或断档
 	if _stun_t > 0.0:
-		# 被法杖定住：整只冻在原地（相位/进度原样保留），到点接着打
+		# 被法杖定住：整只冻在原地（相位/进度原样保留），正在放的歌也一起掐住，
+		# 时间一到接着打、接着唱（不是重头放，也不是把这一段跳过去）
 		_stun_t = maxf(_stun_t - delta, 0.0)
+		_freeze_music()
 		return
+	if _music_frozen:
+		_resume_music()
 	if not _reseated:
 		_reseat_to_surface()     # 地形网格就绪后补一次真实落座（见函数注释）
 	# 正面（+Z）转向：贴图盒 BOSS 是"梗脸永远对着你"，载具档按车头条线走
@@ -824,28 +822,43 @@ func _animate_wheels(delta: float, speed: float) -> void:
 			(w as Node3D).rotation.x += ang
 
 
-# ---- 战斗配乐：单独按真实时间伺候，不吃定身 ----
-## 法杖蓝球冻住的是 BOSS 的动作，不是这首歌。所以歌曲的收尾倒计时、以及"唱完了这一轮还没打完"
-## 时的续播都放在这里，由 _process 在定身早退之前调用；否则玩家攒几发蓝球，
-## 音乐会跟着动作一起卡住/提前唱完，听着就像"定身把音乐也一起定住了"。
-func _tick_music(delta: float) -> void:
-	if not _has_music or _music == null:
+# ---- 战斗配乐 × 定身：BOSS 冻住，歌也原地掐住 ----
+## 蓝球定身的一瞬间把正在放的歌暂停（stream_paused，不是 stop），定身结束从掐住那一拍
+## 接着唱。歌曲的收尾倒计时 _music_tail 留在 _update_windup 里跟着相位一起冻，
+## 所以定身不会把尾巴提前放完、也不会让歌和动作脱节。
+func _freeze_music() -> void:
+	if _music_frozen or _music == null or not _music.playing:
 		return
-	if _music_tail > 0.0:
-		# 攻击收尾：让歌再多响一会儿再掐（这一段即便同时被定身也照走）
-		_music_tail = maxf(_music_tail - delta, 0.0)
-		if _music_tail <= 0.0:
-			_music_on = false
-			if _music.playing:
-				_music.stop()
-		return
-	if _music_on and _arena_mode and not _dead and not _music.playing:
-		_music.play(MUSIC_AT)   # 副歌被定身"跑"完了而这一轮还没打完 → 从头续上，战斗不断乐
+	_music.stream_paused = true
+	_music_frozen = true
+
+
+func _resume_music() -> void:
+	## 注意：Godot 里 stream_paused=true 期间 playing 会被报成 false（听感就是"停了"），
+	## 所以这里绝不能拿 playing 当条件——否则永远解不开，歌就真的一直哑着。
+	_music_frozen = false
+	if _music != null and _music.stream_paused:
+		_music.stream_paused = false
+
+
+func _halt_music() -> void:
+	## 停乐 + 清掉定身留下的暂停标记：Godot 的 stream_paused 是节点上的属性，
+	## 带着它下次 play() 会在 _process 里被立刻再掐住 → 出声变哑巴，必须显式解掉。
+	_music_frozen = false
+	if _music != null:
+		if _music.stream_paused:
+			_music.stream_paused = false
+		if _music.playing:
+			_music.stop()
 
 
 # ---- 技能档的战斗时间轴：待机 → 前摇(乐句A+星点渐多) → 攻击(飞天+日月交替+掉血) → 落地 ----
 func _update_windup(delta: float) -> void:
 	_phase_t += delta
+	if _music_tail > 0.0:
+		_music_tail -= delta
+		if _music_tail <= 0.0:
+			_halt_music()
 	var arena := arena_node()
 	var player := player_node()
 	var prog := 0.0
@@ -862,8 +875,8 @@ func _update_windup(delta: float) -> void:
 				_phase = 1
 				_phase_t = 0.0
 				if _has_music and _music != null:
+					_music.stream_paused = false   # 万一还带着上一轮定身的暂停标记，先解掉再放
 					_music.play(MUSIC_AT)   # 前摇乐句起点，后续相位靠连续播放保持同步
-					_music_on = true        # 从现在起到本轮收尾，歌不该停（定身也不行）
 		1:
 			# 蓄力进度越高，点亮的星点越多
 			var lit := int(prog * float(MAX_STARS))
