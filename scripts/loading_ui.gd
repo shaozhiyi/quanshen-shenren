@@ -47,7 +47,12 @@ static func show(msg := "正在进入世界…") -> void:
 	if tr == null or tr.root == null:
 		return
 	if active():
-		stage(0.0, msg)
+		# 已经盖着：重新归零再走一遍（stage() 有"只许前进"的闸，这里必须直接重置）
+		_target = 0.0
+		if _card != null and is_instance_valid(_card):
+			_card.target = 0.0
+		if _stage != null and is_instance_valid(_stage):
+			_stage.text = msg
 		return
 	_target = 0.0
 	_fade_in = FADE_IN
@@ -95,10 +100,16 @@ static func _caption(text: String, y: float, size_pt: int, col: Color) -> Label:
 
 
 ## 报进度：frac 取 0..1（同一个值反复给也没关系），msg 非空则换一行说明
+## 进度只许前进：各阶段是按物理帧/后台线程推进的，彼此会交错
+## （例如地形已经跑到 100%，分帧进场景那边才补上最后一个节点的 42%），
+## 不挡住回退就会出现"进度条从满格倒拽回去"。要重置请走 show()。
 static func stage(frac: float, msg := "") -> void:
 	if not active():
 		return
-	_target = clampf(frac, 0.0, 1.0)
+	var v := clampf(frac, 0.0, 1.0)
+	if v < _target:
+		return
+	_target = v
 	if _card != null and is_instance_valid(_card):
 		_card.target = _target
 	if msg != "" and _stage != null and is_instance_valid(_stage):
