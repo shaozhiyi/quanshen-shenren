@@ -98,8 +98,30 @@ func _ready() -> void:
 	_bow = get_node_or_null("Camera3D/Bow")
 	if _bow != null:
 		_bow.set_active(false)
-	_inv = get_node_or_null("../HUD/Inventory")
+	_inv = _find_inventory()
+	if _inv == null:
+		_bind_inventory_later()      # 分帧进场景时 HUD 比我们晚一帧挂回来
 	_apply_loaded_state()
+
+
+func _find_inventory() -> Node:
+	return get_node_or_null("../HUD/Inventory")
+
+
+func _ensure_inv() -> Node:
+	## 任何要用背包的地方都先过这一手：万一开局没绑上（HUD 后到），此刻早已在树里
+	if _inv == null or not is_instance_valid(_inv):
+		_inv = _find_inventory()
+	return _inv
+
+
+func _bind_inventory_later() -> void:
+	for _i in 120:
+		await get_tree().process_frame
+		_inv = _find_inventory()
+		if _inv != null:
+			return
+	push_warning("player: 找不到 ../HUD/Inventory，掉落与背包回收会失效")
 
 
 # ---- 存档：状态采集 / 套用 / F5 快速存档 ----
@@ -190,6 +212,7 @@ func _quick_save() -> void:
 		amp = float(ground.get("height_amp"))
 		freq = float(ground.get("frequency"))
 	var inv_state: Dictionary = {}
+	_inv = _ensure_inv()
 	if _inv != null and _inv.has_method("save_state"):
 		inv_state = _inv.call("save_state")
 	var data := SaveManager.build_data(seed_used, amp, freq, save_state(), inv_state, _boss_states(), kills)
@@ -352,9 +375,12 @@ func _on_boss_died(b: Node = null) -> void:
 	kills += 1
 	var item := String(b.call("get_reward_item"))
 	var n := int(b.call("reward_count"))
+	_inv = _ensure_inv()      # 开局几帧内就被打死时，HUD 可能才刚挂回来
 	if _inv != null and _inv.has_method("add_item"):
 		_inv.call("add_item", item, n)
 		_inv.call("add_item", "stone", _roll_stones())
+	else:
+		push_warning("player: 背包未就绪，%s ×%d 与强化石没能发放" % [item, n])
 	if not _in_arena:
 		return
 	get_tree().create_timer(3.0).timeout.connect(_exit_arena)
@@ -416,6 +442,8 @@ func _reset_motion_state() -> void:
 
 func _try_pick_box() -> bool:
 	## 附近有掉落箱则回收其物品（含整堆数量）到背包并销毁箱子
+	if _inv == null or not _inv.has_method("add_item"):
+		_inv = _ensure_inv()
 	if _inv == null or not _inv.has_method("add_item"):
 		return false
 	var box := _nearest_box()
