@@ -35,6 +35,9 @@ extends RefCounted
 ##   charge_speed_mult 冲撞速度 = 玩家奔跑速度（步行 ×2）× 这个数（10 × 3 = 30 米/秒）
 ##   charge_gap   一次冲完后的冷却秒数，防止它无限连撞
 ##   charge_damage 撞上的伤害（一次冲撞只结算一次，仍吃防具减伤/无敌免疫）
+##   charge_knockback 撞上后把玩家沿撞击方向顶开几个"冲刺距离"（0 或缺省 = 不击退）
+##   charge_ring_damage 冲完收尾那圈光波扫到人扣的伤害（0 或缺省 = 纯特效）。
+##                它与撞击伤害各自结算一次：被顶飞后还在圈里，就会两回都挨上
 ##   bob_amp      待机浮动幅度；visual_y 外观离地高度
 
 const DEFS := {
@@ -73,8 +76,10 @@ const DEFS := {
 		"charge_lock": 2.0,
 		"charge_units": 8.0,            # 3.6 米 × 8 ≈ 28.8 米
 		"charge_speed_mult": 3.0,       # 玩家奔跑 10 米/秒 × 3 = 30 米/秒（整段仍约 0.96 秒）
-		"charge_gap": 2.5,              # 撞完的冷却
-		"charge_damage": 60.0,          # 撞上一下的伤害（一次冲撞只结算一次）
+		"charge_gap": 7.0,              # 撞完要等 7 秒才再出手
+		"charge_damage": 20.0,          # 撞上一下的伤害（一次冲撞只结算一次）
+		"charge_knockback": 2.0,        # 撞上就被顺着车行方向顶开 2 个冲刺距离 ≈ 7.2 米
+		"charge_ring_damage": 10.0,     # 冲完那圈橙色光波扫到人再扣 10
 		"bob_amp": 0.02,                # 几乎贴地，只留一点悬挂起伏
 		"visual_y": 0.0,
 		"arena": "highway",             # 它的专属战场：两条无限延伸的国道

@@ -56,8 +56,10 @@ var _chase_speed := 0.0               # 载具档的驶近速度（米/秒）
 var _charge_lock := 0.0               # 0 = 没这招；>0 = 锁定（预警）时长
 var _charge_units := 8.0              # 撞击行程 = 玩家冲刺距离 × 这个数
 var _charge_mult := 3.0               # 撞击速度 = 玩家奔跑速度 × 这个数
-var _charge_gap := 2.5                # 一次冲完后的冷却
-var _charge_dmg := 60.0               # 撞上的伤害（一次冲撞只结算一次，仍吃减伤/无敌）
+var _charge_gap := 7.0                # 一次冲完后的冷却
+var _charge_dmg := 20.0               # 撞上的伤害（一次冲撞只结算一次，仍吃减伤/无敌）
+var _charge_kb := 0.0                 # 撞上后把玩家沿撞击方向击退几个"冲刺距离"（0 = 不击退）
+var _charge_ring_dmg := 0.0           # 冲完收尾那圈光波扫到人扣的血（0 = 纯特效）
 var _charge_t := 0.0                  # >0：正在原地锁定（倒计时）
 var _charge_run := false              # true：正在冲
 var _charge_left := 0.0               # 本轮还剩多少米没冲完
@@ -397,8 +399,10 @@ func _load_def() -> void:
 	_charge_lock = float(_def.get("charge_lock", 0.0))
 	_charge_units = float(_def.get("charge_units", 4.0))
 	_charge_mult = float(_def.get("charge_speed_mult", 1.5))
-	_charge_gap = float(_def.get("charge_gap", 2.5))
+	_charge_gap = float(_def.get("charge_gap", 7.0))
 	_charge_dmg = float(_def.get("charge_damage", 20.0))
+	_charge_kb = float(_def.get("charge_knockback", 0.0))
+	_charge_ring_dmg = float(_def.get("charge_ring_damage", 0.0))
 	_faces_player = not bool(_def.get("no_turn", false))
 
 
@@ -1044,6 +1048,21 @@ func charge_reach() -> float:
 	return charge_dist() + _box_size.z * 0.5
 
 
+func charge_kb_dist() -> float:
+	## 撞上后把玩家顶开多远 = 玩家一次冲刺的位移 × charge_knockback（2 个 ≈ 7.2 米）
+	return _charge_kb * DASH_DIST
+
+
+func charge_ring_radius() -> float:
+	## 冲完收尾那圈光波的半径：按行程的三成五算，最短也有 4 米（贴脸撞完总得有个圈）
+	return maxf(charge_dist() * 0.35, 4.0)
+
+
+func charge_gap_time() -> float:
+	## 两撞之间的间隔（冲完到下次锁位之间的冷却）
+	return _charge_gap
+
+
 func charge_speed_ref() -> float:
 	## 冲撞速度 = 玩家奔跑速度（步行速度 × 2）× charge_speed_mult，默认 10 × 3 = 30 米/秒
 	var p := player_node()
@@ -1117,9 +1136,9 @@ func _end_charge() -> void:
 	_charge_cd = _charge_gap
 	_aim_locked = false
 	_show_lane(false)
-	# 撞到底的动静：地裂 + 一蓬尘（伤害是在冲撞过程中判的，这里纯特效）
+	# 撞到底的动静：地裂 + 一蓬尘（撞伤是在冲撞过程中判的，这里的收尾光波另算一次伤害）
 	var at := Vector3(global_position.x, _arena_base_y + 0.05, global_position.z)
-	SLAM_FX.spawn_slam(get_parent(), at, maxf(charge_dist() * 0.35, 4.0), Color(1.0, 0.60, 0.25))
+	SLAM_FX.spawn_slam(get_parent(), at, charge_ring_radius(), Color(1.0, 0.60, 0.25), _charge_ring_dmg)
 
 
 func _touch_player(from: Vector3, to: Vector3) -> bool:
@@ -1138,6 +1157,9 @@ func _touch_player(from: Vector3, to: Vector3) -> bool:
 		return false
 	if player.has_method("take_damage"):
 		player.take_damage(_charge_dmg)
+	# 撞上了就顺着车行方向被顶出去（无敌期 player 自己会拒收，伤害与击退同生同灭）
+	if _charge_kb > 0.0 and player.has_method("knockback"):
+		player.knockback(_charge_dir, charge_kb_dist())
 	return true
 
 

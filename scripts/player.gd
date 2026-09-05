@@ -58,10 +58,15 @@ const BOSS_INTERACT_DIST := 12.0
 # 冲刺：单独按 Z 触发一小段爆发位移（方向取当前按住的移动键，没按就朝正前方）
 const DASH_SPEED := 18.0          # 冲刺瞬时速度（约 3.6× 步行）
 const DASH_DURATION := 0.2        # 冲刺持续
+const KB_TIME := 0.2              # 被击退的持续：这么久就推完，算"一瞬间"
 const DASH_COOLDOWN := 0.5        # 冲刺后摇冷却，防连发
 var _dash_time := 0.0
 var _dash_cd := 0.0
 var _dash_dir := Vector3.ZERO
+# 击退（被 BOSS 撞飞时用）：方向 × 剩下没推完的米数 × 本段推进速度
+var _kb_dir := Vector3.ZERO
+var _kb_left := 0.0
+var _kb_speed := 0.0
 var _air_jumps := 0               # 本次离地还能空中再跳几次
 # 奔跑：双击同一方向键进入，移动速度 ×2；松开所有方向键自动退出
 const DOUBLE_TAP_WINDOW := 0.28   # 两次点按间隔小于此值判定为双击
@@ -397,11 +402,14 @@ func _on_died() -> void:
 
 
 func _reset_motion_state() -> void:
-	## 清掉奔跑、减速与冲刺的瞬时状态（死亡/进出 BOSS 空间时调用）
+	## 清掉奔跑、减速、冲刺与击退的瞬时状态（死亡/进出 BOSS 空间时调用）
 	_running = false
 	_slow_t = 0.0
 	_dash_time = 0.0
 	_dash_cd = 0.0
+	_kb_left = 0.0
+	_kb_speed = 0.0
+	_kb_dir = Vector3.ZERO
 	velocity.x = 0.0
 	velocity.z = 0.0
 
@@ -778,6 +786,12 @@ func _physics_process(delta: float) -> void:
 			velocity.x = move_toward(velocity.x, 0.0, spd)
 			velocity.z = move_toward(velocity.z, 0.0, spd)
 
+	if _kb_left > 0.0:
+		# 击退覆盖本帧水平速度（方向由撞击方钉死）：按名义位移扣掉剩余距离，推完立刻交还操作权
+		velocity.x = _kb_dir.x * _kb_speed
+		velocity.z = _kb_dir.z * _kb_speed
+		_kb_left = maxf(_kb_left - _kb_speed * delta, 0.0)
+
 	if _dash_cd > 0.0:
 		_dash_cd -= delta
 
@@ -837,6 +851,23 @@ func _fx_scene() -> Node:
 func _jump_ring() -> void:
 	## 二段跳：脚下一圈淡白光环迅速散开（克制版反馈，不做粒子）
 	SLAM_FX.spawn_ring(_fx_scene(), global_position + Vector3(0.0, 0.08, 0.0), 1.5, Color(1, 1, 1), 0.42)
+
+
+func knockback(dir: Vector3, dist: float) -> bool:
+	## 被撞飞：沿 dir（水平方向）在一瞬间被推开 dist 米。
+	## 无敌期连击退一起免掉，和 take_damage 同一条规矩（不然"免疫"只免了一半）。
+	dir.y = 0.0
+	if dist <= 0.0 or dir.length_squared() < 0.0001 or _invincible:
+		return false
+	_kb_dir = dir.normalized()
+	_kb_left = dist
+	_kb_speed = dist / KB_TIME
+	return true
+
+
+func knockback_left() -> float:
+	## 还剩多少米没被推完（测试与调手感用）
+	return _kb_left
 
 
 func try_dash() -> bool:

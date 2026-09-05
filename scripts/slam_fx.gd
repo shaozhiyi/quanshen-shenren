@@ -1,6 +1,7 @@
 extends Node3D
 ## 程序化特效总管（不依赖任何素材，播完自动 queue_free）：
 ##   spawn_slam()      —— BOSS 砸地：地裂贴图（暗色径向裂纹）+ 一道快速扩散的光环
+##                        （传 damage 则光环外圈扫到玩家时扣一次血，大运撞击收尾在用）
 ##   spawn_ring()      —— 轻量单圈（玩家二段跳/冲刺起脚点用）
 ##   spawn_star()      —— BOSS 射出的立体星点弹（按颜色分红黄蓝绿，各有不同效果与速度）
 ##   spawn_slash()     —— 挥剑剑气：一道斜月牙弧光，快速放大后淡出
@@ -41,6 +42,8 @@ var _star_mi: MeshInstance3D
 var _star_mat: StandardMaterial3D
 var _glow_mat: StandardMaterial3D
 var _damage := 5.0                  # 星点单发伤害（0 = 不造成伤害）
+var _ring_damage := 0.0             # 光环模式专用：扩散圈扫到玩家扣的血（0 = 纯特效）
+const RING_RIM := 0.93 * 1.3        # 可见外圈在"判定半径 ÷ 当前缩放"上的位置（见 ring_texture）
 var _kind := "yellow"               # 星点颜色规律：red 高伤 / yellow 常规 / blue 减速 / green 回血
 var _heal := 0.0                    # 命中给玩家回复的血量（绿色）
 var _slow := 0.0                    # 命中给玩家的减速时长（蓝色）
@@ -83,17 +86,19 @@ static func star_speed_mult(kind: String) -> float:
 	return float(STAR_SPEED_MULT.get(kind, 1.0))
 
 
-## 砸地特效：at 为地面点（贴地画），radius 为裂纹半径
-static func spawn_slam(parent: Node, at: Vector3, radius: float, tint := Color(1, 1, 1)) -> void:
-	_spawn(parent, at, radius, tint, true, -1.0)
+## 砸地特效：at 为地面点（贴地画），radius 为裂纹半径；damage > 0 时扩散光环扫到玩家会扣血
+static func spawn_slam(parent: Node, at: Vector3, radius: float, tint := Color(1, 1, 1),
+		damage := 0.0) -> void:
+	_spawn(parent, at, radius, tint, true, -1.0, damage)
 
 
 ## 单个扩散光环（二段跳等轻量反馈）
 static func spawn_ring(parent: Node, at: Vector3, radius: float, tint := Color(1, 1, 1), life := 0.45) -> void:
-	_spawn(parent, at, radius, tint, false, life)
+	_spawn(parent, at, radius, tint, false, life, 0.0)
 
 
-static func _spawn(parent: Node, at: Vector3, radius: float, tint: Color, crack: bool, life: float) -> void:
+static func _spawn(parent: Node, at: Vector3, radius: float, tint: Color, crack: bool,
+		life: float, damage: float) -> void:
 	if parent == null or not is_instance_valid(parent):
 		return
 	var fx: Node3D = load("res://scripts/slam_fx.gd").new()
@@ -101,6 +106,7 @@ static func _spawn(parent: Node, at: Vector3, radius: float, tint: Color, crack:
 	fx._tint = tint
 	fx._want_crack = crack
 	fx._wave_life = life
+	fx._ring_damage = maxf(damage, 0.0)
 	parent.add_child(fx)
 	fx.global_position = at
 
@@ -373,11 +379,23 @@ func _process(delta: float) -> void:
 		_crack.scale = Vector3(s, 1.0, s)
 		var fade := 1.0 if _t < 0.7 else clampf(1.0 - (_t - 0.7) / (CRACK_LIFE - 0.7), 0.0, 1.0)
 		_crack_mat.albedo_color = Color(_tint.r, _tint.g, _tint.b, fade)
+	var ws := 0.0
 	if _wave != null and _wave_mat != null:
 		var w := clampf(_t / wl, 0.0, 1.0)
-		var ws := lerpf(0.12, 1.0, 1.0 - (1.0 - w) * (1.0 - w))   # 出手快、末尾缓
+		ws = lerpf(0.12, 1.0, 1.0 - (1.0 - w) * (1.0 - w))   # 出手快、末尾缓
 		_wave.scale = Vector3(ws, 1.0, ws)
 		_wave_mat.albedo_color = Color(_tint.r, _tint.g, _tint.b, (1.0 - w) * 0.95)
+	if _ring_damage > 0.0 and not _hit_done:
+		# 判定跟着可见外圈一起放大：半径 = 名义半径 × 贴图圈位系数 × 当前缩放
+		var front := _radius * RING_RIM * ws
+		var p := get_tree().get_first_node_in_group("player")
+		if p != null and is_instance_valid(p):
+			var d := Vector2(global_position.x - p.global_position.x,
+				global_position.z - p.global_position.z).length()
+			if d <= front:
+				_hit_done = true
+				if p.has_method("take_damage"):
+					p.take_damage(_ring_damage)   # 吃防具减伤与无敌免疫
 	if _t >= maxf(CRACK_LIFE if _want_crack else 0.0, wl):
 		queue_free()
 
