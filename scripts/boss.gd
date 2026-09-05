@@ -52,13 +52,16 @@ const ARENA_FALLBACK_CENTER := Vector3(0.0, 100.0, 0.0)
 var _arena_name := "white"            # 进战时切到哪套空间（"white"/"highway"）
 var _has_skills := true               # false = 载具档，只驶近 + 尾气 + 锁定冲撞
 var _chase_speed := 0.0               # 载具档的驶近速度（米/秒）
-# ---- 「锁定冲撞」（大运）：锁位冻结 charge_lock 秒 → 沿锁定方向直线猛冲 ----
+# ---- 「锁定冲撞」（大运）：锁位冻结 charge_lock 秒 → 沿锁定方向直线猛冲；
+#      撞到人的击退与减速不当场生效，等这一轮冲完（车停住）再结算 ----
 var _charge_lock := 0.0               # 0 = 没这招；>0 = 锁定（预警）时长
 var _charge_units := 8.0              # 撞击行程 = 玩家冲刺距离 × 这个数
 var _charge_mult := 3.0               # 撞击速度 = 玩家奔跑速度 × 这个数
 var _charge_gap := 7.0                # 一次冲完后的冷却
 var _charge_dmg := 20.0               # 撞上的伤害（一次冲撞只结算一次，仍吃减伤/无敌）
 var _charge_kb := 0.0                 # 撞上后把玩家沿撞击方向击退几个"冲刺距离"（0 = 不击退）
+var _charge_slow := 0.0               # 撞上后给玩家的减速秒数（移速 ×0.5；0 = 不减速）
+var _charge_kb_pending := false       # 本轮撞到了人：击退与减速等这轮冲完再结算
 var _charge_ring_dmg := 0.0           # 冲完收尾那圈光波扫到人扣的血（0 = 纯特效）
 var _charge_t := 0.0                  # >0：正在原地锁定（倒计时）
 var _charge_run := false              # true：正在冲
@@ -402,6 +405,7 @@ func _load_def() -> void:
 	_charge_gap = float(_def.get("charge_gap", 7.0))
 	_charge_dmg = float(_def.get("charge_damage", 20.0))
 	_charge_kb = float(_def.get("charge_knockback", 0.0))
+	_charge_slow = float(_def.get("charge_slow_sec", 0.0))
 	_charge_ring_dmg = float(_def.get("charge_ring_damage", 0.0))
 	_faces_player = not bool(_def.get("no_turn", false))
 
@@ -1079,6 +1083,7 @@ func _reset_charge() -> void:
 	_charge_left = 0.0
 	_charge_cd = 0.0
 	_charge_hit = false
+	_charge_kb_pending = false       # 半截撤退/死亡不能把"还欠一次击退"留下
 	_charge_speed = 0.0
 	_aim_locked = false
 	_charge_dir = Vector3(sin(_heading), 0.0, cos(_heading))
@@ -1136,9 +1141,28 @@ func _end_charge() -> void:
 	_charge_cd = _charge_gap
 	_aim_locked = false
 	_show_lane(false)
+	# 这一撞的附加效果在车停住这一刻才结算：先顶开人，再甩收尾光波
+	# （顺序有意如此——被顶出去的 0.2 秒正好也是光波开始扩的 0.2 秒，跑得掉就算躲过）
+	if _charge_kb_pending:
+		_settle_charge_hit()
 	# 撞到底的动静：地裂 + 一蓬尘（撞伤是在冲撞过程中判的，这里的收尾光波另算一次伤害）
 	var at := Vector3(global_position.x, _arena_base_y + 0.05, global_position.z)
 	SLAM_FX.spawn_slam(get_parent(), at, charge_ring_radius(), Color(1.0, 0.60, 0.25), _charge_ring_dmg)
+
+
+func _settle_charge_hit() -> void:
+	## 撞击完成后结算的三件套里，"顶开 + 减速"这两项归这里（伤害在接触那一帧已经扣过了）
+	_charge_kb_pending = false
+	if _dead:
+		return
+	var player := player_node()
+	if player == null or not is_instance_valid(player):
+		return
+	# 无敌期 player 自己会拒收击退与减速：伤害与这些附加效果同生同灭
+	if _charge_kb > 0.0 and player.has_method("knockback"):
+		player.knockback(_charge_dir, charge_kb_dist())
+	if _charge_slow > 0.0 and player.has_method("apply_slow"):
+		player.apply_slow(_charge_slow)     # 移速 ×0.5，持续这几秒（重复撞到取更长）
 
 
 func _touch_player(from: Vector3, to: Vector3) -> bool:
@@ -1157,9 +1181,9 @@ func _touch_player(from: Vector3, to: Vector3) -> bool:
 		return false
 	if player.has_method("take_damage"):
 		player.take_damage(_charge_dmg)
-	# 撞上了就顺着车行方向被顶出去（无敌期 player 自己会拒收，伤害与击退同生同灭）
-	if _charge_kb > 0.0 and player.has_method("knockback"):
-		player.knockback(_charge_dir, charge_kb_dist())
+	# 撞上只记账，不当场推人：击退与减速留到这轮冲完（车停住）再一起结算，
+	# 免得出现"车还从你身上压过去、你同时已经被顶开"这种判定打架。
+	_charge_kb_pending = true
 	return true
 
 

@@ -36,6 +36,8 @@ extends RefCounted
 ##   charge_gap   一次冲完后的冷却秒数，防止它无限连撞
 ##   charge_damage 撞上的伤害（一次冲撞只结算一次，仍吃防具减伤/无敌免疫）
 ##   charge_knockback 撞上后把玩家沿撞击方向顶开几个"冲刺距离"（0 或缺省 = 不击退）
+##   charge_slow_sec 撞上了给玩家几秒减速（玩家侧 SLOW_MULT 固定 ×0.5；0 = 不减速）。
+##                击退与减速都**不当场生效**，而是等这一轮冲完、车停住那一刻一起结算
 ##   charge_ring_damage 冲完收尾那圈光波扫到人扣的伤害（0 或缺省 = 纯特效）。
 ##                它与撞击伤害各自结算一次：被顶飞后还在圈里，就会两回都挨上
 ##   bob_amp      待机浮动幅度；visual_y 外观离地高度
@@ -79,6 +81,7 @@ const DEFS := {
 		"charge_gap": 7.0,              # 撞完要等 7 秒才再出手
 		"charge_damage": 20.0,          # 撞上一下的伤害（一次冲撞只结算一次）
 		"charge_knockback": 2.0,        # 撞上就被顺着车行方向顶开 2 个冲刺距离 ≈ 7.2 米
+		"charge_slow_sec": 3.0,         # 撞到了还减速 50% 持续 3 秒（击退与减速都等冲完才结算）
 		"charge_ring_damage": 10.0,     # 冲完那圈橙色光波扫到人再扣 10
 		"bob_amp": 0.02,                # 几乎贴地，只留一点悬挂起伏
 		"visual_y": 0.0,
