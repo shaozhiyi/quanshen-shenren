@@ -7,6 +7,8 @@ extends Node3D
 ## 挥剑特效：出手瞬间在相机前方立一片斜月牙剑气（scripts/slam_fx.gd 程序化，无素材）。
 ## 挥剑音效：assets/audio/sword_swing.wav（含变体随机二选一，CC-BY，见 assets/audio/CREDITS.txt；缺失时静默）。
 ## slash_hit 信号在挥砍动画 35% 进度处发出，供后续命中判定。
+## 挥砍动画播放期间不能换武器：is_attacking() 供 player.gd 的 weapon_busy() 拦 C，
+## 收招（动画结束）后才切得动，避免半途换把把这一剑的判定与动画劈成两截。
 
 signal slash_hit
 
@@ -246,6 +248,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_X:
 		attack()
+
+
+func is_active() -> bool:
+	return active
+
+
+func is_attacking() -> bool:
+	## 挥砍动画是否还在放（从按 X 起手到动画结束）。
+	## 这段时间 player 会拦住 C 切武器，和弓的"蓄力中不许切"是同一条规矩。
+	return _attacking
 
 
 func set_active(a: bool) -> void:

@@ -166,6 +166,7 @@ func _apply_loaded_state() -> void:
 
 func set_current_weapon(w: int) -> void:
 	## 读档时恢复"手上拿的是哪把"（装备状态由背包模块先同步）
+	## 这里故意不走 weapon_busy()：读档是外部状态还原，必须无条件生效。
 	if (w == 0 or w == 1) and _has[w]:
 		_equip(w)
 
@@ -451,9 +452,22 @@ func spawn_drop_box(item_id: String, count: int = 1) -> void:
 	box.global_position = pos
 
 
+func weapon_busy() -> bool:
+	## 手上这把武器还在"收不了手"的动作里：
+	##   弓 = 蓄力中（按住左键或 X，松手才撒放）
+	##   剑 = 挥砍动画播放中（按 X 起手到动画结束）
+	## 这段时间 C 被拦住：切走会把蓄力清零、或让挥砍半途消失（伤害与动画脱节）。
+	## 只查手上这把——另一把切走时 set_active(false) 已经把状态清了。
+	if _weapon == 1 and _bow != null and _bow.has_method("is_charging"):
+		return bool(_bow.call("is_charging"))
+	if _weapon == 0 and _sword != null and _sword.has_method("is_attacking"):
+		return bool(_sword.call("is_attacking"))
+	return false
+
+
 func _switch_weapon() -> void:
-	## C 键：主/副武器切换（剑 ↔ 弓）；仅当两把都已装备时可切
-	if _has[0] and _has[1]:
+	## C 键：主/副武器切换（剑 ↔ 弓）；仅当两把都已装备、且当前动作收尾后可以切
+	if _has[0] and _has[1] and not weapon_busy():
 		_equip(1 - _weapon)
 
 

@@ -3,6 +3,7 @@ extends Node3D
 ## 交互：装备弓时，按住鼠标左键或 X 键 → 进入瞄准（FOV 拉近、弓移到眼前、搭箭、弦随蓄力后拉），
 ## 2 秒蓄满；松手 → 沿准星方向射出箭。箭为 RigidBody3D，弹道/射程由物理引擎（重力抛物线）决定，
 ## 初速与攻击力随蓄力提升：满蓄 2s 时攻击力 70（命中 BOSS 扣 70），未满按比例衰减。
+## 蓄力期间不能换武器：player.gd 的 weapon_busy() 会拦住 C，直到松手撒放。
 ## 模型：Poly Pizza CC0 弓 + Quaternius CC0 箭（assets/weapons，见 CREDITS.txt）。
 ## 音效：拉弓 assets/audio/bow_draw.wav、放箭 bow_shot.wav（jc-sounds「Fantasy SFX Pack Vol 1」，
 ##      CC-BY 4.0，见 assets/audio/CREDITS.txt；文件缺失则静默）。满蓄放箭更响（按蓄力比例加音量）。
