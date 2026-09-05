@@ -7,7 +7,7 @@ extends Node3D
 ## （get_instance_transform 恒返回单位阵），自检只能核对这份布局，顺带也方便调试。
 
 @export var rock_count := 0                  # 0 = 按 rocks_per_1000m2 自动算
-@export var rocks_per_1000m2 := 16.0         # 密度：整张 500×500 地图 → 约 3900 颗
+@export var rocks_per_1000m2 := 206.0        # 密度：整张 500×500 地图 → 约 5 万颗（每 4.8 ㎡ 一颗）
 @export var area_half := 0.0                 # 0 = 铺满整张地图（留一点边距）
 @export var edge_margin := 4.0               # 离地形边界/围墙的安全边距（米）
 @export var rock_size_w := Vector2(0.20, 0.45)    # 石子宽（米，直径；底模半径 1 米 → 缩放=宽的一半）
@@ -37,7 +37,9 @@ func _build_details() -> void:
 			print("[ground_detail] 等地形高度网格 %d 帧" % waited)
 		if not bool(ground.call("grid_ready")):
 			push_warning("ground_detail: 高度网格仍未就绪，石子改用解析高度（可能悬空）")
+	var t0 := Time.get_ticks_msec()
 	var layout := rock_layout(ground)
+	var t1 := Time.get_ticks_msec()
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
 	mm.use_custom_data = true
@@ -50,8 +52,9 @@ func _build_details() -> void:
 	mi.multimesh = mm
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
-	print("[ground_detail] 石子 %d 颗，铺满 %.0f×%.0f 米" % [
-		layout.size(), _map_half(ground) * 2.0, _map_half(ground) * 2.0])
+	print("[ground_detail] 石子 %d 颗，铺满 %.0f×%.0f 米（算布局 %d ms + 填实例 %d ms）" % [
+		layout.size(), _map_half(ground) * 2.0, _map_half(ground) * 2.0,
+		t1 - t0, Time.get_ticks_msec() - t1])
 
 
 # ---- 本局石子布局（纯函数：地形种子 → 每颗石子的变换）----
@@ -113,12 +116,14 @@ static func _tint_for(t: Transform3D) -> float:
 
 
 func _make_rock_mesh() -> Mesh:
-	# 低模石头：细分较少的球体压扁，再叠加 shader 微变形
+	# 低模石头：细分较少的球体压扁，再叠加 shader 微变形。
+	# 段数×环数直接决定总面数：5 段 2 环 = 30 三角，5 万颗 ≈ 150 万三角；
+	# 沿用旧的 6 段 4 环（60 三角）就是 300 万三角，MX250 直接跪。
 	var sphere := SphereMesh.new()
 	sphere.radius = 1.0
 	sphere.height = 1.0
-	sphere.radial_segments = 6
-	sphere.rings = 4
+	sphere.radial_segments = 5
+	sphere.rings = 2
 	var mat := ShaderMaterial.new()
 	mat.shader = ROCK_SHADER
 	sphere.material = mat
