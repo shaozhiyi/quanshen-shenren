@@ -146,6 +146,9 @@ var _wander_target := Vector3.ZERO
 var _wandering := false
 
 signal died(target: Node)   # 多只 BOSS 同场，带上是谁死的
+signal damaged(weapon: String, amount: int)   # 被玩家打中（带武器名，HUD 据此播报；致死那一击不发，只走 died）
+
+var last_weapon := ""       # 最后打中我的武器名（击杀播报要用）
 
 
 func set_arena_mode(b: bool) -> void:
@@ -726,13 +729,16 @@ func _refresh_labels() -> void:
 		_hp_label.text = "HP %d / %d ｜ 掉落 ×%d" % [int(hp), int(max_hp), reward_count()]
 
 
-func take_damage(amount: int) -> void:
+func take_damage(amount: int, weapon := "") -> void:
 	if _dead or not _arena_mode:
 		return   # 大地图上不可直接攻击，须按 E 进入 BOSS 空间
 	hp = maxf(hp - amount, 0.0)
+	last_weapon = weapon
 	_refresh_labels()
 	if hp <= 0.0:
-		_die()
+		_die()          # 致死这一击只报"击败"，不再重复报"击中"
+	else:
+		damaged.emit(weapon, amount)
 
 
 func _die() -> void:

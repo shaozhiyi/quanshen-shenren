@@ -11,6 +11,20 @@ extends CanvasLayer
 @export var minimap_radius := 90.0
 @export var minimap_position := Vector2(1280 - 24 - 160, 20)
 
+# ---- 播报提示（击中 / 击败）：下面这些数字与文案都可以直接改 ----
+@export var feed_max := 4                        # 最多同时几条，超了就删最末尾（最旧）那条
+@export var feed_line_width := 150.0             # 每条长度：血条 238 的一半多一点
+@export var feed_line_height := 24.0             # 每条高度：4 条 + 间距正好铺到"C 切换弓箭"那一行
+@export var feed_gap := 4.0                      # 条与条的间距
+@export var feed_start_offset := Vector2(12, 0)  # 起点 = 血条右上角 + 这个偏移
+@export var feed_font_size := 15
+@export var feed_life := 0.0                     # 每条停留秒数；0 = 不自动消失，只按条数淘汰
+@export var feed_announce_hits := true           # 每次击中是否也播一条（只要击杀可改成 false）
+@export var feed_newest_on_top := true           # 新提示出现在最上面（下面那条就是最旧的，先被挤掉）
+@export var feed_fmt_hit := "你使用%s击中%s"      # 击中单位：武器、单位
+@export var feed_fmt_kill := "你使用%s击败了%s"   # 击败普通单位：武器、单位
+@export var feed_fmt_boss_kill := "你击败了%s"    # 击杀 BOSS：单位
+
 const MAP_GRID := 60  # 采样网格（每刷新 3600 次高度采样，放大显示）
 
 # 血条三档（普通红 / 过渡橙红 / 濒危暗红）与无敌金条
@@ -44,6 +58,8 @@ var _mp_max_shown := -1.0
 var _exp_shown := -1.0
 var _lv_shown := -1
 var _inv_bar_golden := false
+var _feed: Control                       # 播报容器（血条右侧）
+var _feed_lines: Array = []              # 从上到下 = 从新到旧，每项 {label: Label, age: float}
 
 
 func _ready() -> void:
@@ -180,6 +196,104 @@ func _ready() -> void:
 	_add_tick(Vector2(-1, 6), Vector2(2, 9))
 	_add_tick(Vector2(-2, -2), Vector2(4, 4))
 
+	_build_feed()
+	_bind_feed_targets()
+
+
+# ---- 播报提示：血条右侧最多 feed_max 条，新条目挤进来就把最末尾（最旧）那条删掉 ----
+
+func _build_feed() -> void:
+	_feed = Control.new()
+	_feed.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_feed.position = bar_position + feed_start_offset + Vector2(bar_size.x, 0)
+	add_child(_feed)
+
+
+func _bind_feed_targets() -> void:
+	## 按分组找实体（层级一改 ../ 路径就静默取 null，见项目惯例）；
+	## BOSS 由 BossField 生成、比 HUD 早进树，所以这里一次绑完就够了
+	for b in get_tree().get_nodes_in_group("boss_unit"):
+		if b.has_signal("damaged") and not b.damaged.is_connected(_on_unit_damaged):
+			b.damaged.connect(_on_unit_damaged.bind(b))
+		if b.has_signal("died") and not b.died.is_connected(_on_unit_died):
+			b.died.connect(_on_unit_died)
+
+
+func announce(text: String, col: Color) -> void:
+	## 播一条提示。文案自己拼（见 _on_unit_damaged / _on_unit_died）
+	if _feed == null or text == "":
+		return
+	var l := Label.new()
+	l.text = text
+	l.size = Vector2(feed_line_width, feed_line_height)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	l.add_theme_font_size_override("font_size", feed_font_size)
+	l.add_theme_color_override("font_color", col)
+	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	l.add_theme_constant_override("outline_size", 3)
+	# 单位名再长也只省略号收尾，不许压到右边的小地图
+	l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_feed.add_child(l)
+	_feed_lines.insert(0, {"label": l, "age": 0.0})
+	while _feed_lines.size() > feed_max:
+		_drop_line(_feed_lines.size() - 1)
+	_layout_feed()
+
+
+func _drop_line(i: int) -> void:
+	if i < 0 or i >= _feed_lines.size():
+		return
+	var item: Dictionary = _feed_lines[i]
+	_feed_lines.remove_at(i)
+	var l: Label = item.get("label")
+	if l != null and is_instance_valid(l):
+		l.queue_free()
+
+
+func _layout_feed() -> void:
+	var step := feed_line_height + feed_gap
+	for i in _feed_lines.size():
+		var row := i if feed_newest_on_top else _feed_lines.size() - 1 - i
+		(_feed_lines[i].get("label") as Control).position = Vector2(0, float(row) * step)
+
+
+func _on_unit_damaged(weapon: String, _amount: int, unit: Node) -> void:
+	if not feed_announce_hits:
+		return
+	announce(feed_fmt_hit % [weapon, _unit_name(unit)], Color(1, 0.98, 0.86, 0.95))
+
+
+func _on_unit_died(unit: Node) -> void:
+	var nm := _unit_name(unit)
+	## 击杀 BOSS 只报"你击败了yy"；将来若有普通杂兵，报"你使用xx击败了yy"
+	if unit != null and unit.is_in_group("boss_unit"):
+		announce(feed_fmt_boss_kill % nm, Color(1, 0.84, 0.35, 1))
+	else:
+		var w := "弓"
+		if unit != null:
+			w = String(unit.get("last_weapon"))
+		announce(feed_fmt_kill % [w, nm], Color(1, 0.84, 0.35, 1))
+
+
+func _unit_name(unit: Node) -> String:
+	if unit == null or not is_instance_valid(unit):
+		return "目标"
+	var nm := String(unit.get("boss_name"))
+	return nm if nm != "" else String(unit.name)
+
+
+func _feed_tick(delta: float) -> void:
+	## feed_life = 0 表示不自动消失，只按条数淘汰
+	if feed_life <= 0.0:
+		return
+	var i := _feed_lines.size() - 1
+	while i >= 0:
+		_feed_lines[i].age = float(_feed_lines[i].age) + delta
+		if float(_feed_lines[i].age) > feed_life:
+			_drop_line(i)
+		i -= 1
+	_layout_feed()
+
 
 func _make_bar(pos: Vector2, size: Vector2, fill: Color, thresholds: bool,
 		fmt: String, fsize: int, label_max: float) -> Control:
@@ -291,6 +405,7 @@ func _coord_text(v: Vector3) -> String:
 
 
 func _process(delta: float) -> void:
+	_feed_tick(delta)
 	if _player != null and _coord_label != null:
 		# 战斗空间在世界里偏出去几千米，所以战斗内报"战斗坐标"（开战那一刻 = 0,0,0），
 		# 大地图才报世界坐标；前缀写出来，免得两种数混在一起看不懂

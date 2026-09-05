@@ -71,7 +71,7 @@ func _on_body_entered(other: Node) -> void:
 		while n != null and not n.has_method("take_damage"):
 			n = n.get_parent()
 		if n != null:
-			n.take_damage(dmg)
+			n.take_damage(dmg, "弓")
 	freeze = true
 	set_contact_monitor.call_deferred(false)
 	get_tree().create_timer(4.0).timeout.connect(queue_free)

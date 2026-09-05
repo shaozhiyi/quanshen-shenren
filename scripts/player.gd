@@ -605,7 +605,7 @@ func _on_slash_hit() -> void:
 		if col.is_in_group("boss"):
 			var boss := col.get_parent()
 			if boss.has_method("take_damage"):
-				boss.take_damage(int(roundf(50.0 * damage_scale_for("sword"))))
+				boss.take_damage(int(roundf(50.0 * damage_scale_for("sword"))), "剑")
 
 
 func _find_spawn() -> Vector3:
