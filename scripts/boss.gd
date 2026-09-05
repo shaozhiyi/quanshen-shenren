@@ -143,6 +143,7 @@ var _has_music := false
 var _dmg_t := 0.0
 var _arena_base_y := 0.0
 var _music_tail := 0.0          # 攻击结束后歌曲再多播的剩余秒数
+var _music_on := false          # 本轮战斗"应该有音乐"（定身不许改变它，见 _tick_music）
 var _wander_target := Vector3.ZERO
 var _wandering := false
 
@@ -158,6 +159,7 @@ func set_arena_mode(b: bool) -> void:
 	_phase_t = 0.0
 	_dmg_t = 0.0
 	_music_tail = 0.0
+	_music_on = false      # 清掉"这一轮该放歌"的账，免得 _tick_music 把音乐续到战场外
 	_wandering = false
 	_slam_hit = false
 	_slam_target = Vector3.ZERO
@@ -172,6 +174,7 @@ func set_arena_mode(b: bool) -> void:
 		apply_difficulty()   # 每次开战都是一场完整的挑战
 		if _has_music and not _has_skills:
 			_music.play(0.0)   # 载具档：进战场就开唱（循环），撤退/击杀走上面的 stop 收尾
+			_music_on = true
 	else:
 		if _dead:
 			respawn()        # 击杀后离开空间 → 原地复活，可再次挑战
@@ -248,6 +251,7 @@ func respawn() -> void:
 	_phase_t = 0.0
 	_dmg_t = 0.0
 	_music_tail = 0.0
+	_music_on = false      # 清掉"这一轮该放歌"的账，免得 _tick_music 把音乐续到战场外
 	_wandering = false
 	_slam_hit = false
 	_show_marker(false)
@@ -744,7 +748,8 @@ func take_damage(amount: int, weapon := "") -> void:
 
 
 func stun(sec: float) -> bool:
-	## 法杖蓝球的"只控制、不打断"：不动 _phase / _phase_t / 技能进度，也不停音乐，
+	## 法杖蓝球的"只控制、不打断"：不动 _phase / _phase_t / 技能进度，也不停音乐
+	## （歌曲由 _process 里的 _tick_music 按真实时间放着，定身早退拦不到它），
 	## 只是这段时间里不推进、不移动、不转向；再命中取最长那次（不叠加、不延长成无限）
 	if _dead or not _arena_mode or sec <= 0.0:
 		return false
@@ -763,6 +768,7 @@ func _die() -> void:
 	_label.text = "%s 已被缴获" % boss_name
 	_hp_label.visible = false
 	_music_tail = 0.0
+	_music_on = false
 	_reset_charge()      # 死在半截冲撞里：立刻收掉预警带，也别再往前滑
 	if _music != null and _music.playing:
 		_music.stop()
@@ -775,6 +781,7 @@ func _process(delta: float) -> void:
 		# 沉地消失
 		_visual.position.y = maxf(_visual.position.y - delta * 1.2, -box_height() * 0.9)
 		return
+	_tick_music(delta)   # 音乐按真实时间走，定身不许让它提前收尾或断档
 	if _stun_t > 0.0:
 		# 被法杖定住：整只冻在原地（相位/进度原样保留），到点接着打
 		_stun_t = maxf(_stun_t - delta, 0.0)
@@ -817,13 +824,28 @@ func _animate_wheels(delta: float, speed: float) -> void:
 			(w as Node3D).rotation.x += ang
 
 
-# ---- 音乐同步战斗循环：待机 → 前摇(乐句A+星点渐多) → 攻击(飞天+日月交替+掉血) → 落地 ----
+# ---- 战斗配乐：单独按真实时间伺候，不吃定身 ----
+## 法杖蓝球冻住的是 BOSS 的动作，不是这首歌。所以歌曲的收尾倒计时、以及"唱完了这一轮还没打完"
+## 时的续播都放在这里，由 _process 在定身早退之前调用；否则玩家攒几发蓝球，
+## 音乐会跟着动作一起卡住/提前唱完，听着就像"定身把音乐也一起定住了"。
+func _tick_music(delta: float) -> void:
+	if not _has_music or _music == null:
+		return
+	if _music_tail > 0.0:
+		# 攻击收尾：让歌再多响一会儿再掐（这一段即便同时被定身也照走）
+		_music_tail = maxf(_music_tail - delta, 0.0)
+		if _music_tail <= 0.0:
+			_music_on = false
+			if _music.playing:
+				_music.stop()
+		return
+	if _music_on and _arena_mode and not _dead and not _music.playing:
+		_music.play(MUSIC_AT)   # 副歌被定身"跑"完了而这一轮还没打完 → 从头续上，战斗不断乐
+
+
+# ---- 技能档的战斗时间轴：待机 → 前摇(乐句A+星点渐多) → 攻击(飞天+日月交替+掉血) → 落地 ----
 func _update_windup(delta: float) -> void:
 	_phase_t += delta
-	if _music_tail > 0.0:
-		_music_tail -= delta
-		if _music_tail <= 0.0 and _music != null and _music.playing:
-			_music.stop()
 	var arena := arena_node()
 	var player := player_node()
 	var prog := 0.0
@@ -841,6 +863,7 @@ func _update_windup(delta: float) -> void:
 				_phase_t = 0.0
 				if _has_music and _music != null:
 					_music.play(MUSIC_AT)   # 前摇乐句起点，后续相位靠连续播放保持同步
+					_music_on = true        # 从现在起到本轮收尾，歌不该停（定身也不行）
 		1:
 			# 蓄力进度越高，点亮的星点越多
 			var lit := int(prog * float(MAX_STARS))

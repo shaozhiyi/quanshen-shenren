@@ -30,8 +30,8 @@ var _spawn_pos := Vector3(0.0, 5.0, 0.0)
 var _sword: Node
 var _bow: Node
 var _staff: Node
-var _weapon := 0        # 0=主武器剑 1=副武器弓 2=法杖
-var _has := [true, true, false]  # 装备栏：[剑, 弓, 法杖] 是否已装备（法杖初始躺在背包里）
+var _weapon := 0        # 手上这把：0=剑 1=弓 2=法杖（与 WEAPON_IDS 同下标）
+var _has := [true, true, false]  # 三把武器（剑/弓/法杖）各是否在身上；装备栏只有两格，所以最多两把为 true
 var armor_factor := 1.0   # 护甲减伤系数（穿上防具=0.7，即受到的伤害 ×0.7 后向下取整）
 var _armor_on := false    # 当前是否穿着防具
 const ENHANCE_MAX := 10                       # 每件装备各自封顶 +10
@@ -495,9 +495,10 @@ func spawn_drop_box(item_id: String, count: int = 1) -> void:
 
 
 func weapon_busy() -> bool:
-	## 手上这把武器还在"收不了手"的动作里：
+	## 手上这把武器还在"收不了手"的状态里：
 	##   弓 / 法杖 = 蓄力中（按住左键或 X，松手才出手）
-	##   剑 = 挥砍动画播放中；法杖另加一段甩杖动画
+	##   剑 = 挥砍动画播放中
+	##   法杖另加两段：甩杖动画进行中、以及出手后的 2 秒冷却（用户要求：冷却期间不许切）
 	## 这段时间 C 被拦住：切走会把蓄力清零、或让动作半途消失（伤害与动画脱节）。
 	## 只查手上这把——另一把切走时 set_active(false) 已经把状态清了。
 	if _weapon == 1 and _bow != null and _bow.has_method("is_charging"):
@@ -506,6 +507,8 @@ func weapon_busy() -> bool:
 		if _staff.has_method("is_charging") and bool(_staff.call("is_charging")):
 			return true
 		if _staff.has_method("is_attacking") and bool(_staff.call("is_attacking")):
+			return true
+		if _staff.has_method("cooldown_left") and float(_staff.call("cooldown_left")) > 0.0:
 			return true
 	if _weapon == 0 and _sword != null and _sword.has_method("is_attacking"):
 		return bool(_sword.call("is_attacking"))
@@ -549,10 +552,13 @@ func _equip(w: int) -> void:
 
 
 func set_equipment(weapon_id: String, sub_id: String, armor_id: String, staff_id: String = "") -> void:
-	## 由背包/装备栏调用：同步已装备状态与护甲减伤；当前武器被卸下则自动改用下一把
-	_has[0] = (weapon_id == "sword")
-	_has[1] = (sub_id == "bow")
-	_has[2] = (staff_id == "staff")
+	## 由背包/装备栏调用：同步已装备状态与护甲减伤；当前武器被卸下则自动改用下一把。
+	## 装备栏只有「武器 / 副武器」两格，而武器有三把（剑 / 弓 / 法杖）——所以哪几把在身上
+	## 不看格子名字、只看这两格里出现了哪些武器 id（法杖可以放主武器栏，也可以放副武器栏）。
+	## 第四个参数是给老调用/老存档留的兼容位：传了也一并按 id 认。
+	var ids := [weapon_id, sub_id, staff_id]
+	for i in WEAPON_IDS.size():
+		_has[i] = ids.has(WEAPON_IDS[i])
 	_armor_on = (armor_id != "")
 	_refresh_armor_factor()
 	if _weapon < _has.size() and _has[_weapon]:

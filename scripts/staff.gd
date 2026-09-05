@@ -205,6 +205,13 @@ func enhanced_range() -> Array:
 	return [power(DMG_RED), power(DMG_RED_CHARGED)]
 
 
+func blue_enhanced_range() -> Array:
+	## HUD 用的蓝球实际伤害（同样吃强化倍率）：[点射, 蓄满]
+	## 早先 HUD 直接读 blue_range()（常量），结果强化后红球数字涨了、蓝球还写着底数，
+	## 打出去却是强化过的——看到的≠打出的，所以这里补一个和 enhanced_range 同口径的版本。
+	return [power(DMG_BLUE), power(DMG_BLUE_CHARGED)]
+
+
 func shot_plan() -> Dictionary:
 	## 这一发会是什么（起手时即确定，HUD/自检都读它，保证"看到的=打出的"）
 	var full := is_fully_charged()

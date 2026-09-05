@@ -2,8 +2,10 @@ extends Control
 ## 背包 & 装备栏（Tab 开关；打开期间整局暂停，关闭即恢复）。
 ## 数据层复用 Godot 素材库插件 addons/grid_inventory（MIT, GodotForge）的
 ## Inventory / InvItem 类；物品图标取自 game-icons.net（CC-BY 4.0，见 assets/items/CREDITS.txt）。
-## 装备栏：武器 / 副武器 / 法杖 / 防具；背包 3 行 × 9 列。默认装备剑+弓箭+防具（防具自动穿戴），
-## 法杖初始放在背包第一格，拖到「法杖」槽才拿在手上（之后 C 键就能循环切到它）。
+## 装备栏：武器 / 副武器 / 防具；背包 3 行 × 9 列。默认装备剑+弓箭+防具（防具自动穿戴）。
+## 武器一共三把（剑 / 弓箭 / 法杖），但装备栏只有两格 → 只能带其中两把，
+## 哪两把由玩家自己拖：法杖可以放「武器」栏也可以放「副武器」栏，换第三把就得先卸一把。
+## 法杖初始放在背包第一格。
 ## 交互：拖拽穿卸；单击选中；双击武器/防具＝只强化这一件（吃 1 块强化石）；
 ##       双击消耗品＝使用一次；选中后按 E 丢弃→地上生成箱子。
 
@@ -12,38 +14,35 @@ const BAG_COLS := 9
 const SLOT_PX := 58.0
 const GAP := 6.0
 
-const K_BAG := 0
-const K_WEAPON := 1
-const K_SUB := 2
-const K_ARMOR := 3
-const K_STAFF := 4
+# 装备栏只有这三格（早先给法杖单开过第四格，已并回武器栏：三把武器抢两格）
+const EQ_KEYS := ["weapon", "subweapon", "armor"]
 
 # 堆叠：消耗品可堆到同格，格子上显示 ×2/×3…；上限 20
 const STACK_MAX := 20
 const STACKABLE := ["dogmilk", "stone"]
 
-# id -> 定义：名称/可装备去处(-1=不可装备)/图标/着色/属性说明/[use]
-# 可强化的对象 = 所有能装备的物件（slot >= 0），等级由玩家身上的 enhance_levels 保管
+# id -> 定义：名称/可去的装备栏(空=不可装备)/图标/着色/属性说明/[use]
+# 可强化的对象 = 有装备去处的东西，等级由玩家身上的 enhance_levels 保管
 const DB := {
-	"sword":  {"name": "剑", "slot": K_WEAPON, "icon": "res://assets/items/sword.svg", "tint": Color(0.88, 0.92, 0.98),
-		"desc": "主武器 · 基础攻击 50，按 X 挥砍\n双击：花 1 块强化石 → 只有剑 +1 级\n每级攻击力 ×1.1 后向下取整（最高 +10）\n50 → 55 → 60 → 66 → 73 → 80 …"},
-	"bow":    {"name": "弓箭", "slot": K_SUB, "icon": "res://assets/items/bow.svg", "tint": Color(0.95, 0.80, 0.62),
-		"desc": "副武器 · 蓄力 2 秒满，攻击 12~70\n按住左键蓄力，松手发射，每箭冷却 0.5 秒\n双击：花 1 块强化石 → 只有弓箭 +1 级\n每级攻击力 ×1.1 后向下取整（最高 +10）"},
-	"armor":  {"name": "防具", "slot": K_ARMOR, "icon": "res://assets/items/armor.svg", "tint": Color(1.00, 0.85, 0.40),
+	"sword":  {"name": "剑", "eq": ["weapon", "subweapon"], "icon": "res://assets/items/sword.svg", "tint": Color(0.88, 0.92, 0.98),
+		"desc": "武器 · 基础攻击 50，按 X 挥砍\n可放「武器」或「副武器」栏\n双击：花 1 块强化石 → 只有剑 +1 级\n每级攻击力 ×1.1 后向下取整（最高 +10）\n50 → 55 → 60 → 66 → 73 → 80 …"},
+	"bow":    {"name": "弓箭", "eq": ["weapon", "subweapon"], "icon": "res://assets/items/bow.svg", "tint": Color(0.95, 0.80, 0.62),
+		"desc": "武器 · 蓄力 2 秒满，攻击 12~70\n按住左键蓄力，松手发射，每箭冷却 0.5 秒\n可放「武器」或「副武器」栏\n双击：花 1 块强化石 → 只有弓箭 +1 级\n每级攻击力 ×1.1 后向下取整（最高 +10）"},
+	"armor":  {"name": "防具", "eq": ["armor"], "icon": "res://assets/items/armor.svg", "tint": Color(1.00, 0.85, 0.40),
 		"desc": "护甲 · 受到的伤害 ×0.7 后向下取整\n双击：花 1 块强化石 → 只有防具 +1 级\n每级再减 3% 受伤（最低 ×0.4）\n（不足 1 点的零头会累计到之后扣）"},
-	"staff":  {"name": "法杖", "slot": K_STAFF, "icon": "res://assets/items/staff.svg", "tint": Color(0.78, 0.70, 1.00),
-		"desc": "第三武器 · 点 X / 左键甩杖射出一颗魔法球，冷却 2 秒\n按住不放蓄力最多 3 秒，松手射出更大的球\n球色随机：红＝伤害 80（蓄满 140）\n蓝＝伤害 50（蓄满 90）+ 定身 1 秒（蓄满 1.5 秒）\n定身只冻住 BOSS，不打断它正在做的动作\n拖到装备栏「法杖」槽拿在手上，之后按 C 循环切换\n双击：花 1 块强化石 → 只有法杖 +1 级"},
-	"dogmilk": {"name": "野生狗奶", "slot": -1, "icon": "res://assets/items/dogmilk.png", "tint": Color(1, 1, 1),
+	"staff":  {"name": "法杖", "eq": ["weapon", "subweapon"], "icon": "res://assets/items/staff.svg", "tint": Color(0.78, 0.70, 1.00),
+		"desc": "武器 · 点 X / 左键甩杖射出一颗魔法球，冷却 2 秒\n按住不放蓄力最多 3 秒，松手射出更大的球\n球色随机：红＝伤害 80（蓄满 140）\n蓝＝伤害 50（蓄满 90）+ 定身 1 秒（蓄满 1.5 秒）\n定身只冻住 BOSS，不打断它正在做的动作\n可放「武器」或「副武器」栏：三把武器只能带两把\n装它之前先把另一格里的武器拖回背包\n双击：花 1 块强化石 → 只有法杖 +1 级"},
+	"dogmilk": {"name": "野生狗奶", "eq": [], "icon": "res://assets/items/dogmilk.png", "tint": Color(1, 1, 1),
 		"desc": "「生命惧怕时间，时间惧怕野生狗奶。」\n\n消耗品 · 双击饮用\n获得 10 秒无敌（免疫伤害），\n血条变金、数字显示「永久」\n10 秒后解除并恢复满血",
 		"use": "invincible", "dur": 10.0},
-	"stone":  {"name": "装备强化石", "slot": -1, "icon": "res://assets/items/stone.svg", "tint": Color(0.60, 0.86, 1.00),
+	"stone":  {"name": "装备强化石", "eq": [], "icon": "res://assets/items/stone.svg", "tint": Color(0.60, 0.86, 1.00),
 		"desc": "强化材料 · 双击不会消耗\n拿去双击「武器 / 防具」→ 只强化那一件，本石 -1\n\n击杀野生狗奶必掉 1 块，\n之后以 4%、3.95%、3.90%… 逐次递减追加"},
 }
 
 var _bag: Inventory                 # addons/grid_inventory 的数据模型（27 格）
 var _items := {}                    # id -> InvItem
 var _bag_n: Array = []              # 每格物品数量（与 _bag.slots 同长）
-var _eq := {"weapon": "sword", "subweapon": "bow", "armor": "armor", "staff": ""}
+var _eq := {"weapon": "sword", "subweapon": "bow", "armor": "armor"}
 var _eq_slots := {}                 # key -> SlotCtl
 var _bag_slots: Array = []
 var _player: Node
@@ -82,13 +81,14 @@ func save_state() -> Dictionary:
 ## 读档：还原装备栏、背包（含数量），并把"手上拿的哪把武器"同步回玩家
 func load_state(save: Dictionary) -> void:
 	var eq: Dictionary = save.get("equipment", {})
-	for k in ["weapon", "subweapon", "armor", "staff"]:
+	for k in EQ_KEYS:
 		_eq[k] = String(eq[k]) if eq.has(k) else ""
 	var bag: Array = save.get("bag", [])
 	var counts: Array = save.get("bag_counts", [])
 	for i in mini(bag.size(), BAG_SIZE):
 		var n := int(counts[i]) if i < counts.size() else 1
 		bag_set(i, String(bag[i]), maxi(n, 1))
+	# 老存档那根放在「法杖」第四格里的杖，这一版没那格了 → 由 _ensure_staff 补回背包
 	_ensure_staff()
 	refresh_all()
 	_sync_player()
@@ -98,9 +98,14 @@ func load_state(save: Dictionary) -> void:
 
 
 func _ensure_staff() -> void:
-	## 老存档没有法杖（既不在装备栏也不在背包）→ 补发一根，放在第一个空格。
-	## 没空格就算了，绝不挤掉玩家已有的东西。
-	if _eq.staff == "staff" or count_of("staff") > 0:
+	## 老存档没有法杖（既不在装备栏也不在背包）→ 补发一根。
+	## 优先塞进空着的武器栏（本来就缺武器），否则放第一个空格；都没位置就算了，
+	## 绝不挤掉玩家已有的东西。
+	if count_of("staff") > 0:
+		return
+	var key := _first_free_eq_for("staff")
+	if key != "":
+		_eq[key] = "staff"
 		return
 	var i := _first_empty_bag()
 	if i >= 0:
@@ -124,7 +129,7 @@ func _build_bag() -> void:
 	for i in BAG_SIZE:
 		_bag_n.append(0)
 	# 防具自动穿戴（_eq.armor 默认已为 armor）；法杖初始放在背包第一格，
-	# 由玩家自己拖到「法杖」槽才拿在手上
+	# 想用它就得自己拖进「武器」或「副武器」栏（另换一把回背包）
 	bag_set(0, "staff", 1)
 
 
@@ -140,19 +145,18 @@ func stack_max_of(id: String) -> int:
 	return STACK_MAX if STACKABLE.has(id) else 1
 
 
-## 对外：加入物品（可指定数量）。可装备且对应栏空→自动穿戴；
+## 对外：加入物品（可指定数量）。可装备且有空栏位→自动穿戴；
 ## 可堆叠物品先补满已有堆，再占用新格子。
 ## 返回是否全部放下：部分放下时已放的保留，返回值 false 供调用方提示"背包已满"。
 func add_item(id: String, count: int = 1) -> bool:
 	if not DB.has(id) or count <= 0:
 		return false
 	var left := count
-	var slot := int(DB[id]["slot"])
 	var placed := 0
-	# 仅首件走"自动穿戴"逻辑，其余进背包
-	if slot >= 0:
-		var key := _kind_to_key(slot)
-		if key != "" and _eq[key] == "":
+	# 仅首件走"自动穿戴"逻辑，其余进背包。武器三把但只有两格，两格都满就老实进背包。
+	if is_equippable(id):
+		var key := _first_free_eq_for(id)
+		if key != "":
 			_eq[key] = id
 			left -= 1
 			placed += 1
@@ -201,12 +205,28 @@ func _first_empty_bag() -> int:
 	return -1
 
 
-func _kind_to_key(kind: int) -> String:
-	match kind:
-		K_WEAPON: return "weapon"
-		K_SUB: return "subweapon"
-		K_ARMOR: return "armor"
-		K_STAFF: return "staff"
+func eq_slots_for(id: String) -> Array:
+	## 这件东西能去的装备栏（不可装备 → 空数组）
+	if not DB.has(id):
+		return []
+	return DB[id].get("eq", []) as Array
+
+
+func is_equippable(id: String) -> bool:
+	return not eq_slots_for(id).is_empty()
+
+
+func can_equip(id: String, key: String) -> bool:
+	## 拖放判定：这件物品允不允许落在某一格里
+	return eq_slots_for(id).has(key)
+
+
+func _first_free_eq_for(id: String) -> String:
+	## 按装备栏从左到右找第一个"能放且空着"的格子；没有就返回 ""
+	for key in eq_slots_for(id):
+		var k := String(key)
+		if _eq.has(k) and String(_eq[k]) == "":
+			return k
 	return ""
 
 
@@ -227,31 +247,26 @@ func bag_set(i: int, id: String, n: int = 1) -> void:
 
 
 func eq_get(k: String) -> String:
-	return _eq[k]
+	## 老存档/老调用可能问起已经不存在的「staff」栏，这里返回空而不是崩
+	return String(_eq[k]) if _eq.has(k) else ""
 
 
 func eq_set(k: String, id: String) -> void:
 	_eq[k] = id
 
 
-func key_kind(k: String) -> int:
-	match k:
-		"weapon": return K_WEAPON
-		"subweapon": return K_SUB
-		"armor": return K_ARMOR
-		"staff": return K_STAFF
-	return -1
-
-
-## 统一搬移：src/dst = ["bag", idx] 或 ["eq", key]；类型不符返回 false
+## 统一搬移：src/dst = ["bag", idx] 或 ["eq", key]；栏位不收这类东西返回 false
 func move_item(src: Array, dst: Array) -> bool:
-	if src[0] == dst[0] and int(src[1]) == int(dst[1]):
+	# 注意：装备栏的下标是字符串（"weapon"/"subweapon"），背包的是数字。
+	# 这里绝不能 int() 归一化——int("weapon") 和 int("subweapon") 都等于 0，
+	# 会把"武器栏拖到副武器栏"误判成"原地不动"而拒绝（三把武器共用两格之后必踩）。
+	if src[0] == dst[0] and str(src[1]) == str(dst[1]):
 		return false
 	var sid := _get_at(src)
 	var did := _get_at(dst)
-	if dst[0] == "eq" and sid != "" and int(DB[sid]["slot"]) != key_kind(dst[1]):
+	if dst[0] == "eq" and sid != "" and not can_equip(sid, str(dst[1])):
 		return false
-	if src[0] == "eq" and did != "" and int(DB[did]["slot"]) != key_kind(src[1]):
+	if src[0] == "eq" and did != "" and not can_equip(did, str(src[1])):
 		return false
 	# 同种可堆叠物品拖到同一格 → 合并（装不下的留在原格）
 	if src[0] == "bag" and dst[0] == "bag" and sid != "" and sid == did and is_stackable(sid):
@@ -287,12 +302,13 @@ func _set_at(loc: Array, id: String, n: int = 1) -> void:
 	if loc[0] == "bag":
 		bag_set(int(loc[1]), id, n)
 	else:
-		eq_set(String(loc[1]), id)
+		eq_set(str(loc[1]), id)
 
 
 func _sync_player() -> void:
+	## 只报三格的内容（武器/副武器/防具）；哪几把武器在身上由玩家按 id 认，不看格子名
 	if _player != null and _player.has_method("set_equipment"):
-		_player.call("set_equipment", _eq.weapon, _eq.subweapon, _eq.armor, _eq.staff)
+		_player.call("set_equipment", _eq.weapon, _eq.subweapon, _eq.armor)
 
 
 # ---- 选中 / 使用 / 丢弃 ----
@@ -316,8 +332,8 @@ func _enh_max() -> int:
 
 
 func is_enhanceable(id: String) -> bool:
-	## 能装备的就是可强化对象（剑 / 弓箭 / 防具），各自独立计级
-	return DB.has(id) and int(DB[id]["slot"]) >= 0
+	## 能装备的就是可强化对象（剑 / 弓箭 / 法杖 / 防具），各自独立计级
+	return is_equippable(id)
 
 
 func stones_held() -> int:
@@ -402,7 +418,7 @@ func _build_ui() -> void:
 	add_child(dim)
 
 	var panel := Panel.new()
-	panel.size = Vector2(838, 400)
+	panel.size = Vector2(838, 340)
 	panel.position = (size - panel.size) * 0.5
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	var ps := StyleBoxFlat.new()
@@ -423,15 +439,15 @@ func _build_ui() -> void:
 	panel.add_child(title)
 
 	_hint_label = Label.new()
-	_hint_label.text = "Tab 关闭 · 拖到装备栏穿/卸 · 双击武器或装备＝强化这一件（耗 1 块强化石）· 双击狗奶＝喝 · 选中按 E 丢弃"
-	_hint_label.position = Vector2(20, 372)
+	_hint_label.text = "Tab 关闭 · 拖到装备栏穿/卸（三把武器只能带两把）· 双击武器或装备＝强化（耗 1 块强化石）· 双击狗奶＝喝 · 选中按 E 丢弃"
+	_hint_label.position = Vector2(20, 312)
 	_hint_label.add_theme_font_size_override("font_size", 13)
 	_hint_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.55))
 	panel.add_child(_hint_label)
 
-	# 装备栏（左列）：武器 / 副武器 / 法杖 / 防具
+	# 装备栏（左列）：武器 / 副武器 / 防具。剑、弓、法杖三把都只能落在前两格，选两把带身上
 	var ey := 52.0
-	for d in [["weapon", "武器"], ["subweapon", "副武器"], ["staff", "法杖"], ["armor", "防具"]] as Array:
+	for d in [["weapon", "武器"], ["subweapon", "副武器"], ["armor", "防具"]] as Array:
 		var lbl := Label.new()
 		lbl.text = String(d[1])
 		lbl.position = Vector2(16, ey + 18)
@@ -464,7 +480,9 @@ func refresh_all() -> void:
 
 
 func is_selected(loc: Array) -> bool:
-	return not _selected_loc.is_empty() and _selected_loc[0] == loc[0] and int(_selected_loc[1]) == int(loc[1])
+	## 同 move_item：槽位标识可能是字符串（装备栏）也可能是数字（背包），按字符串比才准
+	return not _selected_loc.is_empty() and _selected_loc[0] == loc[0] \
+		and str(_selected_loc[1]) == str(loc[1])
 
 
 func _paint_slot(s: Control, id: String, n: int = 1) -> void:
@@ -642,13 +660,13 @@ class SlotCtl extends Panel:
 		if not (data is Dictionary) or not data.has("from"):
 			return false
 		var src: Array = data["from"]
-		if src[0] == loc[0] and int(src[1]) == int(loc[1]):
-			return false
+		if src[0] == loc[0] and str(src[1]) == str(loc[1]):
+			return false     # 拖回自己那一格不算（同样别用 int() 比，见 move_item 注释）
 		var sid: String = inv.bag_get(src[1]) if src[0] == "bag" else inv.eq_get(src[1])
-		if loc[0] == "eq" and sid != "" and int(inv.DB[sid]["slot"]) != inv.key_kind(loc[1]):
+		if loc[0] == "eq" and sid != "" and not inv.can_equip(sid, str(loc[1])):
 			return false
 		var did := _item_id()
-		if src[0] == "eq" and did != "" and int(inv.DB[did]["slot"]) != inv.key_kind(src[1]):
+		if src[0] == "eq" and did != "" and not inv.can_equip(did, str(src[1])):
 			return false
 		return true
 

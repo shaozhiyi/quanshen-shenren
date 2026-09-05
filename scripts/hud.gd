@@ -393,7 +393,7 @@ func _next_weapon_text() -> String:
 	if _player == null or not _player.has_method("next_weapon_index"):
 		return "切换武器"
 	if int(_player.call("equipped_count")) < 2:
-		return "（只装备了一把，去背包把法杖拖上装备栏）"
+		return "（只装备了一把，去背包再拖一把武器上栏）"
 	var i := int(_player.call("next_weapon_index"))
 	return "切换%s" % String(_enh_name(String(_player.call("weapon_id_at", i))))
 
@@ -477,8 +477,8 @@ func _process(delta: float) -> void:
 		var nxt := _next_weapon_text()
 		# 数值一律向武器脚本要最终值（含强化倍率 + 向下取整），改算法不用回来动 HUD
 		if staff_on:
-			var sr: Array = _staff.call("enhanced_range")     # 红：点射 / 蓄满
-			var sb: Array = _staff.call("blue_range")         # 蓝：点射 / 蓄满
+			var sr: Array = _staff.call("enhanced_range")        # 红：点射 / 蓄满（含强化）
+			var sb: Array = _staff.call("blue_enhanced_range")   # 蓝：点射 / 蓄满（含强化）
 			_weapon_label.text = "当前：法杖 红%d/%d 蓝%d/%d（点按/蓄满 %.0f 秒，蓝带定身）%s｜C %s" % [
 				int(sr[0]), int(sr[1]), int(sb[0]), int(sb[1]),
 				float(_staff.call("charge_time")), tag, nxt]
