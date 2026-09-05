@@ -350,7 +350,7 @@ func _process(delta: float) -> void:
 		var dr: Array = _bow.call("damage_range")
 		var ct: float = float(_bow.call("charge_time"))
 		if bow_on:
-			_weapon_label.text = "当前：弓箭 攻击 %d~%d（按住左键蓄力 %.0f 秒满，松手发射）｜C 切换剑%s" % [
+			_weapon_label.text = "当前：弓箭 攻击 %d~%d（按住左键 / X 蓄力 %.0f 秒满，松手发射）｜C 切换剑%s" % [
 				int(roundf(float(dr[0]) * scale)), int(roundf(float(dr[1]) * scale)), ct, tag]
 		else:
 			_weapon_label.text = "当前：剑 攻击 %d（X 挥砍）｜C 切换弓箭%s" % [int(roundf(50.0 * scale)), tag]

@@ -1,6 +1,6 @@
 extends Node3D
 ## 副武器·弓（挂在相机下）。主/副武器按 C 切换，初始主武器为剑。
-## 交互：装备弓时，按住鼠标左键 → 进入瞄准（FOV 拉近、弓移到眼前、搭箭、弦随蓄力后拉），
+## 交互：装备弓时，按住鼠标左键或 X 键 → 进入瞄准（FOV 拉近、弓移到眼前、搭箭、弦随蓄力后拉），
 ## 2 秒蓄满；松手 → 沿准星方向射出箭。箭为 RigidBody3D，弹道/射程由物理引擎（重力抛物线）决定，
 ## 初速与攻击力随蓄力提升：满蓄 2s 时攻击力 70（命中 BOSS 扣 70），未满按比例衰减。
 ## 模型：Poly Pizza CC0 弓 + Quaternius CC0 箭（assets/weapons，见 CREDITS.txt）。
@@ -32,6 +32,8 @@ var active := false               # 是否为当前装备武器（由 player 切
 var _charging := false
 var _charge := 0.0                # 秒
 var _cooldown := 0.0              # 射击后冷却剩余秒
+var _hold_lmb := false             # 左键还按着
+var _hold_x := false               # X 键还按着（与左键等效，任一按住建蓄力）
 var _camera: Camera3D
 var _bow_space: Node3D
 var _strand_u: MeshInstance3D
@@ -132,25 +134,40 @@ func _arrow_visuals() -> Node3D:
 	return ARROW_MODEL.instantiate()
 
 
-# ---- 输入：按住左键蓄力，松手发射 ----
+# ---- 输入：按住鼠标左键或 X 键蓄力，松手发射 ----
+# 两个输入源各记一份"还按着"：任一按下就起手，最后一个放开才撒放，
+# 所以"按住 X 又点一下左键"不会把蓄力清零重来。X 与剑的"按 X 挥砍"不冲突
+# （两把武器不会同时 active）。
 func _unhandled_input(event: InputEvent) -> void:
 	if not active:
 		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
-		if event.pressed:
-			if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and _cooldown <= 0.0:
-				if not _charging:
-					SFX.play("draw")      # 搭弦开拉：只在起势那一刻响
-				_charging = true
-				_charge = 0.0
-		else:
-			if _charging:
-				_fire()
+		_set_hold("lmb", event.pressed and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED)
+	elif event is InputEventKey and not event.echo and event.keycode == KEY_X:
+		_set_hold("x", event.pressed)
+
+
+func _set_hold(who: String, on: bool) -> void:
+	if who == "lmb":
+		_hold_lmb = on
+	else:
+		_hold_x = on
+	var want := _hold_lmb or _hold_x
+	if want and not _charging:
+		if _cooldown > 0.0:
+			return                       # 冷却中不起手（和原来只认左键时一致）
+		_charging = true
+		_charge = 0.0
+		SFX.play("draw")                 # 搭弦开拉：只在起势那一刻响
+	elif not want and _charging:
+		_fire()
 
 
 func _cancel() -> void:
 	_charging = false
 	_charge = 0.0
+	_hold_lmb = false
+	_hold_x = false
 	_draw = 0.0
 
 
