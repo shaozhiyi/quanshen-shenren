@@ -7,6 +7,7 @@
   armor.svg   breastplate    by Lorc
   chest.svg   open-chest     by skoll      （掉落箱广告牌图标）
   stone.svg   armor-upgrade  by Delapouite （装备强化石图标）
+  staff.svg 法杖物品图标 —— 本项目自绘（白色剪影，风格对齐 game-icons.net），无第三方许可
   dogmilk.png 复用 BOSS 的 2D 贴图 assets/props/dogmilk/front.png（野生狗奶物品图标）
   原始 SVG 为黑底白图，本仓库已剥离背景仅保留白色剪影并着色。
   图标仓库：https://github.com/game-icons/icons

@@ -99,6 +99,7 @@ var _hp_label: Label3D
 var _label: Label3D
 var _base_y := 0.0
 var _reseated := false            # 大地图落座是否已按真实地面校正过（见 _reseat_to_surface）
+var _stun_t := 0.0                # 法杖蓝球定身剩余秒：只冻结推进，不改相位（见 stun()）
 var _arena_mode := false          # 只有进入 BOSS 空间才可被攻击
 var _home_pos := Vector3.ZERO     # 大地图原位（进出空间时恢复）
 
@@ -160,6 +161,7 @@ func set_arena_mode(b: bool) -> void:
 	_wandering = false
 	_slam_hit = false
 	_slam_target = Vector3.ZERO
+	_stun_t = 0.0            # 进出战场都不带上一次的定身残留
 	_show_marker(false)
 	_hide_stars()
 	_reset_charge()        # 载具档：半截冲撞/预警带不能留到下一次开战
@@ -741,8 +743,22 @@ func take_damage(amount: int, weapon := "") -> void:
 		damaged.emit(weapon, amount)
 
 
+func stun(sec: float) -> bool:
+	## 法杖蓝球的"只控制、不打断"：不动 _phase / _phase_t / 技能进度，也不停音乐，
+	## 只是这段时间里不推进、不移动、不转向；再命中取最长那次（不叠加、不延长成无限）
+	if _dead or not _arena_mode or sec <= 0.0:
+		return false
+	_stun_t = maxf(_stun_t, sec)
+	return true
+
+
+func is_stunned() -> bool:
+	return _stun_t > 0.0
+
+
 func _die() -> void:
 	_dead = true
+	_stun_t = 0.0
 	_beats += 1          # 击败一次后开放难度调节
 	_label.text = "%s 已被缴获" % boss_name
 	_hp_label.visible = false
@@ -758,6 +774,10 @@ func _process(delta: float) -> void:
 	if _dead:
 		# 沉地消失
 		_visual.position.y = maxf(_visual.position.y - delta * 1.2, -box_height() * 0.9)
+		return
+	if _stun_t > 0.0:
+		# 被法杖定住：整只冻在原地（相位/进度原样保留），到点接着打
+		_stun_t = maxf(_stun_t - delta, 0.0)
 		return
 	if not _reseated:
 		_reseat_to_surface()     # 地形网格就绪后补一次真实落座（见函数注释）

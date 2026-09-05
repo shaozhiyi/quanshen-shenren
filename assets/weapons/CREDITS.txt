@@ -2,6 +2,10 @@
 
 - bow.glb   — "Bow" by Zsky, Poly Pizza (https://poly.pizza/m/XkJVO6cACA), CC0
               原始 Google Poly 资源，经 Poly Pizza 重新分发。
+- staff.glb — "Staff" (作者未署名), Poly Pizza (https://poly.pizza/m/PnGRvO4Lwd), CC0
+              法杖视图模型：220 三角 / 428 顶点，未缩放高 2.68 单位，运行时按 0.35 缩放到手里。
+              杖顶的发光球体由 scripts/staff.gd 程序化生成（StandardMaterial3D 自发光），非模型自带。
+
 - arrow.glb — "Arrow" by Quaternius (Ultimate RPG Pack), Poly Pizza
               (https://poly.pizza/m/6pMBOmBFxGt), CC0
 

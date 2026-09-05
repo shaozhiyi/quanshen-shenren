@@ -14,8 +14,8 @@ extends CanvasLayer
 # ---- 播报提示（击中 / 击败）：下面这些数字与文案都可以直接改 ----
 @export var feed_max := 4                        # 最多同时几条，超了就删最末尾（最旧）那条
 @export var feed_line_width := 150.0             # 每条长度：血条 238 的一半多一点
-@export var feed_line_height := 24.0             # 每条高度：4 条 + 间距正好铺到"C 切换弓箭"那一行
-@export var feed_gap := 4.0                      # 条与条的间距
+@export var feed_line_height := 21.0             # 每条高度：4 条 + 间距停在"C 切换…"那一行上方
+@export var feed_gap := 3.0                      # 条与条的间距
 @export var feed_start_offset := Vector2(12, 0)  # 起点 = 血条右上角 + 这个偏移
 @export var feed_font_size := 15
 @export var feed_life := 0.0                     # 每条停留秒数；0 = 不自动消失，只按条数淘汰
@@ -53,6 +53,7 @@ var _charge_bar: Control
 var _cross: Control
 var _sword: Node
 var _bow: Node
+var _staff: Node
 var _mp_shown := -1.0
 var _mp_max_shown := -1.0
 var _exp_shown := -1.0
@@ -146,6 +147,7 @@ func _ready() -> void:
 	# ---- 武器 UI：提示文字 / 蓄力条 / 准星 ----
 	_sword = get_node_or_null("../Player/Camera3D/Sword")
 	_bow = get_node_or_null("../Player/Camera3D/Bow")
+	_staff = get_node_or_null("../Player/Camera3D/Staff")
 
 	_weapon_label = Label.new()
 	_weapon_label.position = coord_position + Vector2(0, 24)
@@ -153,7 +155,7 @@ func _ready() -> void:
 	_weapon_label.add_theme_color_override("font_color", Color(1, 0.92, 0.65, 0.95))
 	_weapon_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
 	_weapon_label.add_theme_constant_override("outline_size", 3)
-	_weapon_label.text = "当前：剑（X 挥砍）｜C 切换弓箭"
+	_weapon_label.text = "当前：剑（X 挥砍）｜C 切换武器"
 	add_child(_weapon_label)
 
 	_hint_label = Label.new()
@@ -386,6 +388,16 @@ func _sword_power() -> int:
 	return 50
 
 
+func _next_weapon_text() -> String:
+	## 「C 切换弓箭」那半句：下一把是哪只由玩家算（会跳过没装备的），这里只负责取名字
+	if _player == null or not _player.has_method("next_weapon_index"):
+		return "切换武器"
+	if int(_player.call("equipped_count")) < 2:
+		return "（只装备了一把，去背包把法杖拖上装备栏）"
+	var i := int(_player.call("next_weapon_index"))
+	return "切换%s" % String(_enh_name(String(_player.call("weapon_id_at", i))))
+
+
 func _enh_name(id: String) -> String:
 	var inv := get_node_or_null("Inventory")
 	if inv != null and inv.has_method("item_name"):
@@ -393,6 +405,7 @@ func _enh_name(id: String) -> String:
 	match id:
 		"sword": return "剑"
 		"bow": return "弓箭"
+		"staff": return "法杖"
 		"armor": return "防具"
 	return id
 
@@ -450,31 +463,40 @@ func _process(delta: float) -> void:
 				_lv_shown = lv
 				_lv_label.text = "LV%d" % lv
 
-	# 武器状态：提示文字 / 准星 / 蓄力条
+	# 武器状态：提示文字 / 准星 / 蓄力条（剑、弓、法杖三把共用这一段）
 	if _bow != null and _sword != null:
+		var staff_on: bool = _staff != null and bool(_staff.get("active"))
 		var bow_on: bool = _bow.get("active")
-		_cross.visible = bow_on
-		var cur := "bow" if bow_on else "sword"
+		var cur := "staff" if staff_on else ("bow" if bow_on else "sword")
+		_cross.visible = bow_on or staff_on        # 法杖也沿准星直线射，需要准星
 		var lv := _enh_lv(cur)
 		var armor_lv := _enh_lv("armor")
 		var tag := "｜%s +%d" % [String(_enh_name(cur)), lv] if lv > 0 else ""
 		if armor_lv > 0:
 			tag += "｜甲 +%d" % armor_lv
+		var nxt := _next_weapon_text()
 		# 数值一律向武器脚本要最终值（含强化倍率 + 向下取整），改算法不用回来动 HUD
-		var ct: float = float(_bow.call("charge_time"))
-		if bow_on:
+		if staff_on:
+			var sr: Array = _staff.call("enhanced_range")     # 红：点射 / 蓄满
+			var sb: Array = _staff.call("blue_range")         # 蓝：点射 / 蓄满
+			_weapon_label.text = "当前：法杖 红%d/%d 蓝%d/%d（点按/蓄满 %.0f 秒，蓝带定身）%s｜C %s" % [
+				int(sr[0]), int(sr[1]), int(sb[0]), int(sb[1]),
+				float(_staff.call("charge_time")), tag, nxt]
+		elif bow_on:
 			var dr: Array = _bow.call("enhanced_range")
-			_weapon_label.text = "当前：弓箭 攻击 %d~%d（按住左键 / X 蓄力 %.0f 秒满，松手发射）｜C 切换剑%s" % [
-				int(dr[0]), int(dr[1]), ct, tag]
+			_weapon_label.text = "当前：弓箭 攻击 %d~%d（按住左键 / X 蓄力 %.0f 秒满，松手发射）%s｜C %s" % [
+				int(dr[0]), int(dr[1]), float(_bow.call("charge_time")), tag, nxt]
 		else:
-			_weapon_label.text = "当前：剑 攻击 %d（X 挥砍）｜C 切换弓箭%s" % [_sword_power(), tag]
-		if _bow.call("is_charging"):
+			_weapon_label.text = "当前：剑 攻击 %d（X 挥砍）%s｜C %s" % [_sword_power(), tag, nxt]
+		# 蓄力条：弓与法杖共用（蓄力中=进度，否则冷却中=倒数，都不在=隐藏）
+		var act: Node = _staff if staff_on else _bow
+		if bool(act.call("is_charging")):
 			_charge_bar.visible = true
-			_charge_bar.call("set_value", _bow.call("charge_ratio") * 100.0, false)
-		elif _bow.get("active") and _bow.get("_cooldown") > 0.0:
-			# 射击冷却：红条倒数
+			_charge_bar.call("set_value", float(act.call("charge_ratio")) * 100.0, false)
+		elif float(act.call("cooldown_left")) > 0.0:
 			_charge_bar.visible = true
-			_charge_bar.call("set_value", _bow.get("_cooldown") / float(_bow.call("shot_cooldown")) * 100.0, false)
+			_charge_bar.call("set_value", float(act.call("cooldown_left"))
+				/ float(act.call("shot_cooldown")) * 100.0, false)
 		else:
 			_charge_bar.visible = false
 

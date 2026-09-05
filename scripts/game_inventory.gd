@@ -2,7 +2,8 @@ extends Control
 ## 背包 & 装备栏（Tab 开关；打开期间整局暂停，关闭即恢复）。
 ## 数据层复用 Godot 素材库插件 addons/grid_inventory（MIT, GodotForge）的
 ## Inventory / InvItem 类；物品图标取自 game-icons.net（CC-BY 4.0，见 assets/items/CREDITS.txt）。
-## 装备栏：武器 / 副武器 / 防具；背包 3 行 × 9 列。默认装备剑+弓箭+防具（防具自动穿戴）。
+## 装备栏：武器 / 副武器 / 法杖 / 防具；背包 3 行 × 9 列。默认装备剑+弓箭+防具（防具自动穿戴），
+## 法杖初始放在背包第一格，拖到「法杖」槽才拿在手上（之后 C 键就能循环切到它）。
 ## 交互：拖拽穿卸；单击选中；双击武器/防具＝只强化这一件（吃 1 块强化石）；
 ##       双击消耗品＝使用一次；选中后按 E 丢弃→地上生成箱子。
 
@@ -15,6 +16,7 @@ const K_BAG := 0
 const K_WEAPON := 1
 const K_SUB := 2
 const K_ARMOR := 3
+const K_STAFF := 4
 
 # 堆叠：消耗品可堆到同格，格子上显示 ×2/×3…；上限 20
 const STACK_MAX := 20
@@ -29,6 +31,8 @@ const DB := {
 		"desc": "副武器 · 蓄力 2 秒满，攻击 12~70\n按住左键蓄力，松手发射，每箭冷却 0.5 秒\n双击：花 1 块强化石 → 只有弓箭 +1 级\n每级攻击力 ×1.1 后向下取整（最高 +10）"},
 	"armor":  {"name": "防具", "slot": K_ARMOR, "icon": "res://assets/items/armor.svg", "tint": Color(1.00, 0.85, 0.40),
 		"desc": "护甲 · 受到的伤害 ×0.7 后向下取整\n双击：花 1 块强化石 → 只有防具 +1 级\n每级再减 3% 受伤（最低 ×0.4）\n（不足 1 点的零头会累计到之后扣）"},
+	"staff":  {"name": "法杖", "slot": K_STAFF, "icon": "res://assets/items/staff.svg", "tint": Color(0.78, 0.70, 1.00),
+		"desc": "第三武器 · 点 X / 左键甩杖射出一颗魔法球，冷却 2 秒\n按住不放蓄力最多 3 秒，松手射出更大的球\n球色随机：红＝伤害 80（蓄满 140）\n蓝＝伤害 50（蓄满 90）+ 定身 1 秒（蓄满 1.5 秒）\n定身只冻住 BOSS，不打断它正在做的动作\n拖到装备栏「法杖」槽拿在手上，之后按 C 循环切换\n双击：花 1 块强化石 → 只有法杖 +1 级"},
 	"dogmilk": {"name": "野生狗奶", "slot": -1, "icon": "res://assets/items/dogmilk.png", "tint": Color(1, 1, 1),
 		"desc": "「生命惧怕时间，时间惧怕野生狗奶。」\n\n消耗品 · 双击饮用\n获得 10 秒无敌（免疫伤害），\n血条变金、数字显示「永久」\n10 秒后解除并恢复满血",
 		"use": "invincible", "dur": 10.0},
@@ -39,7 +43,7 @@ const DB := {
 var _bag: Inventory                 # addons/grid_inventory 的数据模型（27 格）
 var _items := {}                    # id -> InvItem
 var _bag_n: Array = []              # 每格物品数量（与 _bag.slots 同长）
-var _eq := {"weapon": "sword", "subweapon": "bow", "armor": "armor"}
+var _eq := {"weapon": "sword", "subweapon": "bow", "armor": "armor", "staff": ""}
 var _eq_slots := {}                 # key -> SlotCtl
 var _bag_slots: Array = []
 var _player: Node
@@ -78,19 +82,29 @@ func save_state() -> Dictionary:
 ## 读档：还原装备栏、背包（含数量），并把"手上拿的哪把武器"同步回玩家
 func load_state(save: Dictionary) -> void:
 	var eq: Dictionary = save.get("equipment", {})
-	for k in ["weapon", "subweapon", "armor"]:
-		if eq.has(k):
-			_eq[k] = String(eq[k])
+	for k in ["weapon", "subweapon", "armor", "staff"]:
+		_eq[k] = String(eq[k]) if eq.has(k) else ""
 	var bag: Array = save.get("bag", [])
 	var counts: Array = save.get("bag_counts", [])
 	for i in mini(bag.size(), BAG_SIZE):
 		var n := int(counts[i]) if i < counts.size() else 1
 		bag_set(i, String(bag[i]), maxi(n, 1))
+	_ensure_staff()
 	refresh_all()
 	_sync_player()
 	var w := int(save.get("player", {}).get("weapon", 0))
 	if _player != null and _player.has_method("set_current_weapon"):
 		_player.call("set_current_weapon", w)
+
+
+func _ensure_staff() -> void:
+	## 老存档没有法杖（既不在装备栏也不在背包）→ 补发一根，放在第一个空格。
+	## 没空格就算了，绝不挤掉玩家已有的东西。
+	if _eq.staff == "staff" or count_of("staff") > 0:
+		return
+	var i := _first_empty_bag()
+	if i >= 0:
+		bag_set(i, "staff", 1)
 
 
 # ---- 数据 ----
@@ -109,7 +123,9 @@ func _build_bag() -> void:
 	_bag_n.clear()
 	for i in BAG_SIZE:
 		_bag_n.append(0)
-	# 防具自动穿戴（_eq.armor 默认已为 armor），背包起始留空
+	# 防具自动穿戴（_eq.armor 默认已为 armor）；法杖初始放在背包第一格，
+	# 由玩家自己拖到「法杖」槽才拿在手上
+	bag_set(0, "staff", 1)
 
 
 func item_name(id: String) -> String:
@@ -190,6 +206,7 @@ func _kind_to_key(kind: int) -> String:
 		K_WEAPON: return "weapon"
 		K_SUB: return "subweapon"
 		K_ARMOR: return "armor"
+		K_STAFF: return "staff"
 	return ""
 
 
@@ -222,6 +239,7 @@ func key_kind(k: String) -> int:
 		"weapon": return K_WEAPON
 		"subweapon": return K_SUB
 		"armor": return K_ARMOR
+		"staff": return K_STAFF
 	return -1
 
 
@@ -274,7 +292,7 @@ func _set_at(loc: Array, id: String, n: int = 1) -> void:
 
 func _sync_player() -> void:
 	if _player != null and _player.has_method("set_equipment"):
-		_player.call("set_equipment", _eq.weapon, _eq.subweapon, _eq.armor)
+		_player.call("set_equipment", _eq.weapon, _eq.subweapon, _eq.armor, _eq.staff)
 
 
 # ---- 选中 / 使用 / 丢弃 ----
@@ -384,7 +402,7 @@ func _build_ui() -> void:
 	add_child(dim)
 
 	var panel := Panel.new()
-	panel.size = Vector2(838, 340)
+	panel.size = Vector2(838, 400)
 	panel.position = (size - panel.size) * 0.5
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	var ps := StyleBoxFlat.new()
@@ -405,15 +423,15 @@ func _build_ui() -> void:
 	panel.add_child(title)
 
 	_hint_label = Label.new()
-	_hint_label.text = "Tab 关闭 · 拖到装备栏穿/卸 · 双击武器或防具＝强化这一件（耗 1 块强化石）· 双击狗奶＝喝 · 选中按 E 丢弃"
-	_hint_label.position = Vector2(20, 312)
+	_hint_label.text = "Tab 关闭 · 拖到装备栏穿/卸 · 双击武器或装备＝强化这一件（耗 1 块强化石）· 双击狗奶＝喝 · 选中按 E 丢弃"
+	_hint_label.position = Vector2(20, 372)
 	_hint_label.add_theme_font_size_override("font_size", 13)
 	_hint_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.55))
 	panel.add_child(_hint_label)
 
-	# 装备栏（左列）：武器 / 副武器 / 防具
+	# 装备栏（左列）：武器 / 副武器 / 法杖 / 防具
 	var ey := 52.0
-	for d in [["weapon", "武器"], ["subweapon", "副武器"], ["armor", "防具"]] as Array:
+	for d in [["weapon", "武器"], ["subweapon", "副武器"], ["staff", "法杖"], ["armor", "防具"]] as Array:
 		var lbl := Label.new()
 		lbl.text = String(d[1])
 		lbl.position = Vector2(16, ey + 18)

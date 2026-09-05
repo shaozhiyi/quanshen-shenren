@@ -94,6 +94,11 @@ func shot_cooldown() -> float:
 	return SHOT_COOLDOWN
 
 
+func cooldown_left() -> float:
+	## 还要等多久才能再射（HUD 与法杖共用同一套接口）
+	return _cooldown
+
+
 func is_charging() -> bool:
 	return _charging
 

@@ -29,15 +29,16 @@ var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 var _spawn_pos := Vector3(0.0, 5.0, 0.0)
 var _sword: Node
 var _bow: Node
-var _weapon := 0        # 0=主武器剑 1=副武器弓
-var _has := [true, true]  # 装备栏：[剑, 弓] 是否已装备
+var _staff: Node
+var _weapon := 0        # 0=主武器剑 1=副武器弓 2=法杖
+var _has := [true, true, false]  # 装备栏：[剑, 弓, 法杖] 是否已装备（法杖初始躺在背包里）
 var armor_factor := 1.0   # 护甲减伤系数（穿上防具=0.7，即受到的伤害 ×0.7 后向下取整）
 var _armor_on := false    # 当前是否穿着防具
 const ENHANCE_MAX := 10                       # 每件装备各自封顶 +10
-const ENHANCE_KINDS := ["sword", "bow", "armor"]  # 可强化对象（武器/装备，不含消耗品）
+const ENHANCE_KINDS := ["sword", "bow", "armor", "staff"]  # 可强化对象（武器/装备，不含消耗品）
 const SWORD_DMG := 50.0                       # 剑 +0 级的攻击力（结算与 HUD 显示同一个数）
 const ENH_GROWTH := 1.10                      # 强化倍率：每级 ×1.1（指数级），最终向下取整
-var enhance_levels := {"sword": 0, "bow": 0, "armor": 0}  # 逐件强化等级（双击该件→仅它+1）
+var enhance_levels := {"sword": 0, "bow": 0, "armor": 0, "staff": 0}  # 逐件强化等级（双击该件→仅它+1）
 var _dmg_carry := 0.0     # 防具取整后剩下的小数伤害，累计到下一次（否则 0.21/跳会被抹成 0）
 var _invincible := false
 var _invincible_t := 0.0
@@ -100,6 +101,9 @@ func _ready() -> void:
 	_bow = get_node_or_null("Camera3D/Bow")
 	if _bow != null:
 		_bow.set_active(false)
+	_staff = get_node_or_null("Camera3D/Staff")
+	if _staff != null:
+		_staff.set_active(false)
 	_inv = _find_inventory()
 	if _inv == null:
 		_bind_inventory_later()      # 分帧进场景时 HUD 比我们晚一帧挂回来
@@ -196,7 +200,7 @@ func _apply_loaded_state() -> void:
 func set_current_weapon(w: int) -> void:
 	## 读档时恢复"手上拿的是哪把"（装备状态由背包模块先同步）
 	## 这里故意不走 weapon_busy()：读档是外部状态还原，必须无条件生效。
-	if (w == 0 or w == 1) and _has[w]:
+	if w >= 0 and w < _has.size() and _has[w]:
 		_equip(w)
 
 
@@ -492,52 +496,73 @@ func spawn_drop_box(item_id: String, count: int = 1) -> void:
 
 func weapon_busy() -> bool:
 	## 手上这把武器还在"收不了手"的动作里：
-	##   弓 = 蓄力中（按住左键或 X，松手才撒放）
-	##   剑 = 挥砍动画播放中（按 X 起手到动画结束）
-	## 这段时间 C 被拦住：切走会把蓄力清零、或让挥砍半途消失（伤害与动画脱节）。
+	##   弓 / 法杖 = 蓄力中（按住左键或 X，松手才出手）
+	##   剑 = 挥砍动画播放中；法杖另加一段甩杖动画
+	## 这段时间 C 被拦住：切走会把蓄力清零、或让动作半途消失（伤害与动画脱节）。
 	## 只查手上这把——另一把切走时 set_active(false) 已经把状态清了。
 	if _weapon == 1 and _bow != null and _bow.has_method("is_charging"):
 		return bool(_bow.call("is_charging"))
+	if _weapon == 2 and _staff != null:
+		if _staff.has_method("is_charging") and bool(_staff.call("is_charging")):
+			return true
+		if _staff.has_method("is_attacking") and bool(_staff.call("is_attacking")):
+			return true
 	if _weapon == 0 and _sword != null and _sword.has_method("is_attacking"):
 		return bool(_sword.call("is_attacking"))
 	return false
 
 
+func equipped_count() -> int:
+	var n := 0
+	for h in _has:
+		if h:
+			n += 1
+	return n
+
+
+func next_weapon_index() -> int:
+	## C 键会切到哪一把（沿 剑→弓→法杖 循环，跳过没装备的）；只有一把时返回自己
+	var total := _has.size()
+	for step in range(1, total + 1):
+		var i := (_weapon + step) % total
+		if _has[i]:
+			return i
+	return _weapon
+
+
 func _switch_weapon() -> void:
-	## C 键：主/副武器切换（剑 ↔ 弓）；仅当两把都已装备、且当前动作收尾后可以切
-	if _has[0] and _has[1] and not weapon_busy():
-		_equip(1 - _weapon)
+	## C 键：在已装备的武器之间循环切换；手上动作没收尾时不许切
+	if equipped_count() < 2 or weapon_busy():
+		return
+	_equip(next_weapon_index())
 
 
 func _equip(w: int) -> void:
-	## 激活指定武器视图（0=剑 1=弓）
+	## 激活指定武器视图（0=剑 1=弓 2=法杖）
 	_weapon = w
 	if _sword != null:
 		_sword.set_active(w == 0)
 	if _bow != null:
 		_bow.set_active(w == 1)
+	if _staff != null:
+		_staff.set_active(w == 2)
 
 
-func set_equipment(weapon_id: String, sub_id: String, armor_id: String) -> void:
-	## 由背包/装备栏调用：同步已装备状态与护甲减伤；当前武器被卸下则自动改用另一把
+func set_equipment(weapon_id: String, sub_id: String, armor_id: String, staff_id: String = "") -> void:
+	## 由背包/装备栏调用：同步已装备状态与护甲减伤；当前武器被卸下则自动改用下一把
 	_has[0] = (weapon_id == "sword")
 	_has[1] = (sub_id == "bow")
+	_has[2] = (staff_id == "staff")
 	_armor_on = (armor_id != "")
 	_refresh_armor_factor()
-	if _has[_weapon]:
+	if _weapon < _has.size() and _has[_weapon]:
 		_equip(_weapon)
-	else:
-		var found := false
-		for w in 2:
-			if _has[w]:
-				_equip(w)
-				found = true
-				break
-		if not found:
-			if _sword != null:
-				_sword.set_active(false)
-			if _bow != null:
-				_bow.set_active(false)
+		return
+	for w in _has.size():
+		if _has[w]:
+			_equip(w)
+			return
+	_equip(-1)      # 一把武器都没装备（全卸了）：三把都收起来
 
 
 # ---- 装备强化（每件各自算级，消耗"装备强化石"） ----
@@ -579,6 +604,24 @@ func sword_damage() -> int:
 	return attack_power("sword", SWORD_DMG)
 
 
+const WEAPON_IDS := ["sword", "bow", "staff"]   # 与 _weapon 下标、_has 一一对应
+
+
+func weapon_id_at(i: int) -> String:
+	## 某个下标对应的强化 id（HUD 用它显示"当前/下一把"的名字，不自己硬编码）
+	if i >= 0 and i < WEAPON_IDS.size():
+		return WEAPON_IDS[i]
+	return ""
+
+
+func current_weapon_id() -> String:
+	return weapon_id_at(_weapon)
+
+
+func is_equipped(i: int) -> bool:
+	return i >= 0 and i < _has.size() and _has[i]
+
+
 func enhance_item(id: String) -> bool:
 	## 双击某件武器/装备：只强化它自己，+1 级（最高 +10）。
 	## 满级或物品不可强化返回 false —— 调用方（背包）据此不消耗强化石。
@@ -596,8 +639,8 @@ func _apply_enhance(data) -> void:
 	## 读档套用强化等级：新存档是逐件字典，老存档是全身统一的整数（一律按当件等级还原）
 	if typeof(data) == TYPE_DICTIONARY:
 		for k in ENHANCE_KINDS:
-			if data.has(k):
-				enhance_levels[k] = clampi(int(data[k]), 0, ENHANCE_MAX)
+			# 存档里没有这一件 = 那一件就是 +0（老存档没有法杖，不能留着当前值不放）
+			enhance_levels[k] = clampi(int(data[k]), 0, ENHANCE_MAX) if data.has(k) else 0
 	elif typeof(data) == TYPE_INT or typeof(data) == TYPE_FLOAT:
 		var lv := clampi(int(data), 0, ENHANCE_MAX)
 		for k in ENHANCE_KINDS:
@@ -753,7 +796,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			# Z：冲刺（单独一下，沿当前按住的方向；没按方向就朝正前方）
 			try_dash()
 		elif event.keycode == KEY_C:
-			# C：主/副武器切换（剑 ↔ 弓）
+			# C：在已装备的武器之间循环（剑 → 弓 → 法杖 → 剑，跳过没装备的）
 			_switch_weapon()
 		elif event.keycode == KEY_E:
 			# E：附近有掉落箱→回收；否则靠近 BOSS 进入其空间 / 空间内离开

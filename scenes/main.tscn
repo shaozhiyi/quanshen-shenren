@@ -1,4 +1,4 @@
-[gd_scene load_steps=16 format=3]
+[gd_scene load_steps=17 format=3]
 
 [ext_resource type="Script" path="res://scripts/player.gd" id="1_player"]
 [ext_resource type="Shader" path="res://shaders/ground.gdshader" id="4_ground"]
@@ -13,6 +13,7 @@
 [ext_resource type="Script" path="res://scripts/arena.gd" id="13_arena"]
 [ext_resource type="Script" path="res://scripts/game_inventory.gd" id="14_ginventory"]
 [ext_resource type="Script" path="res://scripts/highway_arena.gd" id="16_highwayarena"]
+[ext_resource type="Script" path="res://scripts/staff.gd" id="17_staff"]
 
 [sub_resource type="Environment" id="environment"]
 background_mode = 1
@@ -78,6 +79,9 @@ script = ExtResource("10_sword")
 
 [node name="Bow" type="Node3D" parent="Player/Camera3D"]
 script = ExtResource("12_bow")
+
+[node name="Staff" type="Node3D" parent="Player/Camera3D"]
+script = ExtResource("17_staff")
 
 [node name="HUD" type="CanvasLayer" parent="."]
 script = ExtResource("9_hud")
