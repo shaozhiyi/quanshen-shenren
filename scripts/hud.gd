@@ -379,11 +379,11 @@ func _enh_lv(id: String) -> int:
 	return 0
 
 
-func _enh_scale(id: String) -> float:
-	## 某件武器的攻击力倍率
-	if _player != null and _player.has_method("damage_scale_for"):
-		return float(_player.call("damage_scale_for", id))
-	return 1.0
+func _sword_power() -> int:
+	## 剑的最终攻击力：向玩家要（含指数强化与向下取整），玩家未就绪时退回基础值
+	if _player != null and _player.has_method("sword_damage"):
+		return int(_player.call("sword_damage"))
+	return 50
 
 
 func _enh_name(id: String) -> String:
@@ -456,19 +456,18 @@ func _process(delta: float) -> void:
 		_cross.visible = bow_on
 		var cur := "bow" if bow_on else "sword"
 		var lv := _enh_lv(cur)
-		var scale := _enh_scale(cur)
 		var armor_lv := _enh_lv("armor")
 		var tag := "｜%s +%d" % [String(_enh_name(cur)), lv] if lv > 0 else ""
 		if armor_lv > 0:
 			tag += "｜甲 +%d" % armor_lv
-		# 数值一律向弓箭脚本要，改参数不用回来动 HUD
-		var dr: Array = _bow.call("damage_range")
+		# 数值一律向武器脚本要最终值（含强化倍率 + 向下取整），改算法不用回来动 HUD
 		var ct: float = float(_bow.call("charge_time"))
 		if bow_on:
+			var dr: Array = _bow.call("enhanced_range")
 			_weapon_label.text = "当前：弓箭 攻击 %d~%d（按住左键 / X 蓄力 %.0f 秒满，松手发射）｜C 切换剑%s" % [
-				int(roundf(float(dr[0]) * scale)), int(roundf(float(dr[1]) * scale)), ct, tag]
+				int(dr[0]), int(dr[1]), ct, tag]
 		else:
-			_weapon_label.text = "当前：剑 攻击 %d（X 挥砍）｜C 切换弓箭%s" % [int(roundf(50.0 * scale)), tag]
+			_weapon_label.text = "当前：剑 攻击 %d（X 挥砍）｜C 切换弓箭%s" % [_sword_power(), tag]
 		if _bow.call("is_charging"):
 			_charge_bar.visible = true
 			_charge_bar.call("set_value", _bow.call("charge_ratio") * 100.0, false)

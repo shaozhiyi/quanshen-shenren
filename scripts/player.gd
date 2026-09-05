@@ -35,6 +35,8 @@ var armor_factor := 1.0   # 护甲减伤系数（穿上防具=0.7，即受到的
 var _armor_on := false    # 当前是否穿着防具
 const ENHANCE_MAX := 10                       # 每件装备各自封顶 +10
 const ENHANCE_KINDS := ["sword", "bow", "armor"]  # 可强化对象（武器/装备，不含消耗品）
+const SWORD_DMG := 50.0                       # 剑 +0 级的攻击力（结算与 HUD 显示同一个数）
+const ENH_GROWTH := 1.10                      # 强化倍率：每级 ×1.1（指数级），最终向下取整
 var enhance_levels := {"sword": 0, "bow": 0, "armor": 0}  # 逐件强化等级（双击该件→仅它+1）
 var _dmg_carry := 0.0     # 防具取整后剩下的小数伤害，累计到下一次（否则 0.21/跳会被抹成 0）
 var _invincible := false
@@ -560,8 +562,21 @@ func enhance_max() -> int:
 
 
 func damage_scale_for(id: String) -> float:
-	## 该武器的攻击力倍率：每级 +10%，只跟这件武器自己的等级有关
-	return 1.0 + 0.10 * float(enhance_level_of(id))
+	## 该武器的攻击力倍率：每级 ×ENH_GROWTH 的指数增长（+1=1.1、+2=1.21、+3=1.331…），
+	## 只跟这件武器自己的等级有关；最终数值一律走 attack_power() 向下取整
+	return pow(ENH_GROWTH, float(enhance_level_of(id)))
+
+
+func attack_power(id: String, base: float) -> int:
+	## 强化后的实际攻击力 = 底数 × 倍率，再向下取整。
+	## 剑（底数 50）：+0=50 → +1=55 → +2=60（60.5 取整）→ +3=66（66.55 取整）→ +4=73 …
+	## 伤害结算与 HUD 显示都走这一个函数，两边不会打出不一样的数
+	return int(floor(base * damage_scale_for(id)))
+
+
+func sword_damage() -> int:
+	## 剑当前攻击力（HUD 读它，以后改基数只用动 SWORD_DMG）
+	return attack_power("sword", SWORD_DMG)
 
 
 func enhance_item(id: String) -> bool:
@@ -605,7 +620,7 @@ func _on_slash_hit() -> void:
 		if col.is_in_group("boss"):
 			var boss := col.get_parent()
 			if boss.has_method("take_damage"):
-				boss.take_damage(int(roundf(50.0 * damage_scale_for("sword"))), "剑")
+				boss.take_damage(sword_damage(), "剑")
 
 
 func _find_spawn() -> Vector3:

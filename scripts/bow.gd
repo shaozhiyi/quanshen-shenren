@@ -74,6 +74,18 @@ func damage_range() -> Array:
 	return [MIN_DMG, FULL_DMG]
 
 
+func damage_at(ratio: float) -> int:
+	## 某个蓄力比例下的实际伤害：底数 × 强化倍率，再向下取整
+	## （强化改成指数级之后，结算和 HUD 显示必须走同一个算法，否则数字会对不上）
+	var base := lerpf(float(MIN_DMG), float(FULL_DMG), clampf(ratio, 0.0, 1.0))
+	return int(floor(base * _player_damage_scale()))
+
+
+func enhanced_range() -> Array:
+	## HUD 显示用的实际伤害区间（已含强化倍率并向下取整）
+	return [damage_at(0.0), damage_at(1.0)]
+
+
 func charge_time() -> float:
 	return CHARGE_TIME
 
@@ -175,7 +187,7 @@ func _cancel() -> void:
 func _fire() -> void:
 	var ratio := clampf(_charge / CHARGE_TIME, 0.0, 1.0)
 	var speed := lerpf(SPEED_MIN, SPEED_MAX, ratio)
-	var dmg := int(round(lerpf(float(MIN_DMG), float(FULL_DMG), ratio) * _player_damage_scale()))
+	var dmg := damage_at(ratio)
 	_cancel()
 	_cooldown = SHOT_COOLDOWN
 	SFX.play("shot", ratio * 2.5 - 1.0)   # 拉得越满，撒放越响
