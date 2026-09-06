@@ -386,7 +386,7 @@ func _set_hold(who: String, on: bool) -> void:
 		_charge = 0.0
 		_charge_skill2 = (who == "2")   # 用 2 起手 = 这次蓄的是冰冻术
 		if _charge_skill2:
-			# 冰冻术起手就验收：冷却/蓝任一不过就不进蓄力（松手也不会放）
+			# 冰冻术起手只验收（冷却/蓝），冷却等真正甩出去那一刻才开始计
 			if _skill2_cd > 0.0:
 				_charging = false
 				_charge_skill2 = false
@@ -396,7 +396,6 @@ func _set_hold(who: String, on: bool) -> void:
 				_charging = false
 				_charge_skill2 = false
 				return
-			_skill2_cd = SKILL2_CD
 		else:
 			_next_blue = _rng.randf() < BLUE_CHANCE   # 起手定色，杖顶光球立刻透出这一发的颜色
 	elif not want and _charging:
@@ -415,7 +414,9 @@ func skill2_hold(pressed: bool) -> void:
 func _fire_ice(ratio: float) -> void:
 	## 甩出三颗冰球：判定与普攻同款（伤害+定身），但定身可以往上叠；
 	## 蓄满 = 蓝球蓄满档（伤 90、定身 1.5 秒/颗），点按 = 蓝球点按档。三球呈旋转正三角。
+	## 冷却从这一刻（真正甩出去）才开始计，蓄力花的时间不算。
 	_cancel()
+	_skill2_cd = SKILL2_CD
 	_cooldown = SHOT_COOLDOWN        # 也算出手：普攻那份冷却照走
 	_swing = SWING_TIME              # 攻击动画照放（甩杖甩出一片冰）
 	_ice_glow = true                 # 杖顶透冰色

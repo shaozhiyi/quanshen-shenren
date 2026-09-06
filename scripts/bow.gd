@@ -198,7 +198,7 @@ func _set_hold(who: String, on: bool) -> void:
 		_charge = 0.0
 		_charge_skill2 = (who == "2")    # 用 2 起手 = 这次蓄的是锁定箭
 		if _charge_skill2:
-			# 锁定箭起手就验收：冷却/蓝任一不过就不进蓄力（松手也不会放）
+			# 锁定箭起手只验收（冷却/蓝），冷却等真正发射那一刻才开始计
 			if _skill2_cd > 0.0:
 				_charging = false
 				_charge_skill2 = false
@@ -208,7 +208,6 @@ func _set_hold(who: String, on: bool) -> void:
 				_charging = false
 				_charge_skill2 = false
 				return
-			_skill2_cd = SKILL2_CD
 		SFX.play("draw")                 # 搭弦开拉：只在起势那一刻响
 	elif not want and _charging:
 		if _charge_skill2:
@@ -224,8 +223,10 @@ func skill2_hold(pressed: bool) -> void:
 
 
 func _fire_homing(ratio: float) -> void:
-	## 放追踪箭：伤害 = 1.5 × 同蓄力比例的普射伤害；箭自己往最近的活 BOSS 拐
+	## 放追踪箭：伤害 = 1.5 × 同蓄力比例的普射伤害；箭自己往最近的活 BOSS 拐。
+	## 冷却从这一刻（真正发射）才开始计，蓄力花的时间不算。
 	_cancel()
+	_skill2_cd = SKILL2_CD
 	_cooldown = SHOT_COOLDOWN        # 这也算真射了一箭：普射间隔照走
 	var speed := lerpf(SPEED_MIN, SPEED_MAX, ratio)
 	var dmg := int(floor(float(damage_at(ratio)) * SKILL2_DMG_MULT))
