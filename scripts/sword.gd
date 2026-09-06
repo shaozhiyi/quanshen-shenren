@@ -11,6 +11,7 @@ extends Node3D
 ## 收招（动画结束）后才切得动，避免半途换把把这一剑的判定与动画劈成两截。
 
 signal slash_hit
+signal skill_hit        # 技能「劈砍」的命中时机（player 据此扣 1.6 倍伤害并定身 1 秒）
 
 const SLAM_FX := preload("res://scripts/slam_fx.gd")
 const SFX := preload("res://scripts/sfx.gd")
@@ -40,8 +41,22 @@ const TRAIL_DELAY := 0.045
 const ROT_GAIN := 2.2
 const POS_GAIN := 1.4
 
+# ---- 技能·劈砍（数字 1）：1.6 倍攻击 + 定身 1 秒，冷却 10 秒，耗 50 法力 ----
+# 技能冷却期间照常普攻、照常切武器；切走了冷却也继续跳（_process 里不受 active 限制）。
+const SKILL_NAME := "劈砍"
+const SKILL_CD := 10.0
+const SKILL_MP := 50
+const SKILL_GAIN := 1.6     # 动作幅度增益：比普砍甩得更开（转角/位移一起放大）
+const SKILL_SPEED := 0.72   # 动画速度：放慢一点，更沉更用力
+const SKILL_SFX_DB := 8.0   # 音效更用力：比普砍响 8dB
+const SKILL_FX_SCALE := 1.5 # 剑气放大倍率
+const SKILL_FX_COLOR := Color(1.0, 0.84, 0.42)   # 剑气换成重斩的金色
+
 var _attacking := false
 var _hit_emitted := false
+var _skill_swing := false       # 这一剑是不是技能「劈砍」（决定发哪个信号/幅度/音效）
+var _gain_scale := 1.0          # 本剑动作夸张化增益（普砍 1.0，劈砍放大）
+var _skill_cd := 0.0            # 劈砍冷却剩余秒（切走了也继续跳）
 var active := true                 # 主武器（默认持剑），Z 切换时由 player 关闭
 var _rig: Node
 var _anim_player: AnimationPlayer
@@ -106,23 +121,47 @@ func _on_anim_finished(_name: String) -> void:
 	_anim_player.play(IDLE_ANIM)
 	_attacking = false
 	_hit_emitted = false
+	_skill_swing = false
+	_gain_scale = 1.0
 	for t in _trails:
 		t.visible = false
 	_hist.clear()
 
 
 func attack() -> void:
+	_begin_swing(false)
+
+
+func cast_skill() -> bool:
+	## 数字 1：技能「劈砍」。冷却中/蓝不够/没在手上 → false（不扣蓝也不动冷却）。
+	## 成功：先扣 50 蓝、进 10 秒冷却，再起一记更大更沉的重斩（命中定身由 player 结算）。
+	if not active or _skill_cd > 0.0:
+		return false
+	var p := get_tree().get_first_node_in_group("player")
+	if p != null and not bool(p.call("spend_mp", float(SKILL_MP))):
+		return false        # 蓝不够：spend_mp 自带判定，扣了才返回 true
+	_skill_cd = SKILL_CD
+	_begin_swing(true)
+	return true
+
+
+func _begin_swing(heavy: bool) -> void:
+	## 起一剑：heavy=false 普通戳击；true=技能「劈砍」——幅度更大、更慢、更响、金色剑气
 	if _attacking or _anim_player == null:
 		return
 	_attacking = true
 	_hit_emitted = false
+	_skill_swing = heavy
+	_gain_scale = SKILL_GAIN if heavy else 1.0
 	_hist.clear()
-	_anim_player.play(SLASH_ANIM)
-	SFX.play("swing")
-	_slash_fx()
+	# play(动画, 混合, 速度)：劈砍放慢一点，看起来更沉、更用力
+	_anim_player.play(SLASH_ANIM, -1.0, SKILL_SPEED if heavy else 1.0)
+	SFX.play("swing", SKILL_SFX_DB if heavy else 0.0)
+	_slash_fx(SKILL_FX_SCALE if heavy else 1.0,
+		SKILL_FX_COLOR if heavy else Color(0.62, 0.80, 1.0))
 
 
-func _slash_fx() -> void:
+func _slash_fx(scale := 1.0, col := Color(0.62, 0.80, 1.0)) -> void:
 	## 剑气：立在相机前 1.15 米的一片斜月牙，朝向随视线水平方向
 	## 挂在相机下（而不是场景根）：挥砍 0.3 秒内玩家照常跑动/落地，
 	## 挂根节点会把弧光丢在原地、看起来"脱手"；跟视角走才像第一人称的挥击。
@@ -135,7 +174,7 @@ func _slash_fx() -> void:
 		return
 	fwd = fwd.normalized()
 	SLAM_FX.spawn_slash(cam, cam.global_position + fwd * 0.95 + Vector3(0.0, -0.18, 0.0),
-		fwd, 1.95, Color(0.62, 0.80, 1.0))
+		fwd, 1.95 * scale, col)
 
 
 # ---- 剑柄组件 ----
@@ -265,12 +304,55 @@ func set_active(a: bool) -> void:
 	visible = a
 	if not a:
 		_attacking = false
+		_skill_swing = false
+		_gain_scale = 1.0
 		for t in _trails:
 			t.visible = false
 		_hist.clear()
 
 
+# ---- 对外：技能信息（HUD 状态行与蓄力条读这套，player 只管按 1 转发）----
+func skill_name() -> String:
+	return SKILL_NAME
+
+
+func skill_cost() -> int:
+	return SKILL_MP
+
+
+func skill_cooldown() -> float:
+	return SKILL_CD
+
+
+func skill_cooldown_left() -> float:
+	return _skill_cd
+
+
+func skill_damage() -> int:
+	## 劈砍伤害（1.6 × 当前攻击力，含强化）：问玩家要最终值，看到的=打出的
+	var p := get_tree().get_first_node_in_group("player")
+	if p != null and p.has_method("sword_skill_damage"):
+		return int(p.call("sword_skill_damage"))
+	return int(floor(50.0 * SWORD_SKILL_FALLBACK))
+
+
+const SWORD_SKILL_FALLBACK := 1.6   # 玩家没就绪时的兜底倍率（跟 player.gd 的 SWORD_SKILL_MULT 同值）
+
+
+func skill_desc() -> String:
+	return "%d伤+定身1秒" % skill_damage()
+
+
+func skill_ready() -> bool:
+	if _skill_cd > 0.0:
+		return false
+	var p := get_tree().get_first_node_in_group("player")
+	return p == null or bool(p.call("has_mp", float(SKILL_MP)))
+
+
 func _process(delta: float) -> void:
+	if _skill_cd > 0.0:
+		_skill_cd = maxf(0.0, _skill_cd - delta)   # 技能冷却不认手上没手上：切走了也照跳
 	if _hand_attach == null:
 		return
 	# 腕骨当前姿态（骨架局部）→ 相对待机的增量 → 增益放大 → 回到相机空间
@@ -278,7 +360,7 @@ func _process(delta: float) -> void:
 	if _has_ref:
 		# 位移：绕待机手位放大；旋转：增量转成轴角，角度乘增益（带上限）后叠加基准
 		var rp := _ref_local.origin
-		var new_pos := rp + (cur_local.origin - rp) * POS_GAIN
+		var new_pos := rp + (cur_local.origin - rp) * POS_GAIN * _gain_scale
 		var cur_b := _norm_basis(cur_local.basis)
 		var d := Transform3D(cur_b * _ref_local.basis.inverse(), Vector3.ZERO)
 		var q := d.basis.get_rotation_quaternion()
@@ -289,7 +371,7 @@ func _process(delta: float) -> void:
 			new_basis = _ref_local.basis
 		else:
 			var ax := (Vector3(q.x, q.y, q.z) / sin(half)).normalized()
-			new_basis = Basis(ax, minf(ang * ROT_GAIN, 3.0)) * _ref_local.basis
+			new_basis = Basis(ax, minf(ang * ROT_GAIN * _gain_scale, 3.0 * _gain_scale)) * _ref_local.basis
 		cur_local = Transform3D(new_basis, new_pos)
 	var hb := cur_local.basis
 	hb = Basis(hb.x.normalized(), hb.y.normalized(), hb.z.normalized())
@@ -311,7 +393,10 @@ func _check_hit_timing() -> void:
 		return
 	if _anim_player.get_current_animation_position() >= anim.length * 0.35:
 		_hit_emitted = true
-		slash_hit.emit()
+		if _skill_swing:
+			skill_hit.emit()      # 劈砍：player 结算 1.6 倍伤害 + 定身 1 秒
+		else:
+			slash_hit.emit()
 
 
 func _record_and_draw_trails(delta: float) -> void:

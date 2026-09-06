@@ -22,6 +22,12 @@ const SPEED_MAX := 58.0           # 满蓄初速 m/s（决定射程）
 const FOV_IDLE := 75.0
 const FOV_AIM := 48.0
 
+# ---- 技能·快速射击（数字 1）：立刻射出一箭满蓄伤害，冷却 5 秒，耗 30 法力 ----
+# 技能冷却期间照常搭弓普射、照常切武器；切走了冷却也继续跳（_process 里不受 active 限制）。
+const SKILL_NAME := "快速射击"
+const SKILL_CD := 5.0
+const SKILL_MP := 30
+
 # 弓模型本地坐标（未缩放）：弦侧 +X，两端弓梢
 const TIP_U := Vector3(0.475, 2.34, 0.0)
 const TIP_L := Vector3(0.475, -2.34, 0.0)
@@ -33,6 +39,7 @@ var active := false               # 是否为当前装备武器（由 player 切
 var _charging := false
 var _charge := 0.0                # 秒
 var _cooldown := 0.0              # 射击后冷却剩余秒
+var _skill_cd := 0.0              # 快速射击冷却剩余秒（切走了也继续跳）
 var _hold_lmb := false             # 左键还按着
 var _hold_x := false               # X 键还按着（与左键等效，任一按住建蓄力）
 var _camera: Camera3D
@@ -191,10 +198,15 @@ func _cancel() -> void:
 
 func _fire() -> void:
 	var ratio := clampf(_charge / CHARGE_TIME, 0.0, 1.0)
-	var speed := lerpf(SPEED_MIN, SPEED_MAX, ratio)
-	var dmg := damage_at(ratio)
 	_cancel()
 	_cooldown = SHOT_COOLDOWN
+	_release_arrow(ratio)
+
+
+func _release_arrow(ratio: float) -> void:
+	## 沿准星放出一箭：伤害/初速/音效都按蓄力比例来（技能「快速射击」传 1.0 = 满蓄）
+	var speed := lerpf(SPEED_MIN, SPEED_MAX, ratio)
+	var dmg := damage_at(ratio)
 	SFX.play("shot", ratio * 2.5 - 1.0)   # 拉得越满，撒放越响
 	if _camera == null:
 		return
@@ -206,6 +218,54 @@ func _fire() -> void:
 	ARROW_SCRIPT.spawn(scene, _camera.global_transform.basis, origin, speed, dmg)
 
 
+# ---- 技能·快速射击（数字 1）----
+func cast_skill() -> bool:
+	## 立刻射出一箭满蓄伤害的箭：不经过搭弓蓄力，冷却 5 秒、耗 30 法力。
+	## 正在蓄力也照放（那一箭的蓄力作废，改出满蓄箭）。
+	if not active or _skill_cd > 0.0 or _camera == null:
+		return false
+	var p := get_tree().get_first_node_in_group("player")
+	if p != null and not bool(p.call("spend_mp", float(SKILL_MP))):
+		return false        # 蓝不够：spend_mp 自带判定，扣了才返回 true
+	_skill_cd = SKILL_CD
+	_cancel()
+	_cooldown = SHOT_COOLDOWN     # 这也算真的射了一箭：普射的 0.5 秒间隔照走
+	_release_arrow(1.0)
+	return true
+
+
+func skill_name() -> String:
+	return SKILL_NAME
+
+
+func skill_cost() -> int:
+	return SKILL_MP
+
+
+func skill_cooldown() -> float:
+	return SKILL_CD
+
+
+func skill_cooldown_left() -> float:
+	return _skill_cd
+
+
+func skill_damage() -> int:
+	## 快速射击的伤害 = 满蓄那一档（含强化）
+	return damage_at(1.0)
+
+
+func skill_desc() -> String:
+	return "立刻满蓄一箭 %d伤" % skill_damage()
+
+
+func skill_ready() -> bool:
+	if _skill_cd > 0.0:
+		return false
+	var p := get_tree().get_first_node_in_group("player")
+	return p == null or bool(p.call("has_mp", float(SKILL_MP)))
+
+
 func _player_damage_scale() -> float:
 	## 弓的强化倍率（每件装备单独算，只认"弓箭 +N"）；玩家按分组取，取不到按 1.0
 	var p := get_tree().get_first_node_in_group("player")
@@ -215,6 +275,8 @@ func _player_damage_scale() -> float:
 
 
 func _process(delta: float) -> void:
+	if _skill_cd > 0.0:
+		_skill_cd = maxf(0.0, _skill_cd - delta)   # 技能冷却切走了也照跳
 	if not active or _camera == null:
 		return
 	if _cooldown > 0.0:

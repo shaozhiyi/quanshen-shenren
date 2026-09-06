@@ -15,9 +15,10 @@ signal hp_changed(current: float, maximum: float)
 signal died
 
 var hp := 100.0
-# ---- 魔法：上限固定 200，留给之后的技能系统（本版只有满值显示，不做消耗）----
+# ---- 魔法：上限固定 200，技能消耗（剑 50 / 弓 30 / 法杖 70），每秒回 1 点 ----
 @export var max_mp := 200.0
 var mp := 200.0
+var _mp_regen_acc := 0.0   # 法力回复的零头累积（攒够 1 点才入账）
 signal mp_changed(current: float, maximum: float)
 # ---- 等级：只做显示（LV + 绿色经验条），升级系统暂不实现 ----
 var level := 1
@@ -98,6 +99,7 @@ func _ready() -> void:
 	_sword = get_node_or_null("Camera3D/Sword")
 	if _sword != null:
 		_sword.connect("slash_hit", _on_slash_hit)
+		_sword.connect("skill_hit", _on_skill_hit)   # 劈砍：1.6 倍攻击 + 定身 1 秒
 	_bow = get_node_or_null("Camera3D/Bow")
 	if _bow != null:
 		_bow.set_active(false)
@@ -610,6 +612,17 @@ func sword_damage() -> int:
 	return attack_power("sword", SWORD_DMG)
 
 
+const SWORD_SKILL_MULT := 1.6   # 技能「劈砍」：伤害 = 当前攻击力 ×1.6
+
+
+func sword_skill_damage() -> int:
+	## 劈砍的实际伤害（含强化、向下取整）；HUD 与结算走同一个数
+	return int(floor(float(sword_damage()) * SWORD_SKILL_MULT))
+
+
+const SWORD_SKILL_STUN := 1.0   # 劈砍命中的定身秒数
+
+
 const WEAPON_IDS := ["sword", "bow", "staff"]   # 与 _weapon 下标、_has 一一对应
 
 
@@ -653,23 +666,41 @@ func _apply_enhance(data) -> void:
 			enhance_levels[k] = lv
 
 
-func _on_slash_hit() -> void:
-	## 挥砍中段向前射线，命中 boss 扣血（BOSS 暂不反击）
+func _slash_ray_boss() -> Node:
+	## 挥砍中段向前射线，返回命中的 BOSS 本体（普砍与技能「劈砍」共用同一条判定）
 	var cam := get_node_or_null("Camera3D") as Camera3D
 	if cam == null:
-		return
+		return null
 	var from := cam.global_position
 	var to := from - cam.global_transform.basis.z * 4.0
 	var q := PhysicsRayQueryParameters3D.create(from, to)
 	q.collision_mask = 1   # 只看世界/BOSS（箭在层2，不挡剑）
 	q.exclude = [get_rid()]
 	var hit := get_world_3d().direct_space_state.intersect_ray(q)
-	if not hit.is_empty():
-		var col: Node = hit.collider
-		if col.is_in_group("boss"):
-			var boss := col.get_parent()
-			if boss.has_method("take_damage"):
-				boss.take_damage(sword_damage(), "剑")
+	if hit.is_empty():
+		return null
+	var col: Node = hit.collider
+	if col.is_in_group("boss"):
+		var boss := col.get_parent()
+		return boss if boss.has_method("take_damage") else null
+	return null
+
+
+func _on_slash_hit() -> void:
+	## 普通挥砍命中：攻击力结算（BOSS 暂不反击）
+	var boss := _slash_ray_boss()
+	if boss != null:
+		boss.take_damage(sword_damage(), "剑")
+
+
+func _on_skill_hit() -> void:
+	## 技能「劈砍」命中：1.6 倍攻击，还把 BOSS 定身 1 秒（只控制、不打断，同法杖蓝球）
+	var boss := _slash_ray_boss()
+	if boss == null:
+		return
+	boss.take_damage(sword_skill_damage(), "剑")
+	if boss.has_method("stun"):
+		boss.call("stun", SWORD_SKILL_STUN)
 
 
 func _find_spawn() -> Vector3:
@@ -811,12 +842,34 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.keycode == KEY_R:
 			# R：靠近 BOSS 时切换下一档挑战难度（击败过一次后解锁）
 			_try_cycle_difficulty()
+		elif event.keycode == KEY_1 or event.keycode == KEY_KP_1:
+			# 数字 1：放当前手上这把武器的技能（剑=劈砍 弓=快速射击 法杖=火球术）
+			_cast_skill()
 		elif event.keycode == KEY_F5:
 			# F5：写入 save/ 下的 JSON 存档
 			_quick_save()
 
 
+func _cast_skill() -> void:
+	## 数字 1：技能交给手上这把武器自己放——冷却/蓝量/动作它自己管，
+	## 放不出来（没蓝、冷却中）就什么都不发生，不扣蓝也不动冷却。
+	## 技能冷却期间照常普攻、照常切武器；切走了冷却也继续跳（各武器 _process 里跳）。
+	var w: Node = null
+	match _weapon:
+		0: w = _sword
+		1: w = _bow
+		2: w = _staff
+	if w != null and w.has_method("cast_skill"):
+		w.call("cast_skill")
+
+
 func _physics_process(delta: float) -> void:
+	# 法力回复：每秒 +1（攒够 1 点才入账，免得蓝条每帧微跳）
+	_mp_regen_acc += delta
+	if _mp_regen_acc >= 1.0:
+		var pts := floorf(_mp_regen_acc)
+		_mp_regen_acc -= pts
+		restore_mp(pts)
 	# 无敌倒计时：结束即恢复满血
 	if _invincible:
 		_invincible_t -= delta

@@ -34,6 +34,19 @@ const BLUE_COLOR := Color(0.22, 0.55, 1.0)
 const IDLE_GEM := Color(0.78, 0.70, 1.0)   # 未起手时杖顶宝石的中性色
 const BLUE_CHANCE := 0.5          # 出蓝球的概率（其余为红）
 
+# ---- 技能·火球术（数字 1）：一颗火属性大球，冷却 15 秒，耗 70 法力 ----
+# 球体比满蓄球大 2 倍、伤害 1.8 倍满蓄伤害（同样吃强化）；火球不带定身。
+# 放完有 4 秒硬直：记在普攻那份 _cooldown 上（"和之前的攻击冷却一样"）——
+# 这 4 秒里不能普攻、不能切武器，蓄力/起手的既有门槛自动全部生效。
+const SKILL_NAME := "火球术"
+const SKILL_CD := 15.0
+const SKILL_MP := 70
+const SKILL_DMG_MULT := 1.8       # 伤害 = 满蓄伤害 ×1.8
+const SKILL_R_MULT := 2.0         # 半径 = 满蓄球 ×2
+const SKILL_LOCK := 4.0           # 放完后的硬直秒数
+const FIRE_COLOR := Color(1.0, 0.42, 0.08)   # 火球与杖顶辉光的火色
+const FIRE_SPEED := 30.0          # 火球速度 = 满蓄球速
+
 # ---- 视图模型摆放（相机局部坐标） ----
 const MODEL_SCALE := 0.24
 const HOLD_POS := Vector3(0.40, -0.38, -0.62)
@@ -51,6 +64,8 @@ var _tip_mat: StandardMaterial3D
 var _charging := false
 var _charge := 0.0
 var _cooldown := 0.0
+var _skill_cd := 0.0              # 火球术冷却剩余秒（切走了也继续跳）
+var _fire_glow := false           # 这一甩是火球术：杖顶辉光透火色
 var _swing := 0.0                 # >0 表示甩杖动画进行中，剩余秒
 var _hold_lmb := false
 var _hold_x := false
@@ -238,6 +253,65 @@ func power(base: int) -> int:
 	return int(floor(float(base) * 1.0))
 
 
+# ---- 技能·火球术（数字 1）----
+func cast_skill() -> bool:
+	## 甩杖丢出一颗火球：比满蓄球大 2 倍、伤害 1.8 倍满蓄（都吃强化），不带定身。
+	## 冷却 15 秒、耗 70 蓝；放完 4 秒硬直记在普攻的 _cooldown 上（不能普攻不能切）。
+	## 正在蓄力也照放（那一发的蓄力作废，直接改出火球）。
+	if not active or _skill_cd > 0.0 or _camera == null:
+		return false
+	var p := get_tree().get_first_node_in_group("player")
+	if p != null and not bool(p.call("spend_mp", float(SKILL_MP))):
+		return false        # 蓝不够：spend_mp 自带判定，扣了才返回 true
+	_skill_cd = SKILL_CD
+	_cancel()
+	_cooldown = SKILL_LOCK
+	_swing = SWING_TIME
+	_next_blue = false
+	_fire_glow = true
+	var scene := get_tree().current_scene
+	if scene == null:
+		scene = get_tree().root
+	var f := -_camera.global_transform.basis.z.normalized()
+	# 火球比普通球大得多，出口也推得更远（0.9 米）：贴着杖尖出会让它糊满整个画面
+	var origin: Vector3 = (_tip.global_position if _tip != null else global_position) + f * 0.9
+	ORB_SCRIPT.spawn(scene, origin, f, FIRE_SPEED, skill_damage(),
+		FIRE_COLOR, ORB_R_CHARGED * SKILL_R_MULT, 0.0)
+	return true
+
+
+func skill_name() -> String:
+	return SKILL_NAME
+
+
+func skill_cost() -> int:
+	return SKILL_MP
+
+
+func skill_cooldown() -> float:
+	return SKILL_CD
+
+
+func skill_cooldown_left() -> float:
+	return _skill_cd
+
+
+func skill_damage() -> int:
+	## 火球伤害 = 满蓄伤害 ×1.8（含强化、向下取整）；结算与 HUD 同一个数
+	return int(floor(float(power(DMG_RED_CHARGED)) * SKILL_DMG_MULT))
+
+
+func skill_desc() -> String:
+	return "%d伤·大2倍·无定身" % skill_damage()
+
+
+func skill_ready() -> bool:
+	if _skill_cd > 0.0:
+		return false
+	var p := get_tree().get_first_node_in_group("player")
+	return p == null or bool(p.call("has_mp", float(SKILL_MP)))
+
+
 # ---- 输入：点一下=直接射，按住=蓄力，松手=射；与弓一样认左键和 X 两个键 ----
 func _unhandled_input(event: InputEvent) -> void:
 	if not active:
@@ -269,6 +343,7 @@ func _cancel() -> void:
 	_charge = 0.0
 	_hold_lmb = false
 	_hold_x = false
+	_fire_glow = false
 
 
 func _fire() -> void:
@@ -290,6 +365,8 @@ func _fire() -> void:
 
 
 func _process(delta: float) -> void:
+	if _skill_cd > 0.0:
+		_skill_cd = maxf(0.0, _skill_cd - delta)   # 火球冷却不认手上没手上：切走了也照跳
 	if not active:
 		return
 	if _cooldown > 0.0:
@@ -306,15 +383,16 @@ func _process(delta: float) -> void:
 	position = HOLD_POS + Vector3(-0.05 * k, 0.09 * k, -0.14 * k)
 	rotation_degrees = Vector3(HOLD_ROT.x - 46.0 * k, HOLD_ROT.y, HOLD_ROT.z + 14.0 * k)
 
-	# 杖顶光球：待机是中性宝石色，起手后才透出这一发的红/蓝，并随蓄力变大变亮
+	# 杖顶光球：待机是中性宝石色，起手后才透出这一发的红/蓝（火球术透火色），并随蓄力变大变亮
 	var r := charge_ratio()
 	var want_scale := lerpf(0.42, 1.15, r)
 	if is_fully_charged():
 		want_scale *= 1.0 + 0.10 * sin(_charge * 9.0)
 	_tip_orb.scale = _tip_orb.scale.lerp(Vector3.ONE * want_scale, minf(1.0, delta * 12.0))
 	if _charging or _swing > 0.0:
-		_tip_mat.emission = BLUE_COLOR if _next_blue else RED_COLOR
-		_tip_mat.emission_energy_multiplier = lerpf(1.8, 4.2, r)
+		var glow_top := 5.6 if _fire_glow else 4.2
+		_tip_mat.emission = FIRE_COLOR if _fire_glow else (BLUE_COLOR if _next_blue else RED_COLOR)
+		_tip_mat.emission_energy_multiplier = lerpf(1.8, glow_top, maxf(r, 0.5 if _fire_glow else 0.0))
 	else:
 		_tip_mat.emission = IDLE_GEM
 		_tip_mat.emission_energy_multiplier = 1.4

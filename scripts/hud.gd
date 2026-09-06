@@ -50,6 +50,9 @@ var _weapon_label: Label
 var _hint_label: Label
 const HP_LABEL_FMT := "{value}/{max}"      # 血条数字格式（无敌时临时换成"永久"）
 var _charge_bar: Control
+var _charge_style: HealthBarXStyle         # 蓄力/冷却条配色：蓄力与普攻冷却=金，技能冷却=紫
+const CHARGE_GOLD := Color(0.98, 0.75, 0.20, 1.0)
+const CHARGE_SKILL := Color(0.62, 0.48, 0.98, 1.0)
 var _cross: Control
 var _sword: Node
 var _bow: Node
@@ -171,13 +174,14 @@ func _ready() -> void:
 
 	var cstyle := HealthBarXStyle.new()
 	cstyle.background_color = Color(0.06, 0.06, 0.09, 0.75)
-	cstyle.fill_color = Color(0.98, 0.75, 0.20, 1.0)
+	cstyle.fill_color = CHARGE_GOLD
 	cstyle.use_threshold_colors = false
 	cstyle.border_enabled = true
 	cstyle.border_thickness = 1
 	cstyle.border_color = Color(0.5, 0.5, 0.55, 0.9)
 	cstyle.shadow_enabled = false
 	cstyle.label_enabled = false
+	_charge_style = cstyle
 	_charge_bar = HealthBarXControl.new()
 	_charge_bar.min_value = 0.0
 	_charge_bar.max_value = 100.0
@@ -398,6 +402,19 @@ func _next_weapon_text() -> String:
 	return "切换%s" % String(_enh_name(String(_player.call("weapon_id_at", i))))
 
 
+func _skill_text(w: Node) -> String:
+	## 状态行里的技能段：就绪=「1 名字 说明」；冷却中=「名字 冷却x.x秒」；缺蓝=「名字 缺蓝N」
+	## 没有技能的武器（将来可能有）返回空串，行尾不会多出一个孤零零的「｜」
+	if w == null or not w.has_method("skill_name"):
+		return ""
+	var nm := String(w.call("skill_name"))
+	if float(w.call("skill_cooldown_left")) > 0.0:
+		return "｜%s 冷却%.1f秒" % [nm, float(w.call("skill_cooldown_left"))]
+	if not bool(w.call("skill_ready")):
+		return "｜%s 缺蓝%d" % [nm, int(w.call("skill_cost"))]
+	return "｜按1 %s %s" % [nm, String(w.call("skill_desc"))]
+
+
 func _enh_name(id: String) -> String:
 	var inv := get_node_or_null("Inventory")
 	if inv != null and inv.has_method("item_name"):
@@ -476,27 +493,42 @@ func _process(delta: float) -> void:
 			tag += "｜甲 +%d" % armor_lv
 		var nxt := _next_weapon_text()
 		# 数值一律向武器脚本要最终值（含强化倍率 + 向下取整），改算法不用回来动 HUD
+		var cur_w: Node = _staff if staff_on else (_bow if bow_on else _sword)
 		if staff_on:
 			var sr: Array = _staff.call("enhanced_range")        # 红：点射 / 蓄满（含强化）
 			var sb: Array = _staff.call("blue_enhanced_range")   # 蓝：点射 / 蓄满（含强化）
-			_weapon_label.text = "当前：法杖 红%d/%d 蓝%d/%d（点按/蓄满 %.0f 秒，蓝带定身）%s｜C %s" % [
+			_weapon_label.text = "当前：法杖 红%d/%d 蓝%d/%d（点按/蓄满 %.0f 秒，蓝带定身）%s%s｜C %s" % [
 				int(sr[0]), int(sr[1]), int(sb[0]), int(sb[1]),
-				float(_staff.call("charge_time")), tag, nxt]
+				float(_staff.call("charge_time")), tag, _skill_text(_staff), nxt]
 		elif bow_on:
 			var dr: Array = _bow.call("enhanced_range")
-			_weapon_label.text = "当前：弓箭 攻击 %d~%d（按住左键 / X 蓄力 %.0f 秒满，松手发射）%s｜C %s" % [
-				int(dr[0]), int(dr[1]), float(_bow.call("charge_time")), tag, nxt]
+			_weapon_label.text = "当前：弓箭 攻击 %d~%d（按住左键 / X 蓄力 %.0f 秒满，松手发射）%s%s｜C %s" % [
+				int(dr[0]), int(dr[1]), float(_bow.call("charge_time")), tag, _skill_text(_bow), nxt]
 		else:
-			_weapon_label.text = "当前：剑 攻击 %d（X 挥砍）%s｜C %s" % [_sword_power(), tag, nxt]
-		# 蓄力条：弓与法杖共用（蓄力中=进度，否则冷却中=倒数，都不在=隐藏）
+			_weapon_label.text = "当前：剑 攻击 %d（X 挥砍）%s%s｜C %s" % [
+				_sword_power(), tag, _skill_text(_sword), nxt]
+		# 底部读条四态：蓄力中=金色进度 → 技能冷却=紫色倒数 → 普攻冷却=金色倒数 → 都没有=隐藏
+		# 技能冷却只认手上这把（切走了看不到，但冷却在武器自己身上继续跳）
 		var act: Node = _staff if staff_on else _bow
-		if bool(act.call("is_charging")):
+		var bar_val := -1.0
+		var bar_skill := false
+		if (staff_on or bow_on) and bool(act.call("is_charging")):
+			bar_val = float(act.call("charge_ratio")) * 100.0
+		if bar_val < 0.0 and cur_w != null and cur_w.has_method("skill_cooldown_left"):
+			var scl: float = float(cur_w.call("skill_cooldown_left"))
+			if scl > 0.0:
+				bar_val = scl / maxf(float(cur_w.call("skill_cooldown")), 0.001) * 100.0
+				bar_skill = true
+		if bar_val < 0.0 and (staff_on or bow_on):
+			var cl: float = float(act.call("cooldown_left"))
+			if cl > 0.0:
+				bar_val = cl / maxf(float(act.call("shot_cooldown")), 0.001) * 100.0
+		if bar_val >= 0.0:
 			_charge_bar.visible = true
-			_charge_bar.call("set_value", float(act.call("charge_ratio")) * 100.0, false)
-		elif float(act.call("cooldown_left")) > 0.0:
-			_charge_bar.visible = true
-			_charge_bar.call("set_value", float(act.call("cooldown_left"))
-				/ float(act.call("shot_cooldown")) * 100.0, false)
+			var want_col: Color = CHARGE_SKILL if bar_skill else CHARGE_GOLD
+			if _charge_style.fill_color != want_col:
+				_charge_style.fill_color = want_col
+			_charge_bar.call("set_value", bar_val, false)
 		else:
 			_charge_bar.visible = false
 
