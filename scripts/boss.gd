@@ -109,6 +109,7 @@ const WINDUP_TIME := 11.10      # 前摇时长：曲内"忘你不舍 寻你不�
 const ATTACK_TIME := 14.18      # 攻击时长：四个乐句
 const DAY_NIGHT_CYCLES := 2.0   # 攻击窗口内日月交替几轮（1→2 = 快一倍，时长不变）
 const CHARGE_GAP := 8.0         # 每轮释放完后待机（秒）
+const STUN_STACK_CAP := 6.0     # 冰冻术叠控的封顶秒数（再怎么叠也不会被永久冻住）
 const MAX_STARS := 24           # 蓄满星点数
 const FLY_HEIGHT := 20.25       # 飞天高度（13.5 × 1.5）
 const WANDER_SPEED := 45.0      # 释放完后随机移动速度（单位/秒）
@@ -144,6 +145,9 @@ var _dmg_t := 0.0
 var _arena_base_y := 0.0
 var _music_tail := 0.0          # 攻击结束后歌曲再多播的剩余秒数
 var _music_frozen := false      # 定身把歌掐住了没（解冻靠 _resume_music，见 _process）
+var _bleed_dps := 0.0           # 流血：每秒掉多少血（剑·突刺附带，按玩家攻击力算）
+var _bleed_t := 0.0             # 流血剩余秒数
+var _bleed_tick := 0.0          # 1 秒一跳的零头累积
 var _wander_target := Vector3.ZERO
 var _wandering := false
 
@@ -249,6 +253,9 @@ func respawn() -> void:
 	_dmg_t = 0.0
 	_music_tail = 0.0
 	_halt_music()        # 复活不带上一场的歌，也不带定身留下的暂停标记
+	_bleed_t = 0.0       # 复活是全新一条命：流血也清掉
+	_bleed_dps = 0.0
+	_bleed_tick = 0.0
 	_wandering = false
 	_slam_hit = false
 	_show_marker(false)
@@ -732,7 +739,7 @@ func _refresh_labels() -> void:
 		_hp_label.text = "HP %d / %d ｜ 掉落 ×%d" % [int(hp), int(max_hp), reward_count()]
 
 
-func take_damage(amount: int, weapon := "") -> void:
+func take_damage(amount: int, weapon := "", quiet := false) -> void:
 	if _dead or not _arena_mode:
 		return   # 大地图上不可直接攻击，须按 E 进入 BOSS 空间
 	hp = maxf(hp - amount, 0.0)
@@ -741,16 +748,31 @@ func take_damage(amount: int, weapon := "") -> void:
 	if hp <= 0.0:
 		_die()          # 致死这一击只报"击败"，不再重复报"击中"
 	else:
-		damaged.emit(weapon, amount)
+		if not quiet:
+			damaged.emit(weapon, amount)   # 流血 tick 传 quiet=true，别把播报刷满屏
 
 
-func stun(sec: float) -> bool:
-	## 法杖蓝球的"只控制、不打断"：不动 _phase / _phase_t / 技能进度，
+func bleed(dps: float, seconds: float) -> void:
+	## 流血（剑·突刺附带）：每秒掉 dps 血、持续 seconds 秒，1 秒一跳。
+	## 再中一次取更高的每秒伤害、续上时长（不无限叠伤害）。
+	if _dead or dps <= 0.0 or seconds <= 0.0:
+		return
+	_bleed_dps = maxf(_bleed_dps, dps)
+	_bleed_t = maxf(_bleed_t, seconds)
+
+
+func stun(sec: float, stack := false) -> bool:
+	## 法杖的"只控制、不打断"：不动 _phase / _phase_t / 技能进度，
 	## 只是这段时间里不推进、不移动、不转向，正在放的歌也原地掐住（_freeze_music），
-	## 时间一到接着打、接着唱；再命中取最长那次（不叠加、不延长成无限）
+	## 时间一到接着打、接着唱。
+	## stack=false（蓝球/劈砍）：取最长那次，不叠加也不延长成无限；
+	## stack=true（冰冻术三连球）：往上叠，封顶 STUN_STACK_CAP 秒，免得被摁着永久冻住。
 	if _dead or not _arena_mode or sec <= 0.0:
 		return false
-	_stun_t = maxf(_stun_t, sec)
+	if stack:
+		_stun_t = minf(_stun_t + sec, STUN_STACK_CAP)
+	else:
+		_stun_t = maxf(_stun_t, sec)
 	return true
 
 
@@ -776,6 +798,15 @@ func _process(delta: float) -> void:
 		# 沉地消失
 		_visual.position.y = maxf(_visual.position.y - delta * 1.2, -box_height() * 0.9)
 		return
+	if _bleed_t > 0.0 and _arena_mode:
+		# 流血照跳：定身冻的是动作，血还是照样流（1 秒一跳，take_damage 传 quiet 不刷播报）
+		_bleed_t = maxf(_bleed_t - delta, 0.0)
+		_bleed_tick += delta
+		while _bleed_tick >= 1.0:
+			_bleed_tick -= 1.0
+			take_damage(int(round(_bleed_dps)), "剑", true)
+		if _bleed_t <= 0.0:
+			_bleed_dps = 0.0
 	if _stun_t > 0.0:
 		# 被法杖定住：整只冻在原地（相位/进度原样保留），正在放的歌也一起掐住，
 		# 时间一到接着打、接着唱（不是重头放，也不是把这一段跳过去）

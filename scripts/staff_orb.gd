@@ -1,7 +1,8 @@
 extends RigidBody3D
 ## 法杖弹体：一颗自发光球，直线飞行（不吃重力），命中单位就扣血。
 ## 红色＝纯伤害；蓝色＝伤害较轻但把 BOSS 定身若干秒（只控制、不打断当前动作）。
-## 飞行时身后拖一条同色光点尾迹；命中后原地缩掉。
+## 冰色（冰冻术三连球）＝蓝球同款判定，但定身可以往上叠，且三球绕出手轴排成
+## 旋转的正三角飞行。飞行时身后拖一条同色光点尾迹；命中后原地缩掉。
 ## 数值（伤害/半径/颜色/定身秒数/球速）全在 scripts/staff.gd 顶部，这里只接现成参数。
 
 const MAX_ALIVE := 12            # 同屏上限，超出回收最早那颗
@@ -13,12 +14,18 @@ var dmg := 80
 var control_sec := 0.0
 var orb_color := Color(1.0, 0.22, 0.20)
 var radius := 0.13
+var stack_control := false       # 冰冻术的球：定身往上叠（其余球取最长那一次）
 var _hit := false
 var _pop := 0.0
 var _life := 0.0
 var _core: MeshInstance3D
 var _halo: MeshInstance3D
 var _trail: CPUParticles3D
+# 编队旋转（冰冻术三连球）：绕出手轴自转，球与球始终呈正三角
+var _orbit_center := Vector3.ZERO
+var _orbit_dir := Vector3.ZERO
+var _orbit_speed := 0.0
+var _orbit_omega := 0.0
 
 
 static func spawn(parent: Node, origin: Vector3, dir: Vector3, speed: float,
@@ -29,17 +36,53 @@ static func spawn(parent: Node, origin: Vector3, dir: Vector3, speed: float,
 		var old = _active.pop_front()
 		if is_instance_valid(old):
 			old.queue_free()
-	var orb: RigidBody3D = load("res://scripts/staff_orb.gd").new()
-	orb.dmg = damage
-	orb.orb_color = col
-	orb.radius = r
-	orb.control_sec = control
-	orb._configure()
+	var orb := _create(damage, col, r, control, false)
 	parent.add_child(orb)
 	orb.global_transform = Transform3D(Basis.IDENTITY, origin)
 	orb.linear_velocity = dir.normalized() * speed
 	orb._avoid_thrower()
 	_active.append(orb)
+
+
+static func spawn_formation(parent: Node, center: Vector3, dir: Vector3, speed: float,
+		damage: int, col: Color, r: float, control: float, stack: bool,
+		count: int, form_r: float, omega: float) -> void:
+	## 冰冻术：count 颗冰球绕出手轴排成正三角，飞行途中绕轴自转（omega 弧度/秒）。
+	## 每颗球仍是独立刚体：速度 = 前进 + 绕轴切向；圆心 = 出手点沿 dir 同速前进，
+	## 所以三球全程保持队形，越飞转得越欢。
+	_prune()
+	while _active.size() >= MAX_ALIVE:
+		var old = _active.pop_front()
+		if is_instance_valid(old):
+			old.queue_free()
+	dir = dir.normalized()
+	var up := Vector3.UP if absf(dir.dot(Vector3.UP)) < 0.99 else Vector3.RIGHT
+	var bx := dir.cross(up).normalized()
+	var by := dir.cross(bx).normalized()
+	for i in count:
+		var ang := TAU * float(i) / float(maxi(count, 1))
+		var off := (bx * cos(ang) + by * sin(ang)) * form_r
+		var orb := _create(damage, col, r, control, stack)
+		orb._orbit_center = center
+		orb._orbit_dir = dir
+		orb._orbit_speed = speed
+		orb._orbit_omega = omega
+		parent.add_child(orb)
+		orb.global_transform = Transform3D(Basis.IDENTITY, center + off)
+		orb.linear_velocity = dir * speed
+		orb._avoid_thrower()
+		_active.append(orb)
+
+
+static func _create(damage: int, col: Color, r: float, control: float, stack: bool) -> RigidBody3D:
+	var orb: RigidBody3D = load("res://scripts/staff_orb.gd").new()
+	orb.dmg = damage
+	orb.orb_color = col
+	orb.radius = r
+	orb.control_sec = control
+	orb.stack_control = stack
+	orb._configure()
+	return orb
 
 
 static func _prune() -> void:
@@ -164,9 +207,9 @@ func _on_body_entered(other: Node) -> void:
 		unit = unit.get_parent()
 	if unit != null:
 		unit.take_damage(dmg, "法杖")
-		## 蓝色球：只定身，不改 BOSS 的相位/进度
+		## 控制类球：只定身，不改 BOSS 的相位/进度；冰冻术的球往上叠
 		if control_sec > 0.0 and unit.has_method("stun"):
-			unit.call("stun", control_sec)
+			unit.call("stun", control_sec, stack_control)
 	_pop = POP_TIME
 	_trail.emitting = false
 	freeze = true
@@ -185,6 +228,13 @@ func _physics_process(delta: float) -> void:
 		return
 	if _hit:
 		return
+	# 编队旋转：绕"圆心 + dir×已飞距离"这根轴转，速度 = 前进 + 切向（大小恒定）
+	if _orbit_omega != 0.0:
+		var c := _orbit_center + _orbit_dir * (_orbit_speed * _life)
+		var rvec := global_position - c
+		if rvec.length_squared() > 0.0001:
+			var tangent := _orbit_dir.cross(rvec).normalized()
+			linear_velocity = _orbit_dir * _orbit_speed + tangent * (_orbit_omega * rvec.length())
 	_life += delta
 	if global_position.y < -30.0 or _life > 6.0:
 		queue_free()

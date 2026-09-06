@@ -52,11 +52,23 @@ const SKILL_SFX_DB := 8.0   # 音效更用力：比普砍响 8dB
 const SKILL_FX_SCALE := 1.5 # 剑气放大倍率
 const SKILL_FX_COLOR := Color(1.0, 0.84, 0.42)   # 剑气换成重斩的金色
 
+# ---- 技能·突刺（数字 2）：向前戳一记并冲刺穿透，冷却 15 秒，耗 60 法力 ----
+# 冲刺位移与"穿透结算（固定 80 + 流血 10 秒）"都在 player.gd（要动玩家坐标）；
+# 这里只管起手扣蓝进冷却、戳击的动作与音效。
+const SKILL2_NAME := "突刺"
+const SKILL2_CD := 15.0
+const SKILL2_MP := 60
+const SKILL2_ANIM_T := 0.42  # 剑随人前探再收回的动作时长（秒）
+const SKILL2_SPEED := 1.5    # 斩击动画加速：戳完立刻收
+const SKILL2_SFX_DB := 6.0
+
 var _attacking := false
 var _hit_emitted := false
 var _skill_swing := false       # 这一剑是不是技能「劈砍」（决定发哪个信号/幅度/音效）
 var _gain_scale := 1.0          # 本剑动作夸张化增益（普砍 1.0，劈砍放大）
 var _skill_cd := 0.0            # 劈砍冷却剩余秒（切走了也继续跳）
+var _skill2_cd := 0.0           # 突刺冷却剩余秒（切走了也继续跳）
+var _thrust_anim := 0.0         # 突刺前探动作剩余秒（>0 时骨架整体前探）
 var active := true                 # 主武器（默认持剑），Z 切换时由 player 关闭
 var _rig: Node
 var _anim_player: AnimationPlayer
@@ -123,6 +135,7 @@ func _on_anim_finished(_name: String) -> void:
 	_hit_emitted = false
 	_skill_swing = false
 	_gain_scale = 1.0
+	_thrust_anim = 0.0
 	for t in _trails:
 		t.visible = false
 	_hist.clear()
@@ -143,6 +156,35 @@ func cast_skill() -> bool:
 	_skill_cd = SKILL_CD
 	_begin_swing(true)
 	return true
+
+
+func skill2_hold(pressed: bool) -> void:
+	## 数字 2：突刺。按下出招（向前戳一记、人跟着冲过去穿透目标），松开无事。
+	## 冲刺/穿透结算在 player.gd（要动玩家坐标）；这里负责动作、音效、扣蓝与冷却。
+	if not pressed or not active or _skill2_cd > 0.0:
+		return
+	var p := get_tree().get_first_node_in_group("player")
+	if p != null and not bool(p.call("spend_mp", float(SKILL2_MP))):
+		return
+	_skill2_cd = SKILL2_CD
+	_begin_thrust()
+	if p != null and p.has_method("thrust_dash"):
+		p.call("thrust_dash")
+
+
+func _begin_thrust() -> void:
+	## 向前戳击的动作：没有专门的戳刺动捕，用"斩击加速 + 骨架整体前探"凑出人随剑走的突刺感。
+	## _hit_emitted 先置真：这一下的伤害走 player 的路径扫过判定，动画本身不发命中信号。
+	if _attacking or _anim_player == null:
+		return
+	_attacking = true
+	_hit_emitted = true
+	_skill_swing = false
+	_gain_scale = 1.0
+	_thrust_anim = SKILL2_ANIM_T
+	_hist.clear()
+	_anim_player.play(SLASH_ANIM, -1.0, SKILL2_SPEED)
+	SFX.play("swing", SKILL2_SFX_DB)
 
 
 func _begin_swing(heavy: bool) -> void:
@@ -306,6 +348,7 @@ func set_active(a: bool) -> void:
 		_attacking = false
 		_skill_swing = false
 		_gain_scale = 1.0
+		_thrust_anim = 0.0
 		for t in _trails:
 			t.visible = false
 		_hist.clear()
@@ -343,6 +386,33 @@ func skill_desc() -> String:
 	return "%d伤+定身1秒" % skill_damage()
 
 
+func skill2_name() -> String:
+	return SKILL2_NAME
+
+
+func skill2_cost() -> int:
+	return SKILL2_MP
+
+
+func skill2_cooldown() -> float:
+	return SKILL2_CD
+
+
+func skill2_cooldown_left() -> float:
+	return _skill2_cd
+
+
+func skill2_desc() -> String:
+	return "穿透80伤·流血10秒"
+
+
+func skill2_ready() -> bool:
+	if _skill2_cd > 0.0:
+		return false
+	var p := get_tree().get_first_node_in_group("player")
+	return p == null or bool(p.call("has_mp", float(SKILL2_MP)))
+
+
 func skill_ready() -> bool:
 	if _skill_cd > 0.0:
 		return false
@@ -353,8 +423,17 @@ func skill_ready() -> bool:
 func _process(delta: float) -> void:
 	if _skill_cd > 0.0:
 		_skill_cd = maxf(0.0, _skill_cd - delta)   # 技能冷却不认手上没手上：切走了也照跳
+	if _skill2_cd > 0.0:
+		_skill2_cd = maxf(0.0, _skill2_cd - delta)
 	if _hand_attach == null:
 		return
+	# 突刺前探：骨架整体往相机前方顶一下再收回（剑跟着手腕一起走，人剑一体）
+	if _thrust_anim > 0.0:
+		_thrust_anim = maxf(0.0, _thrust_anim - delta)
+	var tk := 0.0
+	if _thrust_anim > 0.0:
+		tk = sin((1.0 - _thrust_anim / SKILL2_ANIM_T) * PI)
+	_rig.position = RIG_POS + Vector3(0.0, -0.15, -0.5) * tk
 	# 腕骨当前姿态（骨架局部）→ 相对待机的增量 → 增益放大 → 回到相机空间
 	var cur_local: Transform3D = _rig.global_transform.affine_inverse() * _hand_attach.global_transform
 	if _has_ref:

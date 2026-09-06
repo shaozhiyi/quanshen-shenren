@@ -402,17 +402,38 @@ func _next_weapon_text() -> String:
 	return "切换%s" % String(_enh_name(String(_player.call("weapon_id_at", i))))
 
 
-func _skill_text(w: Node) -> String:
-	## 状态行里的技能段：就绪=「1 名字 说明」；冷却中=「名字 冷却x.x秒」；缺蓝=「名字 缺蓝N」
-	## 没有技能的武器（将来可能有）返回空串，行尾不会多出一个孤零零的「｜」
-	if w == null or not w.has_method("skill_name"):
+func _skill_text(w: Node, two := false) -> String:
+	## 状态行里的技能段：就绪=「1 名字 说明」；冷却中=「1名字 冷却x.x秒」；缺蓝=「1名字 缺蓝N」
+	## two=true 读第二技能（数字 2）那套。没有技能的武器返回空串，行尾不会多出孤零零的「｜」
+	if w == null:
 		return ""
-	var nm := String(w.call("skill_name"))
-	if float(w.call("skill_cooldown_left")) > 0.0:
-		return "｜%s 冷却%.1f秒" % [nm, float(w.call("skill_cooldown_left"))]
-	if not bool(w.call("skill_ready")):
-		return "｜%s 缺蓝%d" % [nm, int(w.call("skill_cost"))]
-	return "｜按1 %s %s" % [nm, String(w.call("skill_desc"))]
+	var nm: String
+	var cl: float
+	var cost: int
+	var ok: bool
+	var desc: String
+	if two:
+		if not w.has_method("skill2_name"):
+			return ""
+		nm = String(w.call("skill2_name"))
+		cl = float(w.call("skill2_cooldown_left"))
+		cost = int(w.call("skill2_cost"))
+		ok = bool(w.call("skill2_ready"))
+		desc = String(w.call("skill2_desc"))
+	else:
+		if not w.has_method("skill_name"):
+			return ""
+		nm = String(w.call("skill_name"))
+		cl = float(w.call("skill_cooldown_left"))
+		cost = int(w.call("skill_cost"))
+		ok = bool(w.call("skill_ready"))
+		desc = String(w.call("skill_desc"))
+	var key := "2" if two else "1"
+	if cl > 0.0:
+		return "｜%s%s 冷却%.1f秒" % [key, nm, cl]
+	if not ok:
+		return "｜%s%s 缺蓝%d" % [key, nm, cost]
+	return "｜%s %s %s" % [key, nm, desc]
 
 
 func _enh_name(id: String) -> String:
@@ -497,18 +518,19 @@ func _process(delta: float) -> void:
 		if staff_on:
 			var sr: Array = _staff.call("enhanced_range")        # 红：点射 / 蓄满（含强化）
 			var sb: Array = _staff.call("blue_enhanced_range")   # 蓝：点射 / 蓄满（含强化）
-			_weapon_label.text = "当前：法杖 红%d/%d 蓝%d/%d（点按/蓄满 %.0f 秒，蓝带定身）%s%s｜C %s" % [
+			_weapon_label.text = "当前：法杖 红%d/%d 蓝%d/%d（点按/蓄满 %.0f 秒，蓝带定身）%s%s%s｜C %s" % [
 				int(sr[0]), int(sr[1]), int(sb[0]), int(sb[1]),
-				float(_staff.call("charge_time")), tag, _skill_text(_staff), nxt]
+				float(_staff.call("charge_time")), tag, _skill_text(_staff), _skill_text(_staff, true), nxt]
 		elif bow_on:
 			var dr: Array = _bow.call("enhanced_range")
-			_weapon_label.text = "当前：弓箭 攻击 %d~%d（按住左键 / X 蓄力 %.0f 秒满，松手发射）%s%s｜C %s" % [
-				int(dr[0]), int(dr[1]), float(_bow.call("charge_time")), tag, _skill_text(_bow), nxt]
+			_weapon_label.text = "当前：弓箭 攻击 %d~%d（按住左键 / X 蓄力 %.0f 秒满，松手发射）%s%s%s｜C %s" % [
+				int(dr[0]), int(dr[1]), float(_bow.call("charge_time")), tag,
+				_skill_text(_bow), _skill_text(_bow, true), nxt]
 		else:
-			_weapon_label.text = "当前：剑 攻击 %d（X 挥砍）%s%s｜C %s" % [
-				_sword_power(), tag, _skill_text(_sword), nxt]
-		# 底部读条四态：蓄力中=金色进度 → 技能冷却=紫色倒数 → 普攻冷却=金色倒数 → 都没有=隐藏
-		# 技能冷却只认手上这把（切走了看不到，但冷却在武器自己身上继续跳）
+			_weapon_label.text = "当前：剑 攻击 %d（X 挥砍）%s%s%s｜C %s" % [
+				_sword_power(), tag, _skill_text(_sword), _skill_text(_sword, true), nxt]
+		# 底部读条：蓄力中=金色进度 → 1 技能冷却=紫色倒数 → 2 技能冷却=紫色倒数
+		# → 普攻冷却=金色倒数 → 都没有=隐藏。技能冷却只认手上这把（切走了看不到，但照跳）
 		var act: Node = _staff if staff_on else _bow
 		var bar_val := -1.0
 		var bar_skill := false
@@ -518,6 +540,11 @@ func _process(delta: float) -> void:
 			var scl: float = float(cur_w.call("skill_cooldown_left"))
 			if scl > 0.0:
 				bar_val = scl / maxf(float(cur_w.call("skill_cooldown")), 0.001) * 100.0
+				bar_skill = true
+		if bar_val < 0.0 and cur_w != null and cur_w.has_method("skill2_cooldown_left"):
+			var sc2: float = float(cur_w.call("skill2_cooldown_left"))
+			if sc2 > 0.0:
+				bar_val = sc2 / maxf(float(cur_w.call("skill2_cooldown")), 0.001) * 100.0
 				bar_skill = true
 		if bar_val < 0.0 and (staff_on or bow_on):
 			var cl: float = float(act.call("cooldown_left"))

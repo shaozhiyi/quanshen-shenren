@@ -68,6 +68,18 @@ const DASH_COOLDOWN := 0.5        # 冲刺后摇冷却，防连发
 var _dash_time := 0.0
 var _dash_cd := 0.0
 var _dash_dir := Vector3.ZERO
+
+# ---- 剑·突刺（数字 2）：向前戳一记并冲过去，穿透碰到的目标 ----
+const THRUST_DIST := 6.0          # 基础突刺距离（约一个冲刺的身位）
+const THRUST_SPEED := 34.0        # 突刺推进速度（米/秒）
+const THRUST_EXTRA_MAX := 4.0     # 终点还卡在目标身体里时，最多再往前顺的长度
+const THRUST_DMG := 80            # 被穿透目标受到的固定伤害（不吃强化，就是 80）
+const THRUST_BLEED_MULT := 0.9    # 流血：每秒再扣 攻击力 × 0.9
+const THRUST_BLEED_T := 10.0      # 流血持续秒数
+const THRUST_HIT_R := 2.8         # 路径扫过判定半径（水平，米）
+var _thrust_left := 0.0           # 剩余突刺距离
+var _thrust_dir := Vector3.ZERO
+var _thrust_hit: Array = []       # 这次突刺已经结过账的目标（每个只吃一刀）
 # 击退（被 BOSS 撞飞时用）：方向 × 剩下没推完的米数 × 本段推进速度
 var _kb_dir := Vector3.ZERO
 var _kb_left := 0.0
@@ -844,24 +856,140 @@ func _unhandled_input(event: InputEvent) -> void:
 			# R：靠近 BOSS 时切换下一档挑战难度（击败过一次后解锁）
 			_try_cycle_difficulty()
 		elif event.keycode == KEY_1 or event.keycode == KEY_KP_1:
-			# 数字 1：放当前手上这把武器的技能（剑=劈砍 弓=快速射击 法杖=火球术）
+			# 数字 1：放当前手上武器的技能（剑=劈砍 弓=快速射击 法杖=火球术）
 			_cast_skill()
+		elif event.keycode == KEY_2 or event.keycode == KEY_KP_2:
+			# 数字 2：第二技能（剑=突刺 弓=锁定箭 法杖=冰冻术）。
+			# 弓/法杖是"按住蓄力、松手放"，按下/松开都要转给武器；
+			# 剑是按下出招，松开它自己忽略。
+			_cast_skill2(event.pressed)
 		elif event.keycode == KEY_F5:
 			# F5：写入 save/ 下的 JSON 存档
 			_quick_save()
+
+
+func _weapon_node() -> Node:
+	## 手上这把武器的节点（技能转发用）
+	match _weapon:
+		0: return _sword
+		1: return _bow
+		2: return _staff
+	return null
 
 
 func _cast_skill() -> void:
 	## 数字 1：技能交给手上这把武器自己放——冷却/蓝量/动作它自己管，
 	## 放不出来（没蓝、冷却中）就什么都不发生，不扣蓝也不动冷却。
 	## 技能冷却期间照常普攻、照常切武器；切走了冷却也继续跳（各武器 _process 里跳）。
-	var w: Node = null
-	match _weapon:
-		0: w = _sword
-		1: w = _bow
-		2: w = _staff
+	var w := _weapon_node()
 	if w != null and w.has_method("cast_skill"):
 		w.call("cast_skill")
+
+
+func _cast_skill2(pressed: bool) -> void:
+	## 数字 2：第二技能（各武器冷却与 1 技能各自独立，互不共享）。
+	var w := _weapon_node()
+	if w == null or not w.has_method("skill2_hold"):
+		return
+	w.call("skill2_hold", pressed)
+
+
+# ---- 剑·突刺的冲刺段（由 sword.gd 的 skill2_hold 起手）----
+func thrust_dash() -> void:
+	## 向准星水平方向戳一记并冲过去：距离提前算好——墙/地形在哪儿停哪儿（BOSS 不挡路），
+	## 若照基础距离冲完还会卡在目标身体里，就再往前顺一截（最多 THRUST_EXTRA_MAX 米）。
+	var cam := get_node_or_null("Camera3D") as Camera3D
+	var f := -transform.basis.z
+	if cam != null:
+		f = -cam.global_transform.basis.z
+	f.y = 0.0
+	if f.length_squared() < 0.0001:
+		f = -transform.basis.z
+	_thrust_dir = f.normalized()
+	_thrust_left = _plan_thrust_distance(THRUST_DIST)
+	_thrust_hit.clear()
+	velocity.x *= 0.2
+	velocity.z *= 0.2
+
+
+func _plan_thrust_distance(base: float) -> float:
+	## 先看路：射线逐段跳过 BOSS 找第一面墙，墙前收步；终点若还在 BOSS 身体里则加距离
+	var space := get_world_3d().direct_space_state
+	var from := global_position + Vector3(0, 0.9, 0)
+	var wall_d := base
+	var skip := 0.0
+	for i in 6:
+		var q := PhysicsRayQueryParameters3D.create(from + _thrust_dir * skip,
+			from + _thrust_dir * (base + 1.0))
+		q.collision_mask = 1
+		q.exclude = [get_rid()]
+		var hit := space.intersect_ray(q)
+		if hit.is_empty():
+			break
+		var n: Node = hit.collider
+		while n != null and not n.is_in_group("boss"):
+			n = n.get_parent()
+		if n != null:
+			skip = (hit.position - from).dot(_thrust_dir) + 0.6   # 这只 BOSS 不算墙，跳过继续找
+			continue
+		wall_d = clampf((hit.position - from).dot(_thrust_dir) - 0.7, 0.6, base)
+		break
+	var end_d := wall_d
+	for i in 12:
+		if not _point_in_boss(from + _thrust_dir * (end_d + 0.4)):
+			break
+		end_d += 0.6
+		if end_d >= base + THRUST_EXTRA_MAX:
+			break
+	return end_d
+
+
+func _wall_between(a: Vector3, b: Vector3) -> bool:
+	## 两点之间有没有墙（地形/物件算墙；BOSS 不算——突刺就是要穿它）
+	var space := get_world_3d().direct_space_state
+	var from := a
+	var dir := b - a
+	if dir.length_squared() < 0.0001:
+		return false
+	dir = dir.normalized()
+	for i in 4:
+		var q := PhysicsRayQueryParameters3D.create(from, b)
+		q.collision_mask = 1
+		q.exclude = [get_rid()]
+		var hit := space.intersect_ray(q)
+		if hit.is_empty():
+			return false
+		var n: Node = hit.collider
+		while n != null and not n.is_in_group("boss"):
+			n = n.get_parent()
+		if n == null:
+			return true
+		from = hit.position + dir * 0.3
+	return false
+
+
+func _point_in_boss(p: Vector3) -> bool:
+	## 某个点是不是还落在某只 BOSS 的身体范围内（粗box判定，用来决定突刺要不要加距离）
+	for b in bosses():
+		if bool(b.call("is_dead")):
+			continue
+		var d: Vector3 = p - b.global_position
+		if absf(d.y) < 3.4 and Vector2(d.x, d.z).length() < THRUST_HIT_R:
+			return true
+	return false
+
+
+func _sweep_thrust_hits() -> void:
+	## 突刺路径扫过的目标结账：固定 80 + 流血（每秒扣 攻击力×0.9，持续 10 秒），每只只结一次
+	for b in bosses():
+		if b in _thrust_hit or bool(b.call("is_dead")):
+			continue
+		var d: Vector3 = b.global_position - global_position
+		if absf(d.y) < 3.4 and Vector2(d.x, d.z).length() < THRUST_HIT_R:
+			_thrust_hit.append(b)
+			b.take_damage(THRUST_DMG, "剑")
+			if b.has_method("bleed"):
+				b.call("bleed", float(sword_damage()) * THRUST_BLEED_MULT, THRUST_BLEED_T)
 
 
 func _physics_process(delta: float) -> void:
@@ -915,7 +1043,22 @@ func _physics_process(delta: float) -> void:
 	if _slow_t > 0.0:
 		_slow_t = maxf(_slow_t - delta, 0.0)
 
-	if _dash_time > 0.0:
+	if _thrust_left > 0.0:
+		# 剑·突刺：逐帧位移（直接改坐标，BOSS 挡不住；墙会在起跳前算好、半路也盯着）。
+		# 这几帧不走 move_and_slide——它会把卡在 BOSS 身体里的玩家往外推，跟冲刺对着干。
+		var tstep: float = minf(_thrust_left, THRUST_SPEED * delta)
+		var tnext := global_position + _thrust_dir * tstep
+		if _wall_between(global_position + Vector3(0, 0.9, 0), tnext + Vector3(0, 0.9, 0)):
+			_thrust_left = 0.0        # 半路冒出墙：就地收招，不硬穿
+		else:
+			global_position = tnext
+			_thrust_left -= tstep
+			_sweep_thrust_hits()
+		velocity.x = 0.0
+		velocity.z = 0.0
+		if _thrust_left <= 0.0:
+			_sweep_thrust_hits()      # 收招再扫一遍：最后一帧掠过的也算数
+	elif _dash_time > 0.0:
 		# 冲刺中：覆盖水平速度
 		_dash_time -= delta
 		velocity.x = _dash_dir.x * DASH_SPEED
@@ -941,7 +1084,8 @@ func _physics_process(delta: float) -> void:
 	if _dash_cd > 0.0:
 		_dash_cd -= delta
 
-	move_and_slide()
+	if _thrust_left <= 0.0:
+		move_and_slide()   # 突刺那几帧不走这里（见上），其余时候照常
 	_confine_to_arena()
 	_anchor_battle_origin()
 

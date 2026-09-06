@@ -47,6 +47,18 @@ const SKILL_LOCK := 4.0           # 放完后的硬直秒数
 const FIRE_COLOR := Color(1.0, 0.42, 0.08)   # 火球与杖顶辉光的火色
 const FIRE_SPEED := 30.0          # 火球速度 = 满蓄球速
 
+# ---- 技能·冰冻术（数字 2）：按住 2 蓄力、松手甩出三颗冰球，冷却 20 秒，耗 80 法力 ----
+# 冰球判定与普攻同款（伤害+定身、只控制不打断），但定身可以往上叠；蓄满则伤更高控更久。
+# 三颗球绕出手轴排成正三角、飞行途中旋转。与火球术各自独立冷却（所有技能都不共享冷却），
+# 蓄力共用一套状态——蓄力期间照旧不能切武器。
+const SKILL2_NAME := "冰冻术"
+const SKILL2_CD := 20.0
+const SKILL2_MP := 80
+const ICE_COLOR := Color(0.55, 0.85, 1.0)
+const ICE_COUNT := 3              # 一次甩出三颗
+const ICE_FORM_R := 0.55          # 三角编队半径（米）
+const ICE_SPIN := 5.0             # 编队自转角速度（弧度/秒）
+
 # ---- 视图模型摆放（相机局部坐标） ----
 const MODEL_SCALE := 0.24
 const HOLD_POS := Vector3(0.40, -0.38, -0.62)
@@ -65,7 +77,11 @@ var _charging := false
 var _charge := 0.0
 var _cooldown := 0.0
 var _skill_cd := 0.0              # 火球术冷却剩余秒（切走了也继续跳）
+var _skill2_cd := 0.0             # 冰冻术冷却剩余秒（切走了也继续跳）
 var _fire_glow := false           # 这一甩是火球术：杖顶辉光透火色
+var _ice_glow := false            # 这一甩是冰冻术：杖顶辉光透冰色
+var _hold_2 := false              # 数字 2 还按着（冰冻术的蓄力源）
+var _charge_skill2 := false       # 这次蓄力是冰冻术（松手放三冰球而不是普通球）
 var _swing := 0.0                 # >0 表示甩杖动画进行中，剩余秒
 var _hold_lmb := false
 var _hold_x := false
@@ -305,6 +321,39 @@ func skill_desc() -> String:
 	return "%d伤·大2倍·无定身" % skill_damage()
 
 
+# ---- 技能 2·冰冻术（HUD 读这套）----
+func skill2_name() -> String:
+	return SKILL2_NAME
+
+
+func skill2_cost() -> int:
+	return SKILL2_MP
+
+
+func skill2_cooldown() -> float:
+	return SKILL2_CD
+
+
+func skill2_cooldown_left() -> float:
+	return _skill2_cd
+
+
+func skill2_damage(full: bool) -> int:
+	## 单颗冰球的伤害（判定与蓝球同款、吃强化）
+	return power(DMG_BLUE_CHARGED if full else DMG_BLUE)
+
+
+func skill2_desc() -> String:
+	return "三冰球·可叠控（蓄满%d伤/颗）" % skill2_damage(true)
+
+
+func skill2_ready() -> bool:
+	if _skill2_cd > 0.0:
+		return false
+	var p := get_tree().get_first_node_in_group("player")
+	return p == null or bool(p.call("has_mp", float(SKILL2_MP)))
+
+
 func skill_ready() -> bool:
 	if _skill_cd > 0.0:
 		return false
@@ -325,17 +374,61 @@ func _unhandled_input(event: InputEvent) -> void:
 func _set_hold(who: String, on: bool) -> void:
 	if who == "lmb":
 		_hold_lmb = on
-	else:
+	elif who == "x":
 		_hold_x = on
-	var want := _hold_lmb or _hold_x
+	else:
+		_hold_2 = on
+	var want := _hold_lmb or _hold_x or _hold_2
 	if want and not _charging:
 		if _cooldown > 0.0 or _swing > 0.0:
-			return                 # 冷却中 / 上一发还在甩：不起手
+			return                 # 冷却中（含火球硬直）/ 上一发还在甩：不起手
 		_charging = true
 		_charge = 0.0
-		_next_blue = _rng.randf() < BLUE_CHANCE   # 起手定色，杖顶光球立刻透出这一发的颜色
+		_charge_skill2 = (who == "2")   # 用 2 起手 = 这次蓄的是冰冻术
+		if _charge_skill2:
+			# 冰冻术起手就验收：冷却/蓝任一不过就不进蓄力（松手也不会放）
+			if _skill2_cd > 0.0:
+				_charging = false
+				_charge_skill2 = false
+				return
+			var p := get_tree().get_first_node_in_group("player")
+			if p != null and not bool(p.call("spend_mp", float(SKILL2_MP))):
+				_charging = false
+				_charge_skill2 = false
+				return
+			_skill2_cd = SKILL2_CD
+		else:
+			_next_blue = _rng.randf() < BLUE_CHANCE   # 起手定色，杖顶光球立刻透出这一发的颜色
 	elif not want and _charging:
-		_fire()
+		if _charge_skill2:
+			_fire_ice(clampf(_charge / CHARGE_MAX, 0.0, 1.0))
+		else:
+			_fire()
+
+
+func skill2_hold(pressed: bool) -> void:
+	## 数字 2：冰冻术的蓄力源（按住蓄力、松手甩出三冰球），与左键/X 同一套蓄力状态。
+	if active:
+		_set_hold("2", pressed)
+
+
+func _fire_ice(ratio: float) -> void:
+	## 甩出三颗冰球：判定与普攻同款（伤害+定身），但定身可以往上叠；
+	## 蓄满 = 蓝球蓄满档（伤 90、定身 1.5 秒/颗），点按 = 蓝球点按档。三球呈旋转正三角。
+	_cancel()
+	_cooldown = SHOT_COOLDOWN        # 也算出手：普攻那份冷却照走
+	_swing = SWING_TIME              # 攻击动画照放（甩杖甩出一片冰）
+	_ice_glow = true                 # 杖顶透冰色
+	var full := ratio >= CHARGE_DONE
+	var dmg := power(DMG_BLUE_CHARGED if full else DMG_BLUE)
+	var ctrl := CONTROL_SEC_CHARGED if full else CONTROL_SEC
+	var scene := get_tree().current_scene
+	if scene == null or _camera == null:
+		return
+	var f := -_camera.global_transform.basis.z.normalized()
+	var center := _camera.global_position + f * 1.4
+	ORB_SCRIPT.spawn_formation(scene, center, f, SPEED_CHARGED if full else SPEED,
+		dmg, ICE_COLOR, ORB_R, ctrl, true, ICE_COUNT, ICE_FORM_R, ICE_SPIN)
 
 
 func _cancel() -> void:
@@ -343,7 +436,10 @@ func _cancel() -> void:
 	_charge = 0.0
 	_hold_lmb = false
 	_hold_x = false
+	_hold_2 = false
+	_charge_skill2 = false
 	_fire_glow = false
+	_ice_glow = false
 
 
 func _fire() -> void:
@@ -367,6 +463,8 @@ func _fire() -> void:
 func _process(delta: float) -> void:
 	if _skill_cd > 0.0:
 		_skill_cd = maxf(0.0, _skill_cd - delta)   # 火球冷却不认手上没手上：切走了也照跳
+	if _skill2_cd > 0.0:
+		_skill2_cd = maxf(0.0, _skill2_cd - delta)
 	if not active:
 		return
 	if _cooldown > 0.0:
@@ -390,9 +488,13 @@ func _process(delta: float) -> void:
 		want_scale *= 1.0 + 0.10 * sin(_charge * 9.0)
 	_tip_orb.scale = _tip_orb.scale.lerp(Vector3.ONE * want_scale, minf(1.0, delta * 12.0))
 	if _charging or _swing > 0.0:
-		var glow_top := 5.6 if _fire_glow else 4.2
-		_tip_mat.emission = FIRE_COLOR if _fire_glow else (BLUE_COLOR if _next_blue else RED_COLOR)
-		_tip_mat.emission_energy_multiplier = lerpf(1.8, glow_top, maxf(r, 0.5 if _fire_glow else 0.0))
+		# 起手/甩杖时杖顶透出这一发的属性色：火球=火色、冰冻术=冰色、普通球=红/蓝
+		var glow_col := FIRE_COLOR
+		if not _fire_glow:
+			glow_col = ICE_COLOR if _ice_glow else (BLUE_COLOR if _next_blue else RED_COLOR)
+		var glow_top := 5.6 if _fire_glow else (5.0 if _ice_glow else 4.2)
+		_tip_mat.emission = glow_col
+		_tip_mat.emission_energy_multiplier = lerpf(1.8, glow_top, maxf(r, 0.5 if (_fire_glow or _ice_glow) else 0.0))
 	else:
 		_tip_mat.emission = IDLE_GEM
 		_tip_mat.emission_energy_multiplier = 1.4

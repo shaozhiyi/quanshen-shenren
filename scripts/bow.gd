@@ -28,6 +28,14 @@ const SKILL_NAME := "快速射击"
 const SKILL_CD := 5.0
 const SKILL_MP := 30
 
+# ---- 技能·锁定箭（数字 2）：按住 2 蓄力、松手放追踪箭，冷却 12 秒，耗 40 法力 ----
+# 伤害 = 1.5 × 同蓄力比例的普射伤害（满蓄 70×1.5=105，吃弓的强化）；箭自己往最近的 BOSS 拐。
+# 与快速射击各自独立冷却；蓄力期间照旧不能切武器（同一套蓄力状态）。
+const SKILL2_NAME := "锁定箭"
+const SKILL2_CD := 12.0
+const SKILL2_MP := 40
+const SKILL2_DMG_MULT := 1.5
+
 # 弓模型本地坐标（未缩放）：弦侧 +X，两端弓梢
 const TIP_U := Vector3(0.475, 2.34, 0.0)
 const TIP_L := Vector3(0.475, -2.34, 0.0)
@@ -40,8 +48,11 @@ var _charging := false
 var _charge := 0.0                # 秒
 var _cooldown := 0.0              # 射击后冷却剩余秒
 var _skill_cd := 0.0              # 快速射击冷却剩余秒（切走了也继续跳）
+var _skill2_cd := 0.0             # 锁定箭冷却剩余秒（切走了也继续跳）
 var _hold_lmb := false             # 左键还按着
 var _hold_x := false               # X 键还按着（与左键等效，任一按住建蓄力）
+var _hold_2 := false               # 数字 2 还按着（锁定箭的蓄力源）
+var _charge_skill2 := false        # 这次蓄力是锁定箭（松手放追踪箭而不是普通箭）
 var _camera: Camera3D
 var _bow_space: Node3D
 var _strand_u: MeshInstance3D
@@ -175,17 +186,75 @@ func _unhandled_input(event: InputEvent) -> void:
 func _set_hold(who: String, on: bool) -> void:
 	if who == "lmb":
 		_hold_lmb = on
-	else:
+	elif who == "x":
 		_hold_x = on
-	var want := _hold_lmb or _hold_x
+	else:
+		_hold_2 = on
+	var want := _hold_lmb or _hold_x or _hold_2
 	if want and not _charging:
 		if _cooldown > 0.0:
 			return                       # 冷却中不起手（和原来只认左键时一致）
 		_charging = true
 		_charge = 0.0
+		_charge_skill2 = (who == "2")    # 用 2 起手 = 这次蓄的是锁定箭
+		if _charge_skill2:
+			# 锁定箭起手就验收：冷却/蓝任一不过就不进蓄力（松手也不会放）
+			if _skill2_cd > 0.0:
+				_charging = false
+				_charge_skill2 = false
+				return
+			var p := get_tree().get_first_node_in_group("player")
+			if p != null and not bool(p.call("spend_mp", float(SKILL2_MP))):
+				_charging = false
+				_charge_skill2 = false
+				return
+			_skill2_cd = SKILL2_CD
 		SFX.play("draw")                 # 搭弦开拉：只在起势那一刻响
 	elif not want and _charging:
-		_fire()
+		if _charge_skill2:
+			_fire_homing(clampf(_charge / CHARGE_TIME, 0.0, 1.0))
+		else:
+			_fire()
+
+
+func skill2_hold(pressed: bool) -> void:
+	## 数字 2：锁定箭的蓄力源（按住蓄力、松手放），与左键/X 同一套蓄力状态。
+	if active:
+		_set_hold("2", pressed)
+
+
+func _fire_homing(ratio: float) -> void:
+	## 放追踪箭：伤害 = 1.5 × 同蓄力比例的普射伤害；箭自己往最近的活 BOSS 拐
+	_cancel()
+	_cooldown = SHOT_COOLDOWN        # 这也算真射了一箭：普射间隔照走
+	var speed := lerpf(SPEED_MIN, SPEED_MAX, ratio)
+	var dmg := int(floor(float(damage_at(ratio)) * SKILL2_DMG_MULT))
+	SFX.play("shot", ratio * 2.5 - 1.0)
+	if _camera == null:
+		return
+	var f := -_camera.global_transform.basis.z.normalized()
+	var origin := _camera.global_position + f * 0.45
+	var scene := get_tree().current_scene
+	if scene == null:
+		scene = get_tree().root
+	ARROW_SCRIPT.spawn_homing(scene, _camera.global_transform.basis, origin, speed, dmg, _nearest_boss())
+
+
+func _nearest_boss() -> Node:
+	## 最近的活着的目标（锁定箭优先打离自己最近的那只 BOSS；没有就直飞）
+	var p := get_tree().get_first_node_in_group("player")
+	if p == null or not p.has_method("bosses"):
+		return null
+	var best: Node = null
+	var best_d := 1e12
+	for b in p.call("bosses"):
+		if b == null or bool(b.call("is_dead")):
+			continue
+		var d: float = b.global_position.distance_squared_to(_camera.global_position)
+		if d < best_d:
+			best_d = d
+			best = b
+	return best
 
 
 func _cancel() -> void:
@@ -193,6 +262,8 @@ func _cancel() -> void:
 	_charge = 0.0
 	_hold_lmb = false
 	_hold_x = false
+	_hold_2 = false
+	_charge_skill2 = false
 	_draw = 0.0
 
 
@@ -266,6 +337,39 @@ func skill_ready() -> bool:
 	return p == null or bool(p.call("has_mp", float(SKILL_MP)))
 
 
+# ---- 技能 2·锁定箭（HUD 读这套）----
+func skill2_name() -> String:
+	return SKILL2_NAME
+
+
+func skill2_cost() -> int:
+	return SKILL2_MP
+
+
+func skill2_cooldown() -> float:
+	return SKILL2_CD
+
+
+func skill2_cooldown_left() -> float:
+	return _skill2_cd
+
+
+func skill2_damage(ratio := 1.0) -> int:
+	## 锁定箭伤害 = 1.5 × 同蓄力比例的普射伤害（吃弓的强化）
+	return int(floor(float(damage_at(ratio)) * SKILL2_DMG_MULT))
+
+
+func skill2_desc() -> String:
+	return "按住蓄力 放追踪箭·最多%d伤" % skill2_damage(1.0)
+
+
+func skill2_ready() -> bool:
+	if _skill2_cd > 0.0:
+		return false
+	var p := get_tree().get_first_node_in_group("player")
+	return p == null or bool(p.call("has_mp", float(SKILL2_MP)))
+
+
 func _player_damage_scale() -> float:
 	## 弓的强化倍率（每件装备单独算，只认"弓箭 +N"）；玩家按分组取，取不到按 1.0
 	var p := get_tree().get_first_node_in_group("player")
@@ -277,6 +381,8 @@ func _player_damage_scale() -> float:
 func _process(delta: float) -> void:
 	if _skill_cd > 0.0:
 		_skill_cd = maxf(0.0, _skill_cd - delta)   # 技能冷却切走了也照跳
+	if _skill2_cd > 0.0:
+		_skill2_cd = maxf(0.0, _skill2_cd - delta)
 	if not active or _camera == null:
 		return
 	if _cooldown > 0.0:

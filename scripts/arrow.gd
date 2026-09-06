@@ -1,19 +1,44 @@
 extends RigidBody3D
 ## 箭弹体：物理引擎负责重力抛物线——射程/落点完全由初速（蓄力程度）与出手角度决定。
-## 命中 BOSS 按蓄力伤害扣血（满蓄 50），钉住 4 秒后消失；同屏最多 15 支，超出回收最旧的。
+## 命中 BOSS 按蓄力伤害扣血，钉住 4 秒后消失；同屏最多 15 支，超出回收最旧的。
+## 追踪箭（弓·锁定箭）：homing=true 时每帧把速度方向往目标拐（转速有限，拉不满会绕），
+## 速度大小保持出手值——追踪不改射速，只改方向。
 
 const ARROW_MODEL := preload("res://assets/weapons/arrow.glb")
 const MAX_ALIVE := 15
+const HOMING_TURN := 6.0         # 追踪转向速度（每秒可转多少比例，越大跟得越死）
 
 static var _active: Array = []
 
 var dmg := 50
+var homing := false              # 追踪箭标记（弓·锁定箭）
+var _target: Node                # 追踪目标（BOSS 本体），没了/死了就直飞
 var _hit := false
 var _life := 0.0
 
 
-static func spawn(parent: Node, cam_basis: Basis, origin: Vector3, speed: float, damage: int) -> void:
+static func spawn(parent: Node, cam_basis: Basis, origin: Vector3, speed: float, damage: int) -> RigidBody3D:
 	## 从相机处生成一支箭：沿视线方向（-Z）给出初速
+	var ar := _create(damage)
+	parent.add_child(ar)
+	ar.global_transform = Transform3D(cam_basis.orthonormalized(), origin)
+	ar.linear_velocity = -cam_basis.z * speed
+	return ar
+
+
+static func spawn_homing(parent: Node, cam_basis: Basis, origin: Vector3, speed: float,
+		damage: int, target: Node) -> RigidBody3D:
+	## 追踪箭（弓·锁定箭）：同 spawn，另挂目标；目标无效时就是一支普通箭
+	var ar := _create(damage)
+	ar.homing = target != null
+	ar._target = target
+	parent.add_child(ar)
+	ar.global_transform = Transform3D(cam_basis.orthonormalized(), origin)
+	ar.linear_velocity = -cam_basis.z * speed
+	return ar
+
+
+static func _create(damage: int) -> RigidBody3D:
 	_prune()
 	while _active.size() >= MAX_ALIVE:
 		var old = _active.pop_front()
@@ -22,10 +47,8 @@ static func spawn(parent: Node, cam_basis: Basis, origin: Vector3, speed: float,
 	var ar: RigidBody3D = load("res://scripts/arrow.gd").new()
 	ar.dmg = damage
 	ar._configure()
-	parent.add_child(ar)
-	ar.global_transform = Transform3D(cam_basis.orthonormalized(), origin)
-	ar.linear_velocity = -cam_basis.z * speed
 	_active.append(ar)
+	return ar
 
 
 static func _prune() -> void:
@@ -81,6 +104,13 @@ func _physics_process(delta: float) -> void:
 	if _hit:
 		return
 	_life += delta
+	if homing and is_instance_valid(_target) and not bool(_target.call("is_dead")):
+		# 追踪：速度方向往目标拐，大小不变（转弯速率有限，绕得动但甩得掉一半）
+		var to: Vector3 = _target.global_position + Vector3(0, 1.2, 0) - global_position
+		var spd := linear_velocity.length()
+		if to.length() > 0.5 and spd > 0.1:
+			var want := to.normalized() * spd
+			linear_velocity = linear_velocity.lerp(want, minf(1.0, delta * HOMING_TURN)).normalized() * spd
 	if global_position.y < -30.0:
 		queue_free()
 		return
