@@ -237,7 +237,8 @@ func _fire_homing(ratio: float) -> void:
 	var scene := get_tree().current_scene
 	if scene == null:
 		scene = get_tree().root
-	ARROW_SCRIPT.spawn_homing(scene, _camera.global_transform.basis, origin, speed, dmg, _nearest_boss())
+	ARROW_SCRIPT.spawn_homing(scene, _camera.global_transform.basis, origin, speed, dmg,
+		_nearest_boss(), "弓箭锁定箭")
 
 
 func _nearest_boss() -> Node:
@@ -274,7 +275,7 @@ func _fire() -> void:
 	_release_arrow(ratio)
 
 
-func _release_arrow(ratio: float) -> void:
+func _release_arrow(ratio: float, weapon := "弓") -> void:
 	## 沿准星放出一箭：伤害/初速/音效都按蓄力比例来（技能「快速射击」传 1.0 = 满蓄）
 	var speed := lerpf(SPEED_MIN, SPEED_MAX, ratio)
 	var dmg := damage_at(ratio)
@@ -286,7 +287,7 @@ func _release_arrow(ratio: float) -> void:
 	var scene := get_tree().current_scene
 	if scene == null:
 		scene = get_tree().root
-	ARROW_SCRIPT.spawn(scene, _camera.global_transform.basis, origin, speed, dmg)
+	ARROW_SCRIPT.spawn(scene, _camera.global_transform.basis, origin, speed, dmg, weapon)
 
 
 # ---- 技能·快速射击（数字 1）----
@@ -301,7 +302,7 @@ func cast_skill() -> bool:
 	_skill_cd = SKILL_CD
 	_cancel()
 	_cooldown = SHOT_COOLDOWN     # 这也算真的射了一箭：普射的 0.5 秒间隔照走
-	_release_arrow(1.0)
+	_release_arrow(1.0, "弓箭快速射击")
 	return true
 
 

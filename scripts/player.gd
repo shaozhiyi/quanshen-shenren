@@ -513,7 +513,9 @@ func weapon_busy() -> bool:
 	## 手上这把武器还在"收不了手"的状态里：
 	##   弓 / 法杖 = 蓄力中（按住左键或 X，松手才出手）
 	##   剑 = 挥砍动画播放中
-	##   法杖另加两段：甩杖动画进行中、以及出手后的 2 秒冷却（用户要求：冷却期间不许切）
+	##   法杖 = 甩杖动画进行中、以及出手后的攻击间隔（期间不能攻击也不能切）
+	##   注：法杖技能的冷却（火球 15 秒/冰冻 20 秒）与火球放完的 4 秒硬直都不拦切武器，
+	##   只有普攻攻击间隔拦——技能冷却期间切武器照常。
 	## 这段时间 C 被拦住：切走会把蓄力清零、或让动作半途消失（伤害与动画脱节）。
 	## 只查手上这把——另一把切走时 set_active(false) 已经把状态清了。
 	if _weapon == 1 and _bow != null and _bow.has_method("is_charging"):
@@ -711,7 +713,7 @@ func _on_skill_hit() -> void:
 	var boss := _slash_ray_boss()
 	if boss == null:
 		return
-	boss.take_damage(sword_skill_damage(), "剑")
+	boss.take_damage(sword_skill_damage(), "剑劈砍")   # 播报带技能名：你使用剑劈砍击中…
 	if boss.has_method("stun"):
 		boss.call("stun", SWORD_SKILL_STUN)
 
@@ -835,37 +837,41 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventMouseButton:
 		if event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	elif event is InputEventKey and event.pressed and not event.echo:
-		if event.is_action_pressed("ui_cancel"):
-			# ESC：在捕获与释放之间切换
-			if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-				Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-			else:
-				Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-		elif event.keycode == KEY_Z:
-			# Z：冲刺（单独一下，沿当前按住的方向；没按方向就朝正前方）
-			try_dash()
-		elif event.keycode == KEY_C:
-			# C：在已装备的武器之间循环（剑 → 弓 → 法杖 → 剑，跳过没装备的）
-			_switch_weapon()
-		elif event.keycode == KEY_E:
-			# E：附近有掉落箱→回收；否则靠近 BOSS 进入其空间 / 空间内离开
-			if not _try_pick_box():
-				_try_interact_boss()
-		elif event.keycode == KEY_R:
-			# R：靠近 BOSS 时切换下一档挑战难度（击败过一次后解锁）
-			_try_cycle_difficulty()
-		elif event.keycode == KEY_1 or event.keycode == KEY_KP_1:
-			# 数字 1：放当前手上武器的技能（剑=劈砍 弓=快速射击 法杖=火球术）
-			_cast_skill()
+	elif event is InputEventKey and not event.echo:
+		if event.pressed:
+			if event.is_action_pressed("ui_cancel"):
+				# ESC：在捕获与释放之间切换
+				if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+					Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+				else:
+					Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+			elif event.keycode == KEY_Z:
+				# Z：冲刺（单独一下，沿当前按住的方向；没按方向就朝正前方）
+				try_dash()
+			elif event.keycode == KEY_C:
+				# C：在已装备的武器之间循环（剑 → 弓 → 法杖 → 剑，跳过没装备的）
+				_switch_weapon()
+			elif event.keycode == KEY_E:
+				# E：附近有掉落箱→回收；否则靠近 BOSS 进入其空间 / 空间内离开
+				if not _try_pick_box():
+					_try_interact_boss()
+			elif event.keycode == KEY_R:
+				# R：靠近 BOSS 时切换下一档挑战难度（击败过一次后解锁）
+				_try_cycle_difficulty()
+			elif event.keycode == KEY_1 or event.keycode == KEY_KP_1:
+				# 数字 1：放当前手上武器的技能（剑=劈砍 弓=快速射击 法杖=火球术）
+				_cast_skill()
+			elif event.keycode == KEY_2 or event.keycode == KEY_KP_2:
+				# 数字 2 按下：剑立刻出招；弓/法杖开始蓄力
+				_cast_skill2(true)
+			elif event.keycode == KEY_F5:
+				# F5：写入 save/ 下的 JSON 存档
+				_quick_save()
 		elif event.keycode == KEY_2 or event.keycode == KEY_KP_2:
-			# 数字 2：第二技能（剑=突刺 弓=锁定箭 法杖=冰冻术）。
-			# 弓/法杖是"按住蓄力、松手放"，按下/松开都要转给武器；
-			# 剑是按下出招，松开它自己忽略。
-			_cast_skill2(event.pressed)
-		elif event.keycode == KEY_F5:
-			# F5：写入 save/ 下的 JSON 存档
-			_quick_save()
+			# 数字 2 松开：弓/法杖的蓄力型技能在这一刻才发射（剑自己忽略松开）。
+			# 注意这必须放在 event.pressed 总闸外面——松开事件 pressed=false，
+			# 关在闸里就永远等不到"松手"，蓄力起手后卡死不发射。
+			_cast_skill2(false)
 
 
 func _weapon_node() -> Node:
@@ -987,7 +993,7 @@ func _sweep_thrust_hits() -> void:
 		var d: Vector3 = b.global_position - global_position
 		if absf(d.y) < 3.4 and Vector2(d.x, d.z).length() < THRUST_HIT_R:
 			_thrust_hit.append(b)
-			b.take_damage(THRUST_DMG, "剑")
+			b.take_damage(THRUST_DMG, "剑突刺")   # 播报带技能名：你使用剑突刺击中…
 			if b.has_method("bleed"):
 				b.call("bleed", float(sword_damage()) * THRUST_BLEED_MULT, THRUST_BLEED_T)
 

@@ -12,14 +12,17 @@ static var _active: Array = []
 
 var dmg := 50
 var homing := false              # 追踪箭标记（弓·锁定箭）
+var hit_weapon := "弓"           # 播报用武器名（技能箭会带上技能名）
 var _target: Node                # 追踪目标（BOSS 本体），没了/死了就直飞
 var _hit := false
 var _life := 0.0
 
 
-static func spawn(parent: Node, cam_basis: Basis, origin: Vector3, speed: float, damage: int) -> RigidBody3D:
+static func spawn(parent: Node, cam_basis: Basis, origin: Vector3, speed: float,
+		damage: int, weapon := "弓") -> RigidBody3D:
 	## 从相机处生成一支箭：沿视线方向（-Z）给出初速
 	var ar := _create(damage)
+	ar.hit_weapon = weapon
 	parent.add_child(ar)
 	ar.global_transform = Transform3D(cam_basis.orthonormalized(), origin)
 	ar.linear_velocity = -cam_basis.z * speed
@@ -27,11 +30,12 @@ static func spawn(parent: Node, cam_basis: Basis, origin: Vector3, speed: float,
 
 
 static func spawn_homing(parent: Node, cam_basis: Basis, origin: Vector3, speed: float,
-		damage: int, target: Node) -> RigidBody3D:
+		damage: int, target: Node, weapon := "弓") -> RigidBody3D:
 	## 追踪箭（弓·锁定箭）：同 spawn，另挂目标；目标无效时就是一支普通箭
 	var ar := _create(damage)
 	ar.homing = target != null
 	ar._target = target
+	ar.hit_weapon = weapon
 	parent.add_child(ar)
 	ar.global_transform = Transform3D(cam_basis.orthonormalized(), origin)
 	ar.linear_velocity = -cam_basis.z * speed
@@ -94,7 +98,7 @@ func _on_body_entered(other: Node) -> void:
 		while n != null and not n.has_method("take_damage"):
 			n = n.get_parent()
 		if n != null:
-			n.take_damage(dmg, "弓")
+			n.take_damage(dmg, hit_weapon)
 	freeze = true
 	set_contact_monitor.call_deferred(false)
 	get_tree().create_timer(4.0).timeout.connect(queue_free)

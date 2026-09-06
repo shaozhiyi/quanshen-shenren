@@ -13,8 +13,8 @@ const STAFF_MODEL := preload("res://assets/weapons/staff.glb")
 const ORB_SCRIPT := preload("res://scripts/staff_orb.gd")
 
 # ---- 可改数值：冷却与蓄力 ----
-const SHOT_COOLDOWN := 2.0        # 每次出手后的冷却（秒），点射与蓄力共用
-const CHARGE_MAX := 3.0           # 蓄满所需秒数
+const SHOT_COOLDOWN := 3.0        # 每次出手后的冷却（秒），点射与蓄力共用（攻击间隔：不能攻击也不能切）
+const CHARGE_MAX := 4.0           # 蓄满所需秒数
 const CHARGE_DONE := 0.99         # 蓄力比例到多少算"蓄满"（松手出大球）
 const SWING_TIME := 0.26          # 甩杖动画时长
 const SPEED := 26.0               # 球速 m/s
@@ -36,8 +36,7 @@ const BLUE_CHANCE := 0.5          # 出蓝球的概率（其余为红）
 
 # ---- 技能·火球术（数字 1）：一颗火属性大球，冷却 15 秒，耗 70 法力 ----
 # 球体比满蓄球大 2 倍、伤害 1.8 倍满蓄伤害（同样吃强化）；火球不带定身。
-# 放完有 4 秒硬直：记在普攻那份 _cooldown 上（"和之前的攻击冷却一样"）——
-# 这 4 秒里不能普攻、不能切武器，蓄力/起手的既有门槛自动全部生效。
+# 放完有 4 秒硬直（SKILL_LOCK）：只锁攻击——技能冷却期间切武器照常（攻击间隔才锁切换）。
 const SKILL_NAME := "火球术"
 const SKILL_CD := 15.0
 const SKILL_MP := 70
@@ -75,7 +74,8 @@ var _tip_orb: MeshInstance3D
 var _tip_mat: StandardMaterial3D
 var _charging := false
 var _charge := 0.0
-var _cooldown := 0.0
+var _cooldown := 0.0              # 普攻攻击间隔（点射/蓄力/冰冻出手后；期间不能攻击也不能切）
+var _skill_lock := 0.0            # 火球放完的 4 秒硬直：只锁攻击，不拦切武器
 var _skill_cd := 0.0              # 火球术冷却剩余秒（切走了也继续跳）
 var _skill2_cd := 0.0             # 冰冻术冷却剩余秒（切走了也继续跳）
 var _fire_glow := false           # 这一甩是火球术：杖顶辉光透火色
@@ -281,7 +281,7 @@ func cast_skill() -> bool:
 		return false        # 蓝不够：spend_mp 自带判定，扣了才返回 true
 	_skill_cd = SKILL_CD
 	_cancel()
-	_cooldown = SKILL_LOCK
+	_skill_lock = SKILL_LOCK   # 4 秒硬直：只锁攻击；切武器照常（技能冷却不拦切换）
 	_swing = SWING_TIME
 	_next_blue = false
 	_fire_glow = true
@@ -292,7 +292,7 @@ func cast_skill() -> bool:
 	# 火球比普通球大得多，出口也推得更远（0.9 米）：贴着杖尖出会让它糊满整个画面
 	var origin: Vector3 = (_tip.global_position if _tip != null else global_position) + f * 0.9
 	ORB_SCRIPT.spawn(scene, origin, f, FIRE_SPEED, skill_damage(),
-		FIRE_COLOR, ORB_R_CHARGED * SKILL_R_MULT, 0.0)
+		FIRE_COLOR, ORB_R_CHARGED * SKILL_R_MULT, 0.0, "法杖火球术")
 	return true
 
 
@@ -380,8 +380,8 @@ func _set_hold(who: String, on: bool) -> void:
 		_hold_2 = on
 	var want := _hold_lmb or _hold_x or _hold_2
 	if want and not _charging:
-		if _cooldown > 0.0 or _swing > 0.0:
-			return                 # 冷却中（含火球硬直）/ 上一发还在甩：不起手
+		if _cooldown > 0.0 or _skill_lock > 0.0 or _swing > 0.0:
+			return                 # 攻击间隔 / 火球硬直 / 上一发还在甩：不起手（切武器不受此限制）
 		_charging = true
 		_charge = 0.0
 		_charge_skill2 = (who == "2")   # 用 2 起手 = 这次蓄的是冰冻术
@@ -428,7 +428,7 @@ func _fire_ice(ratio: float) -> void:
 	var f := -_camera.global_transform.basis.z.normalized()
 	var center := _camera.global_position + f * 1.4
 	ORB_SCRIPT.spawn_formation(scene, center, f, SPEED_CHARGED if full else SPEED,
-		dmg, ICE_COLOR, ORB_R, ctrl, true, ICE_COUNT, ICE_FORM_R, ICE_SPIN)
+		dmg, ICE_COLOR, ORB_R, ctrl, true, ICE_COUNT, ICE_FORM_R, ICE_SPIN, "法杖冰冻术")
 
 
 func _cancel() -> void:
@@ -469,6 +469,8 @@ func _process(delta: float) -> void:
 		return
 	if _cooldown > 0.0:
 		_cooldown = maxf(0.0, _cooldown - delta)
+	if _skill_lock > 0.0:
+		_skill_lock = maxf(0.0, _skill_lock - delta)
 	if _charging:
 		_charge = minf(_charge + delta, CHARGE_MAX)
 	if _swing > 0.0:
