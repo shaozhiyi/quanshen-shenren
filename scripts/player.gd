@@ -15,8 +15,9 @@ signal hp_changed(current: float, maximum: float)
 signal died
 
 var hp := 100.0
-# ---- 魔法：上限固定 200，技能消耗（剑 50 / 弓 30 / 法杖 70），每秒回 1 点 ----
+# ---- 魔法：上限固定 200，技能消耗（剑 50 / 弓 30 / 法杖 70），每秒回 2 点 ----
 @export var max_mp := 200.0
+const MP_REGEN_PER_SEC := 2.0   # 法力回复速度（点/秒），想调快慢只动这里
 var mp := 200.0
 var _mp_regen_acc := 0.0   # 法力回复的零头累积（攒够 1 点才入账）
 signal mp_changed(current: float, maximum: float)
@@ -864,8 +865,8 @@ func _cast_skill() -> void:
 
 
 func _physics_process(delta: float) -> void:
-	# 法力回复：每秒 +1（攒够 1 点才入账，免得蓝条每帧微跳）
-	_mp_regen_acc += delta
+	# 法力回复：每秒 MP_REGEN_PER_SEC 点（攒够 1 点才入账，免得蓝条每帧微跳）
+	_mp_regen_acc += delta * MP_REGEN_PER_SEC
 	if _mp_regen_acc >= 1.0:
 		var pts := floorf(_mp_regen_acc)
 		_mp_regen_acc -= pts
