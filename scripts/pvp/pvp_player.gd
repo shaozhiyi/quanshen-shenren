@@ -97,6 +97,9 @@ func _ready() -> void:
 	else:
 		add_to_group("local_player")
 		$Avatar.visible = false
+		# 本机相机必须显式激活：房主的相机是第一个进树的会被引擎自动启用，
+		# 加入方的相机是第二个进树的不会自动启用——不设这行，玩家二开局就是黑屏
+		$Camera3D.current = true
 	$Avatar/Name.text = display_name
 
 
