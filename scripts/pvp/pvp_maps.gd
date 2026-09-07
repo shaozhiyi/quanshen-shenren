@@ -100,42 +100,69 @@ static func _blank(root: Node) -> Array:
 
 static func _mountain(root: Node) -> Array:
 	_env(root)
-	var N := 96
 	var half := SIZE
-	var pm := PlaneMesh.new()
-	pm.size = Vector2(half * 2.0, half * 2.0)
-	pm.subdivide_depth = N
-	pm.subdivide_width = N
 	var noise := FastNoiseLite.new()
 	noise.seed = 20260906
 	noise.frequency = 0.012
 	noise.fractal_octaves = 4
-	var mesh: Mesh = pm.get_mesh()
-	if mesh != null:
-		var arrays: Array = mesh.get_arrays()
-		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-		for i in verts.size():
-			var v := verts[i]
-			var d := Vector2(v.x, v.z).length() / half
-			var h := noise.get_noise_2d(v.x, v.z) * 10.0
-			var flat := clampf((d - 0.28) / 0.4, 0.0, 1.0)   # 半径 28% 以内是平地
-			v.y = h * flat * flat + (1.0 - flat) * 0.0 + flat * 6.0
-			verts[i] = v
-		arrays[Mesh.ARRAY_VERTEX] = verts
-		var am := ArrayMesh.new()
-		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-		var m := StandardMaterial3D.new()
-		m.albedo_color = Color(0.42, 0.55, 0.32)
-		m.roughness = 0.95
-		am.surface_set_material(0, m)
-		var mi := MeshInstance3D.new()
-		mi.mesh = am
-		root.add_child(mi)
-		var sb := StaticBody3D.new()
-		var cs := CollisionShape3D.new()
-		cs.shape = am.create_trimesh_shape()
-		sb.add_child(cs)
-		mi.add_child(sb)
+	# 本机 MX250 的渲染坑：运行时一次性建大 ArrayMesh 整体不可见（单机地形当年就因此
+	# 改成 PlaneMesh+shader）。联机这里改成"分块小网格"：每块 ~81 顶点，渲染正常。
+	var tiles := 10
+	var step := half * 2.0 / tiles
+	var sub := 8                       # 每块 8×8 格
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.42, 0.55, 0.32)
+	m.roughness = 0.95
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED   # 背面也画，防止从坡下看到破面
+	for tz in tiles:
+		for tx in tiles:
+			var ox := -half + step * float(tx)
+			var oz := -half + step * float(tz)
+			var st := SurfaceTool.new()
+			st.begin(Mesh.PRIMITIVE_TRIANGLES)
+			var faces := PackedVector3Array()
+			for j in sub:
+				for i in sub:
+					var x0 := ox + step * float(i) / float(sub)
+					var x1 := ox + step * float(i + 1) / float(sub)
+					var z0 := oz + step * float(j) / float(sub)
+					var z1 := oz + step * float(j + 1) / float(sub)
+					var y00 := _mount_h(noise, x0, z0, half)
+					var y10 := _mount_h(noise, x1, z0, half)
+					var y01 := _mount_h(noise, x0, z1, half)
+					var y11 := _mount_h(noise, x1, z1, half)
+					# 两个三角形（顶点顺序不挑，材质已关背面剔除）
+					var tri := [
+						Vector3(x0, y00, z0), Vector3(x1, y10, z0), Vector3(x1, y11, z1),
+						Vector3(x0, y00, z0), Vector3(x1, y11, z1), Vector3(x0, y01, z1),
+					]
+					for v in tri:
+						st.add_vertex(v)
+					faces.append_array(tri)
+			st.generate_normals()
+			var mesh := st.commit()
+			var mi := MeshInstance3D.new()
+			mi.mesh = mesh
+			mi.material_override = m
+			root.add_child(mi)
+			# 每块自己的三面体碰撞（面数据用世界坐标，碰撞体挂在场景根原点上）
+			var sb := StaticBody3D.new()
+			var cs := CollisionShape3D.new()
+			var shape := ConcavePolygonShape3D.new()
+			shape.set_faces(faces)
+			cs.shape = shape
+			sb.add_child(cs)
+			root.add_child(sb)
+	# 保底地板：就算哪块碰撞没建起来，谁也掉不出世界（顶面略低于平地 y=0）
+	var ground := StaticBody3D.new()
+	var gcs := CollisionShape3D.new()
+	var gshape := BoxShape3D.new()
+	gshape.size = Vector3(half * 2.0, 1.0, half * 2.0)
+	gcs.shape = gshape
+	gcs.position = Vector3(0, -0.55, 0)
+	gcs.name = "GroundSafe"
+	ground.add_child(gcs)
+	root.add_child(ground)
 	# 几块大石头当掩体
 	var rock_col := Color(0.5, 0.5, 0.52)
 	for i in 8:
@@ -143,6 +170,14 @@ static func _mountain(root: Node) -> Array:
 		_box(root, Vector3(3.0, 2.4, 2.2), Vector3(cos(ang) * 18.0, 1.2, sin(ang) * 18.0), rock_col)
 	_wall_ring(root, half - 1.0, 8.0)
 	return [Vector3(-14, 1.2, -14), Vector3(14, 1.2, -14), Vector3(-14, 1.2, 14), Vector3(14, 1.2, 14)]
+
+
+static func _mount_h(noise: FastNoiseLite, x: float, z: float, half: float) -> float:
+	## 与旧版同一套高度：中心 28% 半径内是平地，往外是噪声山丘并整体抬高
+	var d := Vector2(x, z).length() / half
+	var h := noise.get_noise_2d(x, z) * 10.0
+	var flat := clampf((d - 0.28) / 0.4, 0.0, 1.0)
+	return h * flat * flat + flat * 6.0
 
 
 static func _road(root: Node) -> Array:
