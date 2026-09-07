@@ -47,6 +47,7 @@ var _eq_slots := {}                 # key -> SlotCtl
 var _bag_slots: Array = []
 var _player: Node
 var _open := false
+var freeze_whole_tree := true       # 单机开包=整局暂停；联机关掉（只禁本机玩家输入）
 var _selected_loc: Array = []       # 当前选中的槽位 ["bag",i]/["eq",k]
 var _hint_label: Label
 
@@ -58,6 +59,10 @@ func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	visible = false
 	_player = get_node_or_null("../../Player")
+	if _player == null:
+		var locals := get_tree().get_nodes_in_group("local_player")
+		if not locals.is_empty():
+			_player = locals[0]     # PVP 竞技场：本机玩家的节点不叫 Player
 	_build_items()
 	_build_bag()
 	_build_ui()
@@ -131,6 +136,16 @@ func _build_bag() -> void:
 	# 防具自动穿戴（_eq.armor 默认已为 armor）；法杖初始放在背包第一格，
 	# 想用它就得自己拖进「武器」或「副武器」栏（另换一把回背包）
 	bag_set(0, "staff", 1)
+
+
+## 联机 PVP 的初始配置：剑+弓、法杖在背包、自带一瓶野生狗奶（效果不变）、不穿甲
+func setup_pvp() -> void:
+	freeze_whole_tree = false
+	_eq.armor = ""
+	bag_set(0, "staff", 1)
+	bag_set(1, "dogmilk", 1)
+	refresh_all()
+	_sync_player()
 
 
 func item_name(id: String) -> String:
@@ -541,11 +556,14 @@ func _toggle() -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 		if _player != null:
 			_player.process_mode = Node.PROCESS_MODE_DISABLED
-		get_tree().paused = true      # 开包即暂停：BOSS、箭、特效、掉落全部冻住
+		if freeze_whole_tree:
+			get_tree().paused = true      # 单机：开包即暂停（BOSS、箭、特效全部冻住）
+		# 联机：整棵树不能停（别人的画面会卡住），本机玩家已被禁输入 = 你站着挨打
 	else:
 		_selected_loc = []
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-		get_tree().paused = false     # 先解除暂停，再恢复玩家（顺序反了会卡在暂停里）
+		if freeze_whole_tree:
+			get_tree().paused = false     # 先解除暂停，再恢复玩家（顺序反了会卡在暂停里）
 		if _player != null:
 			_player.process_mode = Node.PROCESS_MODE_INHERIT
 		refresh_all()

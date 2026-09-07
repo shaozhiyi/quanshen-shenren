@@ -292,7 +292,7 @@ func cast_skill() -> bool:
 	# 火球比普通球大得多，出口也推得更远（0.9 米）：贴着杖尖出会让它糊满整个画面
 	var origin: Vector3 = (_tip.global_position if _tip != null else global_position) + f * 0.9
 	ORB_SCRIPT.spawn(scene, origin, f, FIRE_SPEED, skill_damage(),
-		FIRE_COLOR, ORB_R_CHARGED * SKILL_R_MULT, 0.0, "法杖火球术")
+		FIRE_COLOR, ORB_R_CHARGED * SKILL_R_MULT, 0.0, "法杖火球术", _thrower())
 	return true
 
 
@@ -429,7 +429,7 @@ func _fire_ice(ratio: float) -> void:
 	var f := -_camera.global_transform.basis.z.normalized()
 	var center := _camera.global_position + f * 1.4
 	ORB_SCRIPT.spawn_formation(scene, center, f, SPEED_CHARGED if full else SPEED,
-		dmg, ICE_COLOR, ORB_R, ctrl, true, ICE_COUNT, ICE_FORM_R, ICE_SPIN, "法杖冰冻术")
+		dmg, ICE_COLOR, ORB_R, ctrl, true, ICE_COUNT, ICE_FORM_R, ICE_SPIN, "法杖冰冻术", _thrower())
 
 
 func _cancel() -> void:
@@ -441,6 +441,11 @@ func _cancel() -> void:
 	_charge_skill2 = false
 	_fire_glow = false
 	_ice_glow = false
+
+
+## 联机里按 group 找"第一个玩家"会认错人，直接把相机的主人（玩家本体）传下去
+func _thrower() -> PhysicsBody3D:
+	return _camera.get_parent() as PhysicsBody3D if _camera != null else null
 
 
 func _fire() -> void:
@@ -458,7 +463,7 @@ func _fire() -> void:
 	var origin: Vector3 = (_tip.global_position if _tip != null else global_position) + f * 0.35
 	ORB_SCRIPT.spawn(scene, origin, f,
 		float(SPEED_CHARGED if bool(plan.charged) else SPEED),
-		int(plan.damage), plan.color, float(plan.radius), float(plan.control))
+		int(plan.damage), plan.color, float(plan.radius), float(plan.control), "法杖", _thrower())
 
 
 func _process(delta: float) -> void:

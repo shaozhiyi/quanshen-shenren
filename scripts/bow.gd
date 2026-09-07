@@ -238,8 +238,9 @@ func _fire_homing(ratio: float) -> void:
 	var scene := get_tree().current_scene
 	if scene == null:
 		scene = get_tree().root
-	ARROW_SCRIPT.spawn_homing(scene, _camera.global_transform.basis, origin, speed, dmg,
+	var ar2: RigidBody3D = ARROW_SCRIPT.spawn_homing(scene, _camera.global_transform.basis, origin, speed, dmg,
 		_nearest_boss(), "弓箭锁定箭")
+	ar2.shooter = _camera.get_parent()         # PVP：排除射手本人
 
 
 func _nearest_boss() -> Node:
@@ -250,8 +251,8 @@ func _nearest_boss() -> Node:
 	var best: Node = null
 	var best_d := 1e12
 	for b in p.call("bosses"):
-		if b == null or bool(b.call("is_dead")):
-			continue
+		if b == null or b == _camera.get_parent() or bool(b.call("is_dead")):
+			continue          # PVP：目标列表里可能包含自己（玩家的 bodies），锁箭不打自己
 		var d: float = b.global_position.distance_squared_to(_camera.global_position)
 		if d < best_d:
 			best_d = d
@@ -288,7 +289,8 @@ func _release_arrow(ratio: float, weapon := "弓") -> void:
 	var scene := get_tree().current_scene
 	if scene == null:
 		scene = get_tree().root
-	ARROW_SCRIPT.spawn(scene, _camera.global_transform.basis, origin, speed, dmg, weapon)
+	var ar: RigidBody3D = ARROW_SCRIPT.spawn(scene, _camera.global_transform.basis, origin, speed, dmg, weapon)
+	ar.shooter = _camera.get_parent()          # PVP：排除射手本人
 
 
 # ---- 技能·快速射击（数字 1）----

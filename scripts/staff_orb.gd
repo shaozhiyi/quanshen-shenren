@@ -30,7 +30,8 @@ var _orbit_omega := 0.0
 
 
 static func spawn(parent: Node, origin: Vector3, dir: Vector3, speed: float,
-		damage: int, col: Color, r: float, control: float, weapon := "法杖") -> void:
+		damage: int, col: Color, r: float, control: float, weapon := "法杖",
+		thrower: PhysicsBody3D = null) -> void:
 	## 从法杖杖顶射出一颗球：dir 就是相机视线方向（weapon=播报里的武器名）
 	_prune()
 	while _active.size() >= MAX_ALIVE:
@@ -41,13 +42,14 @@ static func spawn(parent: Node, origin: Vector3, dir: Vector3, speed: float,
 	parent.add_child(orb)
 	orb.global_transform = Transform3D(Basis.IDENTITY, origin)
 	orb.linear_velocity = dir.normalized() * speed
-	orb._avoid_thrower()
+	orb._avoid_thrower(thrower)
 	_active.append(orb)
 
 
 static func spawn_formation(parent: Node, center: Vector3, dir: Vector3, speed: float,
 		damage: int, col: Color, r: float, control: float, stack: bool,
-		count: int, form_r: float, omega: float, weapon := "法杖") -> void:
+		count: int, form_r: float, omega: float, weapon := "法杖",
+		thrower: PhysicsBody3D = null) -> void:
 	## 冰冻术：count 颗冰球绕出手轴排成正三角，飞行途中绕轴自转（omega 弧度/秒）。
 	## 每颗球仍是独立刚体：速度 = 前进 + 绕轴切向；圆心 = 出手点沿 dir 同速前进，
 	## 所以三球全程保持队形，越飞转得越欢。
@@ -71,7 +73,7 @@ static func spawn_formation(parent: Node, center: Vector3, dir: Vector3, speed: 
 		parent.add_child(orb)
 		orb.global_transform = Transform3D(Basis.IDENTITY, center + off)
 		orb.linear_velocity = dir * speed
-		orb._avoid_thrower()
+		orb._avoid_thrower(thrower)
 		_active.append(orb)
 
 
@@ -193,9 +195,12 @@ func _make_trail() -> CPUParticles3D:
 	return t
 
 
-func _avoid_thrower() -> void:
-	## 出手点就在玩家鼻尖前，把玩家自己排除在碰撞之外（否则出膛即命中）
-	var p := get_tree().get_first_node_in_group("player")
+func _avoid_thrower(thrower: PhysicsBody3D = null) -> void:
+	## 出手点就在玩家鼻尖前，把玩家自己排除在碰撞之外（否则出膛即命中）。
+	## 联机时按 group 找"第一个玩家"会认错人，所以优先用调用方直接递进来的射手。
+	var p: Node = thrower
+	if p == null:
+		p = get_tree().get_first_node_in_group("player")
 	if p != null and p is PhysicsBody3D and (p as Node).is_inside_tree():
 		add_collision_exception_with(p as PhysicsBody3D)
 

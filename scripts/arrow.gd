@@ -13,9 +13,11 @@ static var _active: Array = []
 var dmg := 50
 var homing := false              # 追踪箭标记（弓·锁定箭）
 var hit_weapon := "弓"           # 播报用武器名（技能箭会带上技能名）
+var shooter: Node = null         # 射手（PVP 里排除自己，免得箭出膛就命中本人）
 var _target: Node                # 追踪目标（BOSS 本体），没了/死了就直飞
 var _hit := false
 var _life := 0.0
+var shooter_excluded := false
 
 
 static func spawn(parent: Node, cam_basis: Basis, origin: Vector3, speed: float,
@@ -93,7 +95,10 @@ func _on_body_entered(other: Node) -> void:
 	if _hit:
 		return
 	_hit = true
-	if other != null and other.is_in_group("boss"):
+	var is_target: bool = other != null and (other.is_in_group("boss") or other.is_in_group("pvp_target"))
+	if is_target and other == shooter:
+		is_target = false          # 自己的箭不打自己
+	if is_target:
 		var n: Node = other
 		while n != null and not n.has_method("take_damage"):
 			n = n.get_parent()
@@ -107,6 +112,9 @@ func _on_body_entered(other: Node) -> void:
 func _physics_process(delta: float) -> void:
 	if _hit:
 		return
+	if shooter != null and shooter is PhysicsBody3D and not shooter_excluded:
+		shooter_excluded = true
+		add_collision_exception_with(shooter)
 	_life += delta
 	if homing and is_instance_valid(_target) and not bool(_target.call("is_dead")):
 		# 追踪：速度方向往目标拐，大小不变（转弯速率有限，绕得动但甩得掉一半）

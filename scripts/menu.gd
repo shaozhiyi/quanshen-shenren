@@ -32,6 +32,11 @@ func _ready() -> void:
 	_show("main")
 
 
+## 联机对战（局域网）：进 PVP 大厅（创建房间/按房号加入）
+func _on_pvp() -> void:
+	get_tree().change_scene_to_file("res://scenes/pvp_lobby.tscn")
+
+
 # ---- 3D 背景：天空 + 阳光 + 旋转奶盒 ----
 func _build_world() -> void:
 	var owe := WorldEnvironment.new()
@@ -177,13 +182,14 @@ func _build_ui() -> void:
 
 	# 三个主按钮：屏幕底部横排，中间留给旋转的奶盒
 	_main_box = HBoxContainer.new()
-	_main_box.position = Vector2(640 - 342, 556)
-	_main_box.custom_minimum_size = Vector2(684, 0)
+	_main_box.position = Vector2(640 - 459, 556)
+	_main_box.custom_minimum_size = Vector2(918, 0)
 	_main_box.add_theme_constant_override("separation", 18)
 	_root.add_child(_main_box)
 	_add_button(_main_box, "新游戏", _on_new_game, 216)
 	_add_button(_main_box, "读取存档", func(): _show("save"), 216)
 	_add_button(_main_box, "输入种子", func(): _show("seed"), 216)
+	_add_button(_main_box, "联机对战", _on_pvp, 216)
 
 	# 输入种子面板（带深色底板，避免文字糊在 3D 背景上）
 	_seed_bg = _panel_behind(Vector2(640 - 190, 236), Vector2(380, 250))
