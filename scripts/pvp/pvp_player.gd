@@ -19,6 +19,7 @@ const RUN_MULT := 2.0
 const DASH_SPEED := 18.0
 const DASH_DURATION := 0.2
 const DASH_COOLDOWN := 0.5
+const SLOW_MULT := 0.5           # 被劈砍命中的减速倍率（乘在移动速度上）
 
 # ---- 强化（与单机同一套指数算法，双击装备吃强化石）----
 const ENHANCE_MAX := 10
@@ -67,7 +68,7 @@ const THRUST_HIT_R := 2.8
 var _thrust_left := 0.0
 var _thrust_dir := Vector3.ZERO
 var _thrust_hit: Array = []
-var _stun_t := 0.0                # 被劈砍定身：几秒内不能动（房主广播给本人执行）
+
 
 # ---- 武器 ----
 var _weapon := 0                  # 0=剑 1=弓 2=法杖（与 WEAPON_IDS 同下标）
@@ -392,7 +393,7 @@ func weapon_busy() -> bool:
 	return false
 
 
-## 被劈砍定身：本人上报房主（结算权在房主），房主再广播给本人执行
+## 被劈砍命中：减速 50%（持续 sec 秒）。本人上报房主结算，房主广播给本人执行。
 func stun(sec: float, _stack := false) -> void:
 	if dead or sec <= 0.0:
 		return
@@ -405,9 +406,9 @@ func stun(sec: float, _stack := false) -> void:
 		arena.rpc_id(1, "rpc_claim_stun", pvp_id, sec)
 
 
-## 房主广播给本人的执行：几秒内不能动（被打断不了技能，只冻移动）
+## 房主广播给本人的执行：减速 50%（打不断技能，移动与跳跃手感变沉）
 func apply_stun(sec: float) -> void:
-	_stun_t = maxf(_stun_t, sec)
+	_slow_t = maxf(_slow_t, sec)
 
 
 # ---- 突刺（由 sword.gd 的 skill2_hold 起手）----
@@ -597,7 +598,7 @@ func speed_now() -> float:
 	if _running:
 		spd *= RUN_MULT
 	if _slow_t > 0.0:
-		spd *= 0.5
+		spd *= SLOW_MULT   # 被劈砍命中：减速 50%
 	return spd
 
 
@@ -635,14 +636,6 @@ func _physics_process(delta: float) -> void:
 		_running = false
 	if _slow_t > 0.0:
 		_slow_t = maxf(_slow_t - delta, 0.0)
-	if _stun_t > 0.0:
-		# 被劈砍定身：不能动也不能跳，攻击照常（与 BOSS 的"只控制不打断"同一口味）
-		_stun_t = maxf(_stun_t - delta, 0.0)
-		velocity.x = 0.0
-		velocity.z = 0.0
-		move_and_slide()
-		_net_push(delta)
-		return
 	if _thrust_left > 0.0:
 		var tstep: float = minf(_thrust_left, THRUST_SPEED * delta)
 		global_position += _thrust_dir * tstep

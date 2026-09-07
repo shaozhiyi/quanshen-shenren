@@ -136,7 +136,7 @@ func settle_stun(victim_id: int, sec: float) -> void:
 	if not multiplayer.is_server():
 		return
 	# 定身只跟本人有关：定向发给他（他校验发件人是房主）
-	rpc_id(victim_id, "rpc_apply_stun", clampf(sec, 0.0, 2.0))
+	rpc_id(victim_id, "rpc_apply_stun", victim_id, clampf(sec, 0.0, 2.0))
 
 
 func notify_invincible(peer_id: int, dur: float) -> void:
