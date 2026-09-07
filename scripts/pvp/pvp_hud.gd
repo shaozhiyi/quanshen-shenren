@@ -62,7 +62,9 @@ func _build() -> void:
 	_hp_bar = HealthBarX.new()
 	_hp_bar.style = hstyle
 	_hp_bar.min_value = 0.0
-	_hp_bar.max_value = PvpState.MAX_HP
+	# HealthBarX 是"百分比"条：set_value 归一成 0..100 存，画填充时又除以 max_value，
+	# 量程必须是 100、传百分比，真实上限只交给 label_custom_max 换算文字（否则满血只画一小截）
+	_hp_bar.max_value = 100.0
 	_hp_bar.position = Vector2(88, 12)
 	_hp_bar.size = Vector2(300, 34)
 	root.add_child(_hp_bar)
@@ -75,7 +77,7 @@ func _build() -> void:
 	mp_bar.name = "MpBar"
 	mp_bar.style = mstyle
 	mp_bar.min_value = 0.0
-	mp_bar.max_value = 200.0
+	mp_bar.max_value = 100.0   # 同血条：量程恒 100，传百分比
 	mp_bar.position = Vector2(88, 50)
 	mp_bar.size = Vector2(240, 16)
 	add_child(mp_bar)
@@ -148,7 +150,7 @@ func _build() -> void:
 
 func _on_hp(v: float, mx: float) -> void:
 	if _hp_bar != null:
-		_hp_bar.set_value(v, false)   # 量程就是 PvpState.MAX_HP，直接填当前血量
+		_hp_bar.set_value(v / maxf(mx, 0.001) * 100.0, false)   # 量程恒 100，传百分比
 		if _hp_bar.style != null:
 			_hp_bar.style.label_custom_max = mx
 		_hp_bar.queue_redraw()
