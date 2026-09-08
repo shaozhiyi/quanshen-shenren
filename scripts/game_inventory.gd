@@ -57,6 +57,13 @@ func _ready() -> void:
 	# 注意 WHEN_PAUSED 是"只在暂停时处理"（那样平时按 Tab 就没反应了），所以要用 ALWAYS
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	set_anchors_preset(Control.PRESET_FULL_RECT)
+	# 直接挂在 CanvasLayer 下的 Control 不会自动继承视口尺寸（联机 HUD 的背包就是这样：
+	# size 恒为 0 → 面板居中算出负坐标跑到屏幕外、全屏暗衬也铺不开）。
+	# 显式绑定视口大小，并跟随窗口尺寸变化。
+	_sync_viewport_size()
+	var vp := get_viewport()
+	if vp != null and not vp.size_changed.is_connected(_sync_viewport_size):
+		vp.size_changed.connect(_sync_viewport_size)
 	visible = false
 	_player = get_node_or_null("../../Player")
 	if _player == null:
@@ -425,6 +432,12 @@ func discard_selected() -> void:
 
 
 # ---- UI ----
+func _sync_viewport_size() -> void:
+	## 把自身矩形钉到视口大小：挂在 CanvasLayer 下的 Control 不会自动拿到视口尺寸
+	position = Vector2.ZERO
+	size = get_viewport_rect().size
+
+
 func _build_ui() -> void:
 	var dim := ColorRect.new()
 	dim.color = Color(0, 0, 0, 0.55)
@@ -434,7 +447,17 @@ func _build_ui() -> void:
 
 	var panel := Panel.new()
 	panel.size = Vector2(838, 340)
-	panel.position = (size - panel.size) * 0.5
+	# 居中必须走锚点，不能用 (size - panel.size) * 0.5：
+	# 联机里背包直接挂在 CanvasLayer 下，_ready 时自身 size 还是 0，
+	# 那样算出负坐标，整块面板会跑到屏幕左上角外面（格子和文字全被切掉）
+	panel.anchor_left = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_bottom = 0.5
+	panel.offset_left = -419.0
+	panel.offset_right = 419.0
+	panel.offset_top = -170.0
+	panel.offset_bottom = 170.0
 	panel.mouse_filter = Control.MOUSE_FILTER_STOP
 	var ps := StyleBoxFlat.new()
 	ps.bg_color = Color(0.09, 0.10, 0.13, 0.96)
