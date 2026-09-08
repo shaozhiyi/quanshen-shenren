@@ -27,7 +27,7 @@ func _ready() -> void:
 		# 不是从大厅进来的（直接 F6 跑场景）：回主页
 		get_tree().change_scene_to_file.call_deferred(MENU_SCENE)
 		return
-	var spawns: Array = PvpMaps.build(PvpState.map_name, self)
+	var spawns: Array = await PvpMaps.build(PvpState.map_name, self)
 	players_root = Node3D.new()
 	players_root.name = "Players"
 	add_child(players_root)

@@ -12,6 +12,7 @@ extends Node3D
 
 signal slash_hit
 signal skill_hit        # 技能「劈砍」的命中时机（player 据此扣 1.6 倍伤害并定身 1 秒）
+signal action(kind: String)   # 联机：起手动作（"slash"/"heavy"/"thrust"），别人要看到挥砍
 
 const SLAM_FX := preload("res://scripts/slam_fx.gd")
 const SFX := preload("res://scripts/sfx.gd")
@@ -145,6 +146,11 @@ func attack() -> void:
 	_begin_swing(false)
 
 
+func visual_root() -> Node3D:
+	## 联机：给远程玩家复制"别人看得见的武器"用的可视根（剑的网格直接挂在本节点下）
+	return self
+
+
 func cast_skill() -> bool:
 	## 数字 1：技能「劈砍」。冷却中/蓝不够/没在手上 → false（不扣蓝也不动冷却）。
 	## 成功：先扣 50 蓝、进 10 秒冷却，再起一记更大更沉的重斩（命中定身由 player 结算）。
@@ -185,6 +191,7 @@ func _begin_thrust() -> void:
 	_hist.clear()
 	_anim_player.play(SLASH_ANIM, -1.0, SKILL2_SPEED)
 	SFX.play("swing", SKILL2_SFX_DB)
+	action.emit("thrust")
 
 
 func _begin_swing(heavy: bool) -> void:
@@ -201,6 +208,7 @@ func _begin_swing(heavy: bool) -> void:
 	SFX.play("swing", SKILL_SFX_DB if heavy else 0.0)
 	_slash_fx(SKILL_FX_SCALE if heavy else 1.0,
 		SKILL_FX_COLOR if heavy else Color(0.62, 0.80, 1.0))
+	action.emit("heavy" if heavy else "slash")
 
 
 func _slash_fx(scale := 1.0, col := Color(0.62, 0.80, 1.0)) -> void:

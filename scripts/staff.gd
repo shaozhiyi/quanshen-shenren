@@ -9,6 +9,8 @@ extends Node3D
 ## 模型：Poly Pizza CC0「Staff」（assets/weapons/staff.glb，见 CREDITS.txt）；
 ##       杖顶光球与挥杖动画都是程序化的（本素材包没有施法动画）。
 
+signal action(kind: String)   # 联机：起手动作（"charge"/"swing"），别人要看到甩杖蓄力
+
 const STAFF_MODEL := preload("res://assets/weapons/staff.glb")
 const ORB_SCRIPT := preload("res://scripts/staff_orb.gd")
 
@@ -178,6 +180,11 @@ func is_active() -> bool:
 	return active
 
 
+func visual_root() -> Node3D:
+	## 联机：远程玩家复制这份网格当"别人看得见的法杖"
+	return _space
+
+
 func is_charging() -> bool:
 	return _charging
 
@@ -283,6 +290,7 @@ func cast_skill() -> bool:
 	_cancel()
 	_skill_lock = SKILL_LOCK   # 4 秒硬直：只锁攻击；切武器照常（技能冷却不拦切换）
 	_swing = SWING_TIME
+	action.emit("swing")
 	_next_blue = false
 	_fire_glow = true
 	var scene := get_tree().current_scene
@@ -398,6 +406,7 @@ func _set_hold(who: String, on: bool) -> void:
 				return
 		else:
 			_next_blue = _rng.randf() < BLUE_CHANCE   # 起手定色，杖顶光球立刻透出这一发的颜色
+		action.emit("charge")
 	elif not want and _charging:
 		if _charge_skill2:
 			_fire_ice(clampf(_charge / CHARGE_MAX, 0.0, 1.0))
@@ -419,6 +428,7 @@ func _fire_ice(ratio: float) -> void:
 	_skill2_cd = SKILL2_CD
 	_cooldown = SHOT_COOLDOWN        # 也算出手：普攻那份冷却照走
 	_swing = SWING_TIME              # 攻击动画照放（甩杖甩出一片冰）
+	action.emit("swing")
 	_ice_glow = true                 # 杖顶透冰色
 	var full := ratio >= CHARGE_DONE
 	var dmg := power(DMG_BLUE_CHARGED if full else DMG_BLUE)
@@ -453,6 +463,7 @@ func _fire() -> void:
 	_cancel()
 	_cooldown = SHOT_COOLDOWN
 	_swing = SWING_TIME
+	action.emit("swing")
 	if _camera == null:
 		return
 	var scene := get_tree().current_scene

@@ -43,6 +43,8 @@ const NOCK_REST_X := 0.475
 const NOCK_DRAW_X := 2.05         # 满拉时弦的 x（向玩家方向后拉）
 const BOW_SCALE := 0.1275          # 用户要求放大 50%（原 0.085）
 
+signal action(kind: String)   # 联机：起手动作（"draw"/"shoot"），别人要看到拉弓放箭
+
 var active := false               # 是否为当前装备武器（由 player 切换）
 var _charging := false
 var _charge := 0.0                # 秒
@@ -78,6 +80,11 @@ func set_active(a: bool) -> void:
 
 func is_active() -> bool:
 	return active
+
+
+func visual_root() -> Node3D:
+	## 联机：远程玩家复制这份网格当"别人看得见的弓"
+	return _bow_space
 
 
 func charge_ratio() -> float:
@@ -209,6 +216,7 @@ func _set_hold(who: String, on: bool) -> void:
 				_charge_skill2 = false
 				return
 		SFX.play("draw")                 # 搭弦开拉：只在起势那一刻响
+		action.emit("draw")
 	elif not want and _charging:
 		if _charge_skill2:
 			_fire_homing(clampf(_charge / CHARGE_TIME, 0.0, 1.0))
@@ -228,6 +236,7 @@ func _fire_homing(ratio: float) -> void:
 	_cancel()
 	_skill2_cd = SKILL2_CD
 	_cooldown = SHOT_COOLDOWN        # 这也算真射了一箭：普射间隔照走
+	action.emit("shoot")
 	var speed := lerpf(SPEED_MIN, SPEED_MAX, ratio)
 	var dmg := int(floor(float(damage_at(ratio)) * SKILL2_DMG_MULT))
 	SFX.play("shot", ratio * 2.5 - 1.0)
@@ -282,6 +291,7 @@ func _release_arrow(ratio: float, weapon := "弓") -> void:
 	var speed := lerpf(SPEED_MIN, SPEED_MAX, ratio)
 	var dmg := damage_at(ratio)
 	SFX.play("shot", ratio * 2.5 - 1.0)   # 拉得越满，撒放越响
+	action.emit("shoot")
 	if _camera == null:
 		return
 	var f := -_camera.global_transform.basis.z.normalized()

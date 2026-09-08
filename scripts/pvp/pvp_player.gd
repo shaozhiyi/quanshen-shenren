@@ -84,6 +84,33 @@ var _net_yaw := 0.0
 var _net_send_accum := 0.0
 var _spawn_point := Vector3.ZERO
 
+# ---- 武器/动作同步：让别人看见你拿着什么、正在做什么 ----
+# 广播侧（本机权威玩家）：_net_weapon/_net_act/_net_act_seq/_net_charge 随位置一起 20Hz 发
+# 接收侧（远程玩家节点）：_hand 手部挂点 + 复制出来的武器外观，按收到的动作做程序化动画
+const ACT_NONE := 0
+const ACT_SLASH := 1
+const ACT_HEAVY := 2
+const ACT_THRUST := 3
+const ACT_DRAW := 4           # 弓拉弦（持续，看 charge）
+const ACT_SHOOT := 5
+const ACT_SWING := 6          # 法杖甩杖
+const ACT_CHARGE := 7         # 法杖蓄力（持续，看 charge）
+const ACT_DUR := {ACT_SLASH: 0.35, ACT_HEAVY: 0.5, ACT_THRUST: 0.42,
+	ACT_SHOOT: 0.2, ACT_SWING: 0.26, ACT_DRAW: 0.2, ACT_CHARGE: 0.2}
+const HAND_BASE_POS := Vector3(0.56, 1.15, -0.26)
+const HAND_BASE_ROT := Vector3(-6.0, 6.0, 0.0)
+var _net_weapon := 0          # 0 空手 1 剑 2 弓 3 法杖
+var _net_act := ACT_NONE
+var _net_act_seq := 0
+var _net_charge := 0.0
+var _hand: Node3D
+var _hand_parts := {}
+var _rem_seq := -1
+var _rem_act := ACT_NONE
+var _rem_t := 0.0
+var _rem_dur := 0.35
+var _rem_charge := 0.0
+
 
 func _ready() -> void:
 	add_to_group("player")
@@ -100,7 +127,18 @@ func _ready() -> void:
 		# 本机相机必须显式激活：房主的相机是第一个进树的会被引擎自动启用，
 		# 加入方的相机是第二个进树的不会自动启用——不设这行，玩家二开局就是黑屏
 		$Camera3D.current = true
+		for w in [_sword, _bow, _staff]:
+			if w != null:
+				w.connect("action", _on_weapon_action)
 	$Avatar/Name.text = display_name
+
+
+func _on_weapon_action(kind: String) -> void:
+	## 武器脚本起手时喊一声：把动作编号+序号写进广播状态，别人 50ms 内就能看到
+	var map := {"slash": ACT_SLASH, "heavy": ACT_HEAVY, "thrust": ACT_THRUST,
+		"draw": ACT_DRAW, "shoot": ACT_SHOOT, "swing": ACT_SWING, "charge": ACT_CHARGE}
+	_net_act = int(map.get(kind, ACT_NONE))
+	_net_act_seq += 1
 
 
 func _set_viewmodel_visible(v: bool) -> void:
@@ -185,6 +223,91 @@ func _build_view() -> void:
 	hp_tag.modulate = Color(0.6, 1.0, 0.6)
 	avatar.add_child(hp_tag)
 	_refresh_hp_tag()
+	if not is_multiplayer_authority():
+		_build_hand_mount()
+
+
+func _build_hand_mount() -> void:
+	## 远程玩家：右手挂点 + 三把武器外观（弓/法杖直接复制本机相机下的网格层，
+	## 剑的第一人称网格是骨骼驱动的、复制过来会散架，所以给它做一柄简洁的示意剑）
+	_hand = Node3D.new()
+	_hand.name = "Hand"
+	_hand.position = HAND_BASE_POS
+	_hand.rotation_degrees = HAND_BASE_ROT
+	# 不再整体缩放：弓/法杖复制过来自带 BOW_SCALE/MODEL_SCALE（已是人体尺度），
+	# 示意剑按 1 米级自己搭的，同样按原尺寸用
+	$Avatar.add_child(_hand)
+	_hand_parts["sword"] = _mount_part(_sword_part())
+	_hand_parts["bow"] = _mount_part(_copy_visual(_bow))
+	_hand_parts["staff"] = _mount_part(_copy_visual(_staff))
+
+
+func _mount_part(node: Node) -> Node3D:
+	var part := Node3D.new()
+	part.visible = false
+	if node != null:
+		part.add_child(node)
+	_hand.add_child(part)
+	return part
+
+
+func _copy_visual(weapon: Node) -> Node:
+	## 把武器脚本的可视根整棵复制一份（剥掉脚本，只留网格与局部变换）
+	if weapon == null or not weapon.has_method("visual_root"):
+		return null
+	var vr: Node = weapon.call("visual_root")
+	if vr == null:
+		return null
+	var dup := vr.duplicate()
+	_strip_nonvisual(dup)
+	# 第一人称模型按"贴脸看"的比例做，远程要在几十米外认出来，放大一档更醒目
+	dup.scale = dup.scale * 1.35
+	return dup
+
+
+func _strip_nonvisual(n: Node) -> void:
+	n.set_script(null)
+	if n is AnimationPlayer:
+		n.queue_free()
+	for c in n.get_children():
+		_strip_nonvisual(c)
+
+
+func _sword_part() -> Node3D:
+	## 示意剑：剑刃 + 护手 + 握柄三个盒体，剑尖朝 -Z（和本人视线一致）。
+	## 尺寸刻意做粗一点：远程玩家在几十米外也要看得出"手里有把剑"
+	var root := Node3D.new()
+	var blade := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(0.09, 0.18, 1.0)
+	blade.mesh = bm
+	blade.position = Vector3(0, 0.02, -0.62)
+	var bmat := StandardMaterial3D.new()
+	bmat.albedo_color = Color(0.78, 0.82, 0.88)
+	bmat.metallic = 0.6
+	bmat.roughness = 0.35
+	blade.material_override = bmat
+	root.add_child(blade)
+	var guard := MeshInstance3D.new()
+	var gm := BoxMesh.new()
+	gm.size = Vector3(0.36, 0.09, 0.12)
+	guard.mesh = gm
+	guard.position = Vector3(0, 0.02, -0.12)
+	var gmat := StandardMaterial3D.new()
+	gmat.albedo_color = Color(0.8, 0.62, 0.22)
+	gmat.metallic = 0.7
+	guard.material_override = gmat
+	root.add_child(guard)
+	var grip := MeshInstance3D.new()
+	var sm := BoxMesh.new()
+	sm.size = Vector3(0.11, 0.11, 0.36)
+	grip.mesh = sm
+	grip.position = Vector3(0, 0.02, 0.08)
+	var smat := StandardMaterial3D.new()
+	smat.albedo_color = Color(0.35, 0.22, 0.12)
+	grip.material_override = smat
+	root.add_child(grip)
+	return root
 
 
 func _refresh_hp_tag() -> void:
@@ -227,6 +350,10 @@ func set_dead(v: bool) -> void:
 	if dead:
 		_set_viewmodel_visible(false)
 		$Avatar.visible = false
+		if _hand != null:
+			# 倒地：手里的武器外观跟着收（复活后广播会重新点亮）
+			for k in _hand_parts:
+				(_hand_parts[k] as Node3D).visible = false
 	else:
 		position = _spawn_point
 		_net_target = _spawn_point
@@ -373,6 +500,7 @@ func _switch_weapon() -> void:
 
 func _equip(w: int) -> void:
 	_weapon = w
+	_net_weapon = w + 1 if w >= 0 else 0
 	if _sword != null:
 		_sword.set_active(w == 0)
 	if _bow != null:
@@ -674,10 +802,16 @@ func _net_push(delta: float) -> void:
 	if _net_send_accum < 0.05:
 		return
 	_net_send_accum = 0.0
+	# 蓄力是持续状态：每包现问手上武器要比例（弓/法杖有 charge_ratio）
+	_net_charge = 0.0
+	var w := _weapon_node()
+	if w != null and w.has_method("charge_ratio"):
+		_net_charge = clampf(float(w.call("charge_ratio")), 0.0, 1.0)
 	for p in PvpState.players:
 		var id := int(p.id)
 		if id != pvp_id:
-			net_pos.rpc_id(id, global_position, rotation.y)
+			net_pos.rpc_id(id, global_position, rotation.y,
+				_net_weapon, _net_act_seq, _net_act, _net_charge)
 
 
 ## 房主给突刺穿透的目标结账：固定 80 + 流血（上报房主结算）
@@ -704,13 +838,62 @@ func bleed_from(attacker_id: int, dps: float, seconds: float) -> void:
 		arena.rpc_id(1, "rpc_claim_bleed", pvp_id, attacker_id, dps, seconds)
 
 
-# ---- 远程玩家：位置插值 ----
+# ---- 远程玩家：位置/武器/动作插值 ----
 @rpc("authority", "call_remote", "unreliable_ordered")
-func net_pos(pos: Vector3, yaw: float) -> void:
+func net_pos(pos: Vector3, yaw: float, weapon: int, act_seq: int, act: int, charge: float) -> void:
 	_net_target = pos
 	_net_yaw = yaw
+	_apply_remote_state(weapon, act_seq, act, charge)
+
+
+func _apply_remote_state(weapon: int, act_seq: int, act: int, charge: float) -> void:
+	if _hand == null:
+		return
+	var key: String = ["", "sword", "bow", "staff"][clampi(weapon, 0, 3)]
+	for k in _hand_parts:
+		(_hand_parts[k] as Node3D).visible = (k == key and not dead)
+	if act_seq != _rem_seq:
+		_rem_seq = act_seq
+		_rem_act = act
+		_rem_dur = float(ACT_DUR.get(act, 0.3))
+		_rem_t = _rem_dur
+	_rem_charge = charge
+
+
+func _anim_hand(delta: float) -> void:
+	## 收到的动作在远程玩家身上演一遍：一次性动作用 sin 包络（起→最大→收），
+	## 拉弓/蓄杖是持续状态，按蓄力比例保持姿势
+	if _hand == null:
+		return
+	if _rem_t > 0.0:
+		_rem_t = maxf(_rem_t - delta, 0.0)
+	var t := 1.0 - _rem_t / maxf(_rem_dur, 0.001)
+	var env := sin(clampf(t, 0.0, 1.0) * PI)
+	var rot := HAND_BASE_ROT
+	var ofs := Vector3.ZERO
+	match _rem_act:
+		ACT_SLASH:
+			rot.x = HAND_BASE_ROT.x - 95.0 * env
+			rot.y = HAND_BASE_ROT.y + 35.0 * env
+		ACT_HEAVY:
+			rot.x = HAND_BASE_ROT.x - 125.0 * env
+			rot.z = 28.0 * env
+		ACT_THRUST:
+			ofs.z = -0.6 * env
+		ACT_SHOOT:
+			ofs.z = -0.22 * env
+		ACT_SWING:
+			rot.x = HAND_BASE_ROT.x - 75.0 * env
+		ACT_DRAW, ACT_CHARGE:
+			rot.x = HAND_BASE_ROT.x - 26.0 * _rem_charge
+			ofs.z = -0.16 * _rem_charge
+		_:
+			pass
+	_hand.rotation_degrees = rot
+	_hand.position = HAND_BASE_POS + ofs
 
 
 func _net_interpolate(delta: float) -> void:
 	global_position = global_position.lerp(_net_target, minf(1.0, delta * 14.0))
 	rotation.y = lerp_angle(rotation.y, _net_yaw, minf(1.0, delta * 14.0))
+	_anim_hand(delta)
