@@ -6,6 +6,7 @@ extends Node3D
 const PLAYER_SCRIPT := preload("res://scripts/pvp/pvp_player.gd")
 const HUD_SCRIPT := preload("res://scripts/pvp/pvp_hud.gd")
 const MAPS_SCRIPT := preload("res://scripts/pvp/pvp_maps.gd")
+const REPLICA_SCRIPT := preload("res://scripts/pvp/pvp_replica.gd")
 const MENU_SCENE := "res://scenes/menu.tscn"
 
 var players_root: Node3D
@@ -209,6 +210,26 @@ func _send_match_over(winner_id: int, final_kills: Dictionary) -> void:
 	for peer in _peers():
 		rpc_id(peer, "rpc_match_over", winner_id, final_kills)
 	rpc_match_over(winner_id, final_kills)
+
+
+# ---- 飞行物外观复制：射手那台机器把"我射出去了什么"广播给其他人 ----
+# 只演样子（箭/魔法球/冰球），伤害仍然只在射手机器判定并上报房主结算
+func send_fx(kind: String, pos: Vector3, vel: Vector3, payload: Dictionary = {}) -> void:
+	for peer in _peers():
+		rpc_id(peer, "rpc_spawn_fx", kind, pos, vel, payload)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func rpc_spawn_fx(kind: String, pos: Vector3, vel: Vector3, payload: Dictionary) -> void:
+	var sender := multiplayer.get_remote_sender_id()
+	var known := false
+	for p in PvpState.players:
+		if int(p.id) == sender:
+			known = true
+			break
+	if not known:
+		return                      # 不在名单里的人发的不算
+	REPLICA_SCRIPT.spawn(self, kind, pos, vel, payload)
 
 
 # ---- 结果广播 ----

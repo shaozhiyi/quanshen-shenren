@@ -99,6 +99,29 @@ const ACT_DUR := {ACT_SLASH: 0.35, ACT_HEAVY: 0.5, ACT_THRUST: 0.42,
 	ACT_SHOOT: 0.2, ACT_SWING: 0.26, ACT_DRAW: 0.2, ACT_CHARGE: 0.2}
 const HAND_BASE_POS := Vector3(0.56, 1.15, -0.26)
 const HAND_BASE_ROT := Vector3(-6.0, 6.0, 0.0)
+# ---- 远程玩家身体：复用单机的 king.glb 角色（62 根骨骼 + 动捕动画库）----
+const KING_SCENE := preload("res://assets/character/king.glb")
+const RIG_OFFSET := Vector3.ZERO       # 骨架相对脚底的偏移（标定后基本为 0）
+const RIG_YAW := 180.0                 # king.glb 默认朝 +Z，转 180° 才和玩家朝向（-Z）一致
+const ANIM := {
+	"idle_sword": "CharacterArmature|Idle_Sword",
+	"idle_gun": "CharacterArmature|Idle_Gun",
+	"idle_point": "CharacterArmature|Idle_Gun_Pointing",
+	"idle": "CharacterArmature|Idle_Neutral",
+	"walk": "CharacterArmature|Walk",
+	"run": "CharacterArmature|Run",
+	"slash": "CharacterArmature|Sword_Slash",
+	"shoot": "CharacterArmature|Gun_Shoot",
+	"punch": "CharacterArmature|Punch_Right",
+	"death": "CharacterArmature|Death",
+}
+var _rig: Node3D
+var _rig_skel: Skeleton3D
+var _rig_anim: AnimationPlayer
+var _rig_once := false
+var _rig_move := "idle_sword"
+var _speed_est := 0.0
+var _base_anim := "idle_sword"
 var _net_weapon := 0          # 0 空手 1 剑 2 弓 3 法杖
 var _net_act := ACT_NONE
 var _net_act_seq := 0
@@ -191,20 +214,36 @@ func _build_view() -> void:
 	_sword.connect("skill_hit", _on_skill_hit)
 	_equip(0)
 
-	# 第三人称外观：颜色块 + 名牌 + 血条（远程玩家看到的样子）
+	# 第三人称外观：优先用单机那套 king.glb 真人骨架（62 根骨骼 + 动捕动画），
+	# 加载失败才退回彩色方块；名牌/血条/脚下色环跟着走
 	var avatar := Node3D.new()
 	avatar.name = "Avatar"
 	add_child(avatar)
 	var body := MeshInstance3D.new()
+	body.name = "FallbackBody"
 	var bm := BoxMesh.new()
 	bm.size = Vector3(0.9, 1.7, 0.9)
 	body.mesh = bm
 	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.85, 0.55 + 0.1 * float(pvp_id % 4), 0.3 + 0.15 * float(pvp_id % 3))
+	mat.albedo_color = _tint()
 	mat.roughness = 0.7
 	body.material_override = mat
 	body.position = Vector3(0, 0.85, 0)
 	avatar.add_child(body)
+	# 脚下色环：一眼认出是谁（骨架本身是同一个角色，靠颜色区分队伍身份）
+	var ring := MeshInstance3D.new()
+	var rm := CylinderMesh.new()
+	rm.top_radius = 0.62
+	rm.bottom_radius = 0.62
+	rm.height = 0.05
+	ring.mesh = rm
+	var rmat := StandardMaterial3D.new()
+	rmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	rmat.albedo_color = Color(_tint().r, _tint().g, _tint().b, 0.75)
+	ring.material_override = rmat
+	ring.position = Vector3(0, 0.04, 0)
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	avatar.add_child(ring)
 	var name_tag := Label3D.new()
 	name_tag.name = "Name"
 	name_tag.text = display_name
@@ -212,7 +251,7 @@ func _build_view() -> void:
 	name_tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	name_tag.font_size = 40
 	name_tag.pixel_size = 0.004
-	name_tag.modulate = Color(1, 0.95, 0.7)
+	name_tag.modulate = Color(_tint().r, _tint().g, _tint().b).lightened(0.35)
 	avatar.add_child(name_tag)
 	var hp_tag := Label3D.new()
 	hp_tag.name = "Hp"
@@ -224,7 +263,84 @@ func _build_view() -> void:
 	avatar.add_child(hp_tag)
 	_refresh_hp_tag()
 	if not is_multiplayer_authority():
+		body.visible = not _build_character_rig()
 		_build_hand_mount()
+
+
+func _tint() -> Color:
+	## 每个玩家一个辨识色（名牌、脚下色环、方块身体共用）
+	var palette := [Color(0.92, 0.42, 0.34), Color(0.36, 0.66, 0.94),
+		Color(0.98, 0.78, 0.30), Color(0.46, 0.82, 0.50)]
+	return palette[int(pvp_id) % palette.size()]
+
+
+func _build_character_rig() -> bool:
+	## 把单机的 king.glb 角色装到远程玩家身上：真实骨架 + 动捕动画
+	## （待机/走/跑/挥砍/放箭/施法/倒地），比方块身体精细得多。
+	_rig = KING_SCENE.instantiate()
+	_rig.name = "Rig"
+	_rig.position = RIG_OFFSET
+	_rig.rotation_degrees = Vector3(0, RIG_YAW, 0)
+	$Avatar.add_child(_rig)
+	_rig_skel = _find_class(_rig, "Skeleton3D") as Skeleton3D
+	_rig_anim = _find_class(_rig, "AnimationPlayer") as AnimationPlayer
+	if _rig_skel == null or _rig_anim == null:
+		_rig.queue_free()
+		_rig = null
+		_rig_anim = null
+		push_warning("PvpPlayer: king.glb 骨架缺失，退回方块身体")
+		return false
+	for key in ["idle_sword", "idle_gun", "idle_point", "idle", "walk", "run"]:
+		var a: Animation = _rig_anim.get_animation(String(ANIM[key]))
+		if a != null:
+			a.loop_mode = Animation.LOOP_LINEAR
+	_rig_anim.animation_finished.connect(_on_rig_anim_finished)
+	_rig_anim.play(String(ANIM[_base_anim]))
+	return true
+
+
+func _find_class(n: Node, cls: String) -> Node:
+	for c in n.get_children():
+		if c.get_class() == cls:
+			return c
+		var r := _find_class(c, cls)
+		if r != null:
+			return r
+	return null
+
+
+func _rig_play_base() -> void:
+	if _rig_anim == null or dead:
+		return
+	_rig_anim.play(String(ANIM[_base_anim]), 0.2)
+
+
+func _rig_play_once(key: String, speed: float) -> void:
+	if _rig_anim == null or dead:
+		return
+	_rig_once = true
+	_rig_anim.play(String(ANIM[key]), 0.1, speed)
+
+
+func _on_rig_anim_finished(_name: String) -> void:
+	_rig_once = false
+	_rig_play_base()
+
+
+func _rig_update_move() -> void:
+	## 移动动画：按插值出来的估算速度切 待机/走/跑（一次性动作期间不打断）
+	if _rig_anim == null or _rig_once or dead:
+		return
+	var want := "idle"
+	if _speed_est > 5.5:
+		want = "run"
+	elif _speed_est > 0.8:
+		want = "walk"
+	if want == "idle":
+		want = _base_anim
+	if want != _rig_move:
+		_rig_move = want
+		_rig_anim.play(String(ANIM[want]), 0.25)
 
 
 func _build_hand_mount() -> void:
@@ -232,14 +348,42 @@ func _build_hand_mount() -> void:
 	## 剑的第一人称网格是骨骼驱动的、复制过来会散架，所以给它做一柄简洁的示意剑）
 	_hand = Node3D.new()
 	_hand.name = "Hand"
-	_hand.position = HAND_BASE_POS
-	_hand.rotation_degrees = HAND_BASE_ROT
-	# 不再整体缩放：弓/法杖复制过来自带 BOW_SCALE/MODEL_SCALE（已是人体尺度），
-	# 示意剑按 1 米级自己搭的，同样按原尺寸用
-	$Avatar.add_child(_hand)
+	var parent: Node = $Avatar
+	var on_bone := false
+	if _rig_skel != null:
+		var idx := _rig_skel.find_bone("Wrist.R")
+		if idx >= 0:
+			# 挂到右手腕骨上：武器跟着动捕的手一起走（挥砍/拉弓时手里那把不会脱手）
+			var att := BoneAttachment3D.new()
+			att.name = "WristMount"
+			att.bone_idx = idx
+			_rig_skel.add_child(att)
+			parent = att
+			on_bone = true
+	parent.add_child(_hand)
+	if on_bone:
+		# 骨骼挂点的世界基底带着骨架缩放（这里 100×）：局部位移要同比例缩小，
+		# 否则 corr 里 4 厘米的偏移会被放大成 4 米，武器就飞到身体外面去了
+		var comp := _bone_scale_compensate()
+		var corr: Transform3D = _sword.get("HAND_CORRECTION")
+		_hand.transform = Transform3D(corr.basis, corr.origin * comp)
+		_hand.scale = Vector3.ONE * comp
+	else:
+		_hand.position = HAND_BASE_POS
+		_hand.rotation_degrees = HAND_BASE_ROT
 	_hand_parts["sword"] = _mount_part(_sword_part())
 	_hand_parts["bow"] = _mount_part(_copy_visual(_bow))
 	_hand_parts["staff"] = _mount_part(_copy_visual(_staff))
+
+
+func _bone_scale_compensate() -> float:
+	## 骨骼挂点继承骨架的世界缩放，武器要按真实米数显示 → 反算一个补偿系数
+	var cum := 1.0
+	var n: Node = _hand.get_parent()
+	while n != null and n != self:
+		cum *= maxf(absf(n.scale.x), 0.0001)
+		n = n.get_parent()
+	return 1.0 / maxf(cum, 0.0001)
 
 
 func _mount_part(node: Node) -> Node3D:
@@ -260,8 +404,9 @@ func _copy_visual(weapon: Node) -> Node:
 		return null
 	var dup := vr.duplicate()
 	_strip_nonvisual(dup)
-	# 第一人称模型按"贴脸看"的比例做，远程要在几十米外认出来，放大一档更醒目
-	dup.scale = dup.scale * 1.35
+	# 第一人称模型按"贴脸看"的比例做，远程要在几十米外认出来，放大到真实兵器尺寸
+	# （弓约 1.2 米、法杖约 1.4 米，实测标定）
+	dup.scale = dup.scale * 2.0
 	return dup
 
 
@@ -274,38 +419,51 @@ func _strip_nonvisual(n: Node) -> void:
 
 
 func _sword_part() -> Node3D:
-	## 示意剑：剑刃 + 护手 + 握柄三个盒体，剑尖朝 -Z（和本人视线一致）。
-	## 尺寸刻意做粗一点：远程玩家在几十米外也要看得出"手里有把剑"
+	## 直接复制第一人称那把真剑的子网格（剑柄/护手/配重球/剑刃/血槽/剑尖都是
+	## 固定局部变换的 MeshInstance3D，父节点的姿态由手腕挂点负责，搬过来正好）；
+	## 万一拿不到（骨架/脚本未就绪）再退回一柄简洁的盒体示意剑
 	var root := Node3D.new()
+	var copied := 0
+	if _sword != null:
+		for c in _sword.get_children():
+			if c is MeshInstance3D:
+				var dup := (c as MeshInstance3D).duplicate() as MeshInstance3D
+				dup.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				root.add_child(dup)
+				copied += 1
+	if copied > 0:
+		return root
+	# 兜底盒体剑（细长比例：2.5cm 厚 / 7cm 宽 / 0.85m 长）
 	var blade := MeshInstance3D.new()
 	var bm := BoxMesh.new()
-	bm.size = Vector3(0.09, 0.18, 1.0)
+	bm.size = Vector3(0.025, 0.07, 0.85)
 	blade.mesh = bm
-	blade.position = Vector3(0, 0.02, -0.62)
+	blade.position = Vector3(0, 0, -0.55)
 	var bmat := StandardMaterial3D.new()
-	bmat.albedo_color = Color(0.78, 0.82, 0.88)
-	bmat.metallic = 0.6
-	bmat.roughness = 0.35
+	bmat.albedo_color = Color(0.8, 0.83, 0.88)
+	bmat.metallic = 0.7
+	bmat.roughness = 0.3
 	blade.material_override = bmat
 	root.add_child(blade)
 	var guard := MeshInstance3D.new()
 	var gm := BoxMesh.new()
-	gm.size = Vector3(0.36, 0.09, 0.12)
+	gm.size = Vector3(0.035, 0.16, 0.05)
 	guard.mesh = gm
-	guard.position = Vector3(0, 0.02, -0.12)
+	guard.position = Vector3(0, 0, -0.11)
 	var gmat := StandardMaterial3D.new()
 	gmat.albedo_color = Color(0.8, 0.62, 0.22)
 	gmat.metallic = 0.7
 	guard.material_override = gmat
 	root.add_child(guard)
 	var grip := MeshInstance3D.new()
-	var sm := BoxMesh.new()
-	sm.size = Vector3(0.11, 0.11, 0.36)
-	grip.mesh = sm
-	grip.position = Vector3(0, 0.02, 0.08)
-	var smat := StandardMaterial3D.new()
-	smat.albedo_color = Color(0.35, 0.22, 0.12)
-	grip.material_override = smat
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.018
+	cm.bottom_radius = 0.02
+	cm.height = 0.2
+	grip.mesh = cm
+	grip.position = Vector3(0, 0, 0.02)
+	grip.rotation_degrees = Vector3(90, 0, 0)
+	grip.material_override = gmat
 	root.add_child(grip)
 	return root
 
@@ -349,11 +507,16 @@ func set_dead(v: bool) -> void:
 	$Col.set_deferred("disabled", v)
 	if dead:
 		_set_viewmodel_visible(false)
-		$Avatar.visible = false
 		if _hand != null:
 			# 倒地：手里的武器外观跟着收（复活后广播会重新点亮）
 			for k in _hand_parts:
 				(_hand_parts[k] as Node3D).visible = false
+		if not is_multiplayer_authority():
+			# 别人看得见的角色：播倒地动画躺地上，不再整个隐身（重生时归位）
+			if _rig_anim != null:
+				_rig_once = true
+				_rig_anim.play(String(ANIM["death"]), 0.15)
+			$Avatar.visible = false if _rig_anim == null else true
 	else:
 		position = _spawn_point
 		_net_target = _spawn_point
@@ -362,6 +525,9 @@ func set_dead(v: bool) -> void:
 			$Camera3D.current = true
 		else:
 			$Avatar.visible = true
+			_rig_once = false
+			_speed_est = 0.0
+			_rig_play_base()
 
 
 ## 狗奶：10 秒无敌（免疫伤害），本机表现 + 房主记账结算
@@ -814,6 +980,14 @@ func _net_push(delta: float) -> void:
 				_net_weapon, _net_act_seq, _net_act, _net_charge)
 
 
+## 武器发射飞行物时调用：把"我射了什么"广播给其他玩家（纯外观，伤害仍走房主结算）
+func broadcast_fx(kind: String, pos: Vector3, vel: Vector3, payload := {}) -> void:
+	var arena := _arena_node()
+	if arena == null or not arena.has_method("send_fx"):
+		return
+	arena.call("send_fx", kind, pos, vel, payload)
+
+
 ## 房主给突刺穿透的目标结账：固定 80 + 流血（上报房主结算）
 func _sweep_thrust_hits() -> void:
 	for n in get_tree().get_nodes_in_group("pvp_target"):
@@ -852,21 +1026,40 @@ func _apply_remote_state(weapon: int, act_seq: int, act: int, charge: float) -> 
 	var key: String = ["", "sword", "bow", "staff"][clampi(weapon, 0, 3)]
 	for k in _hand_parts:
 		(_hand_parts[k] as Node3D).visible = (k == key and not dead)
+	# 基础姿势跟着手上的武器换（持剑/持弓/举杖/空手各一套动捕）
+	var want_base := "idle_sword"
+	match weapon:
+		0: want_base = "idle"
+		2: want_base = "idle_gun"
+		3: want_base = "idle_point"
+	if want_base != _base_anim:
+		_base_anim = want_base
+		_rig_move = want_base
+		_rig_play_base()
 	if act_seq != _rem_seq:
 		_rem_seq = act_seq
 		_rem_act = act
 		_rem_dur = float(ACT_DUR.get(act, 0.3))
 		_rem_t = _rem_dur
+		match act:
+			ACT_SLASH: _rig_play_once("slash", 1.0)
+			ACT_HEAVY: _rig_play_once("slash", 0.72)
+			ACT_THRUST: _rig_play_once("slash", 1.5)
+			ACT_SHOOT: _rig_play_once("shoot", 1.4)
+			ACT_SWING: _rig_play_once("punch", 1.2)
+			_: pass
 	_rem_charge = charge
 
 
 func _anim_hand(delta: float) -> void:
-	## 收到的动作在远程玩家身上演一遍：一次性动作用 sin 包络（起→最大→收），
-	## 拉弓/蓄杖是持续状态，按蓄力比例保持姿势
+	## 没有骨架时才用的兜底动画：把手部挂点按收到的动作甩一下。
+	## 有 king.glb 骨架时手臂由动捕动画驱动，这里只负责计时与蓄力姿态微调。
 	if _hand == null:
 		return
 	if _rem_t > 0.0:
 		_rem_t = maxf(_rem_t - delta, 0.0)
+	if _rig_anim != null:
+		return
 	var t := 1.0 - _rem_t / maxf(_rem_dur, 0.001)
 	var env := sin(clampf(t, 0.0, 1.0) * PI)
 	var rot := HAND_BASE_ROT
@@ -894,6 +1087,11 @@ func _anim_hand(delta: float) -> void:
 
 
 func _net_interpolate(delta: float) -> void:
+	var prev := global_position
 	global_position = global_position.lerp(_net_target, minf(1.0, delta * 14.0))
 	rotation.y = lerp_angle(rotation.y, _net_yaw, minf(1.0, delta * 14.0))
+	# 估算对方移动速度（网络位置差），驱动 待机/走/跑 动画
+	var v := global_position.distance_to(prev) / maxf(delta, 0.0001)
+	_speed_est = lerpf(_speed_est, v, 0.25)
+	_rig_update_move()
 	_anim_hand(delta)

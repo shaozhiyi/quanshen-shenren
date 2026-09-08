@@ -301,7 +301,16 @@ func cast_skill() -> bool:
 	var origin: Vector3 = (_tip.global_position if _tip != null else global_position) + f * 0.9
 	ORB_SCRIPT.spawn(scene, origin, f, FIRE_SPEED, skill_damage(),
 		FIRE_COLOR, ORB_R_CHARGED * SKILL_R_MULT, 0.0, "法杖火球术", _thrower())
+	_pvp_fx("orb", origin, f * FIRE_SPEED, {
+		"color": FIRE_COLOR, "radius": ORB_R_CHARGED * SKILL_R_MULT, "glow": 3.2, "gravity": 0.0})
 	return true
+
+
+func _pvp_fx(kind: String, pos: Vector3, vel: Vector3, payload: Dictionary) -> void:
+	## 联机：把这一发的"样子"广播给其他玩家（伤害仍只在射手机器判定、房主结算）
+	var shooter := _thrower()
+	if shooter != null and shooter.has_method("broadcast_fx"):
+		shooter.call("broadcast_fx", kind, pos, vel, payload)
 
 
 func skill_name() -> String:
@@ -440,6 +449,13 @@ func _fire_ice(ratio: float) -> void:
 	var center := _camera.global_position + f * 1.4
 	ORB_SCRIPT.spawn_formation(scene, center, f, SPEED_CHARGED if full else SPEED,
 		dmg, ICE_COLOR, ORB_R, ctrl, true, ICE_COUNT, ICE_FORM_R, ICE_SPIN, "法杖冰冻术", _thrower())
+	# 三颗冰球逐个广播复制体（同一套绕轴公式，别人看到的队形一致）
+	var ice_speed := SPEED_CHARGED if full else SPEED
+	for i in ICE_COUNT:
+		_pvp_fx("ice", center, f * ice_speed, {
+			"color": ICE_COLOR, "radius": ORB_R, "dir": f, "speed": ice_speed,
+			"form_r": ICE_FORM_R, "omega": ICE_SPIN, "phase": TAU * float(i) / float(maxi(ICE_COUNT, 1)),
+		})
 
 
 func _cancel() -> void:
@@ -472,9 +488,10 @@ func _fire() -> void:
 	var f := -_camera.global_transform.basis.z.normalized()
 	# 出口优先用杖尖的世界坐标（球看着从杖头飞出去），再沿视线推一点避免贴脸命中
 	var origin: Vector3 = (_tip.global_position if _tip != null else global_position) + f * 0.35
-	ORB_SCRIPT.spawn(scene, origin, f,
-		float(SPEED_CHARGED if bool(plan.charged) else SPEED),
+	var orb_speed := float(SPEED_CHARGED if bool(plan.charged) else SPEED)
+	ORB_SCRIPT.spawn(scene, origin, f, orb_speed,
 		int(plan.damage), plan.color, float(plan.radius), float(plan.control), "法杖", _thrower())
+	_pvp_fx("orb", origin, f * orb_speed, {"color": plan.color, "radius": float(plan.radius)})
 
 
 func _process(delta: float) -> void:

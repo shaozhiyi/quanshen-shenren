@@ -250,6 +250,14 @@ func _fire_homing(ratio: float) -> void:
 	var ar2: RigidBody3D = ARROW_SCRIPT.spawn_homing(scene, _camera.global_transform.basis, origin, speed, dmg,
 		_nearest_boss(), "弓箭锁定箭")
 	ar2.shooter = _camera.get_parent()         # PVP：排除射手本人
+	_pvp_fx("arrow_homing", origin, f * speed, {})
+
+
+func _pvp_fx(kind: String, pos: Vector3, vel: Vector3, payload: Dictionary) -> void:
+	## 联机：把这次发射的"样子"广播给其他玩家（伤害仍只在射手机器判定、房主结算）
+	var shooter := _camera.get_parent() if _camera != null else null
+	if shooter != null and shooter.has_method("broadcast_fx"):
+		shooter.call("broadcast_fx", kind, pos, vel, payload)
 
 
 func _nearest_boss() -> Node:
@@ -301,6 +309,7 @@ func _release_arrow(ratio: float, weapon := "弓") -> void:
 		scene = get_tree().root
 	var ar: RigidBody3D = ARROW_SCRIPT.spawn(scene, _camera.global_transform.basis, origin, speed, dmg, weapon)
 	ar.shooter = _camera.get_parent()          # PVP：排除射手本人
+	_pvp_fx("arrow", origin, f * speed, {})
 
 
 # ---- 技能·快速射击（数字 1）----
