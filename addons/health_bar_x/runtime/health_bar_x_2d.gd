@@ -1,10 +1,8 @@
 class_name HealthBarX2D
 extends Node2D
-
 signal value_change_started(from_value: float, to_value: float)
 signal value_changed(new_value: float)
 signal value_change_finished(final_value: float)
-
 var _value: float = 100.0
 var _min_value: float = 0.0
 var _max_value: float = 100.0
@@ -20,7 +18,6 @@ var _follow_offset: Vector2 = Vector2(0, -16)
 var _center_on_target: bool = true
 var _billboard_scale: bool = false
 var _base_scale: Vector2 = Vector2.ONE
-
 @export var style: HealthBarXStyle:
 	set(v):
 		if v:
@@ -31,7 +28,6 @@ var _base_scale: Vector2 = Vector2.ONE
 		queue_redraw()
 	get:
 		return _style if _style else _get_default_style()
-
 @export var bar_size: Vector2 = Vector2(80, 14):
 	set(v):
 		_bar_size = Vector2(maxf(4, v.x), maxf(4, v.y))
@@ -39,61 +35,51 @@ var _base_scale: Vector2 = Vector2.ONE
 		queue_redraw()
 	get:
 		return _bar_size
-
 @export var value: float = 100.0:
 	set(v):
 		set_value(v, true)
 	get:
 		return _value
-
 @export var min_value: float = 0.0:
 	set(v):
 		_min_value = v
 		queue_redraw()
 	get:
 		return _min_value
-
 @export var max_value: float = 100.0:
 	set(v):
 		_max_value = v
 		queue_redraw()
 	get:
 		return _max_value
-
 @export var follow_target: Node2D:
 	set(v):
 		_follow_target = v
 	get:
 		return _follow_target
-
 @export var follow_offset: Vector2 = Vector2(0, -24):
 	set(v):
 		_follow_offset = v
 	get:
 		return _follow_offset
-
 @export var center_on_target: bool = true:
 	set(v):
 		_center_on_target = v
 	get:
 		return _center_on_target
-
 @export var billboard_scale: bool = false:
 	set(v):
 		_billboard_scale = v
 	get:
 		return _billboard_scale
-
 func _get_default_style() -> HealthBarXStyle:
 	if _style != null:
 		return _style
 	_style = HealthBarXStyle.new()
 	return _style
-
 func _init() -> void:
 	if _style == null:
 		_style = HealthBarXStyle.new()
-
 func _ready() -> void:
 	if not style:
 		_style = HealthBarXStyle.new()
@@ -101,7 +87,6 @@ func _ready() -> void:
 		style.validate_thresholds()
 	_queue_update_fill_rect()
 	queue_redraw()
-
 func _process(_delta: float) -> void:
 	if is_instance_valid(_follow_target):
 		var target_pos = _follow_target.global_position
@@ -117,10 +102,8 @@ func _process(_delta: float) -> void:
 			scale = _base_scale * s
 		else:
 			scale = _base_scale
-
 func _queue_update_fill_rect() -> void:
 	_cached_fill_rect = _compute_fill_rect()
-
 func _compute_fill_rect() -> Rect2:
 	var st = style
 	var border = st.border_thickness if st.border_enabled else 0
@@ -133,7 +116,6 @@ func _compute_fill_rect() -> Rect2:
 	# _display_value is always normalized 0..100 by set_value/_set_display_value
 	var t = clampf(_display_value / 100.0, 0.0, 1.0)
 	return Rect2(Vector2(border + inset.x, border + inset.y), Vector2(inner_size.x * t, inner_size.y))
-
 func set_value(v: float, animate: bool = true) -> void:
 	var range_ok = max_value - min_value
 	if range_ok <= 0:
@@ -163,19 +145,15 @@ func set_value(v: float, animate: bool = true) -> void:
 		_set_display_value(_value)
 		value_changed.emit(_value)
 		queue_redraw()
-
 func _set_display_value(v: float) -> void:
 	_display_value = clampf(v, 0, 100.0)
 	_queue_update_fill_rect()
 	value_changed.emit(_display_value)
 	queue_redraw()
-
 func _on_animation_finished() -> void:
 	value_change_finished.emit(_display_value)
-
 func get_value() -> float:
 	return _value
-
 func _draw() -> void:
 	var st = style
 	if not st:
@@ -194,17 +172,14 @@ func _draw() -> void:
 		inner_rect.size = Vector2.ZERO
 	var fill_rect = _cached_fill_rect
 	var radius = st.get_effective_round_radius(inner_rect.size.y)
-
 	if st.shadow_enabled:
 		var apply = st.shadow_apply_to
 		if apply == 1 or apply == 3:
 			HealthBarXDraw.draw_shadow_approximate(self, bar_rect, radius + border, st.shadow_color, st.shadow_offset, maxi(1, st.shadow_blur_passes))
 		if apply == 2 or apply == 3:
 			HealthBarXDraw.draw_shadow_approximate(self, fill_rect, radius, st.shadow_color, st.shadow_offset, maxi(1, st.shadow_blur_passes))
-
 	if st.border_enabled:
 		HealthBarXDraw.draw_rounded_rect_stroke(self, bar_rect, st.border_color, float(st.border_thickness), radius + border, st.border_join_round, st.background_color)
-
 	if inner_rect.size.x > 0 and inner_rect.size.y > 0:
 		HealthBarXDraw.draw_rounded_rect_filled(self, inner_rect, st.background_color, radius)
 	var fill_color = st.get_fill_color_for_value(_display_value)
@@ -214,17 +189,14 @@ func _draw() -> void:
 		var fill_w = inner_rect.size.x * clampf(_display_value / 100.0, 0.0, 1.0)
 		if fill_w > 0:
 			HealthBarXDraw.draw_rounded_rect_filled(self, Rect2(inner_rect.position, Vector2(fill_w, inner_rect.size.y)), fill_color, radius)
-
 	if st.gradient_enabled:
 		var g_apply = st.gradient_apply_to
 		if g_apply == 1 or g_apply == 3:
 			HealthBarXDraw.draw_gradient_overlay(self, inner_rect, radius, st)
 		if g_apply == 2 or g_apply == 3:
 			HealthBarXDraw.draw_gradient_overlay(self, fill_rect, radius, st)
-
 	_draw_label_2d(bar_rect, inner_rect)
 	_draw_icon_2d(bar_rect, inner_rect)
-
 func _draw_label_2d(bar_rect: Rect2, inner_rect: Rect2) -> void:
 	var st = style
 	if not st.label_enabled:
@@ -263,13 +235,11 @@ func _draw_label_2d(bar_rect: Rect2, inner_rect: Rect2) -> void:
 	if st.label_shadow_enabled:
 		font_to_use.draw_string(crid, pos + st.label_shadow_offset, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, st.label_shadow_color)
 	font_to_use.draw_string(crid, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, st.font_color)
-
 func _format_label(st: HealthBarXStyle) -> String:
 	var v = _display_value
 	var mx = st.label_custom_max
 	var num_val: float = (v / 100.0) * mx if st.label_format.contains("{max}") else v
 	return st.label_format.replace("{value}", str(int(roundf(num_val)))).replace("{max}", str(int(mx)))
-
 func _draw_icon_2d(bar_rect: Rect2, inner_rect: Rect2) -> void:
 	var st = style
 	if not st.icon_enabled:

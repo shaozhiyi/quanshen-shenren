@@ -14,10 +14,8 @@ extends Node3D
 ## 可重复挑战：死亡沉地 3 秒后自动离开空间即复活回原位，每次开战都从满血开始（撤退同样重置）。
 ## 难度：三档（普通/困难/噩梦），血量·光环伤害·掉落收益逐级递增；首次仅普通，击败一次后按 R 调节。
 ##      名册给了 hp_by_diff 的 BOSS 直接用三档定值（如大运 2000/2500/3000），不吃倍率。
-
 const ROSTER := preload("res://scripts/boss_roster.gd")
 const BOSS_MODEL := preload("res://scripts/boss_model.gd")
-
 @export var def_id := "dogmilk"      # 名册 id：决定外观与数值
 @export var world_x := 18.0
 @export var world_z := 18.0
@@ -27,7 +25,6 @@ const BOSS_MODEL := preload("res://scripts/boss_model.gd")
 @export var spawn_min_dist := 35.0    # 距玩家出生点的距离带下界（由名册覆盖）
 @export var spawn_max_dist := 65.0    # 距离带上界：保证"不会生成太远"
 @export var spawn_max_slope := 0.93   # 地面法线 y 分量下限：坡太陡奶盒站不稳
-
 var boss_name := "野生狗奶"           # 显示名（头顶标签 + HUD）
 var reward_item := "dogmilk"          # 掉落物品 id
 var _def: Dictionary = {}
@@ -80,13 +77,11 @@ var _lane: MeshInstance3D             # 挂在 BOSS 的父节点上：车冲出�
 var _lane_mat: StandardMaterial3D
 var _lane_len := 0.0
 var _lane_t := 0.0
-
 # ---- 难度档位：每升一档血量与伤害增加，收益（狗奶掉落）同步增加 ----
 const DIFF_NAMES := ["普通", "困难", "噩梦"]
 const DIFF_HP_MULT := [1.0, 1.6, 2.4]        # 相对普通档基准血量的倍率
 const DIFF_AURA_MULT := [1.0, 1.5, 2.0]      # 光环伤害倍率
 const RESET_HP_ON_LEAVE := true              # 撤退也重置满血（false=保留已打掉的血量）
-
 var hp := max_hp
 var difficulty := 0                 # 当前挑战难度（默认最低档）
 var _beats := 0                     # 已被击败次数：≥1 后开放难度调节
@@ -102,7 +97,6 @@ var _reseated := false            # 大地图落座是否已按真实地面校�
 var _stun_t := 0.0                # 法杖蓝球定身剩余秒：只冻结推进，不改相位（见 stun()）
 var _arena_mode := false          # 只有进入 BOSS 空间才可被攻击
 var _home_pos := Vector3.ZERO     # 大地图原位（进出空间时恢复）
-
 # ---- 音乐同步战斗循环（时间轴取自公开歌词元数据，音频由玩家自备） ----
 const MUSIC_AT := 0.0           # 音频直接从副歌"忘你不舍"起头，故起点=0
 const WINDUP_TIME := 11.10      # 前摇时长：曲内"忘你不舍 寻你不休"唱完（下句入点）即升空
@@ -150,13 +144,9 @@ var _bleed_t := 0.0             # 流血剩余秒数
 var _bleed_tick := 0.0          # 1 秒一跳的零头累积
 var _wander_target := Vector3.ZERO
 var _wandering := false
-
 signal died(target: Node)   # 多只 BOSS 同场，带上是谁死的
 signal damaged(weapon: String, amount: int)   # 被玩家打中（带武器名，HUD 据此播报；致死那一击不发，只走 died）
-
 var last_weapon := ""       # 最后打中我的武器名（击杀播报要用）
-
-
 func set_arena_mode(b: bool) -> void:
 	_arena_mode = b
 	_phase = 0
@@ -185,8 +175,6 @@ func set_arena_mode(b: bool) -> void:
 	var arena := arena_node()
 	if arena != null:
 		arena.set_day_night(0.0)
-
-
 # ---- 难度：默认最低档，击败一次后由玩家按 R 调节 ----
 func apply_difficulty() -> void:
 	## 按当前难度重算血量与光环伤害（星点颜色是固定的红黄蓝绿规律，不随难度变）
@@ -198,8 +186,6 @@ func apply_difficulty() -> void:
 	hp = max_hp
 	_aura_dmg = _aura_base * float(DIFF_AURA_MULT[difficulty])
 	_refresh_labels()
-
-
 func cycle_difficulty() -> int:
 	## 切到下一档（循环）；未解锁或战斗中不允许，返回当前难度
 	if not can_adjust_difficulty():
@@ -207,39 +193,23 @@ func cycle_difficulty() -> int:
 	difficulty = (difficulty + 1) % DIFF_NAMES.size()
 	apply_difficulty()
 	return difficulty
-
-
 func can_adjust_difficulty() -> bool:
 	## 首次挑战固定普通档；击败过一次、且不在战斗中/未死亡时才能调节
 	return _beats >= 1 and not _arena_mode and not _dead
-
-
 func difficulty_name() -> String:
 	return String(DIFF_NAMES[clampi(difficulty, 0, DIFF_NAMES.size() - 1)])
-
-
 func reward_count() -> int:
 	## 当前难度的掉落收益（数量由名册 reward_counts 给出）
 	var i := clampi(difficulty, 0, _reward_counts.size() - 1)
 	return int(_reward_counts[i])
-
-
 func aura_damage() -> float:
 	return _aura_dmg
-
-
 func aura_base() -> float:
 	return _aura_base
-
-
 func get_reward_item() -> String:
 	return reward_item
-
-
 func times_beaten() -> int:
 	return _beats
-
-
 func respawn() -> void:
 	## 沉地后复活：恢复外观高度、满血、待机相位并回到大地图原位
 	_dead = false
@@ -263,17 +233,11 @@ func respawn() -> void:
 	_reset_charge()
 	apply_difficulty()
 	go_home()
-
-
 func is_attacking() -> bool:
 	## 2 飞天攻击 / 4 空中追踪 / 5 红圈预警 / 6 砸落 —— 整段空中阶段都算"正在出招"
 	return _phase >= 2
-
-
 func is_arena_mode() -> bool:
 	return _arena_mode
-
-
 # ---- 节点查找：BOSS 可能直接挂在 Main 下，也可能由 BossField 生成（层级多一层），
 #      因此一律优先按分组查找，避免 "../Player" 这类相对路径在嵌套后取到 null ----
 func _find(group: String, rel: String) -> Node:
@@ -281,17 +245,11 @@ func _find(group: String, rel: String) -> Node:
 	if n == null:
 		n = get_node_or_null(rel)
 	return n
-
-
 func player_node() -> Node:
 	return _find("player", "../Player")
-
-
 func arena_name() -> String:
 	## 这只 BOSS 的专属战场（玩家按 E 时据此挑空间节点）
 	return _arena_name
-
-
 func arena_node() -> Node:
 	## 现在可能同时挂着好几套空间（纯白 / 国道），一律取"正激活"的那套；
 	## 没有激活的再退回分组第一个（保持老代码行为）
@@ -302,20 +260,14 @@ func arena_node() -> Node:
 		if a.has_method("is_active") and bool(a.call("is_active")):
 			return a
 	return first if first != null else get_node_or_null("../Arena")
-
-
 func ground_node() -> Node:
 	return _find("ground", "../Ground")
-
-
 func _ground_y(ground: Node, x: float, z: float) -> float:
 	## 落地高度：优先地面 mesh 真正铺出来的那张皮（surface_height），
 	## 解析式 height_at 带网格没采到的高频噪声，最多差 0.85 米，只作兜底
 	if ground.has_method("surface_height"):
 		return float(ground.call("surface_height", x, z))
 	return float(ground.call("height_at", x, z))
-
-
 func _reseat_to_surface() -> void:
 	## 出生那会儿地形的高度网格还没建完（分片建碰撞要几百毫秒），_base_y 只能取解析值。
 	## 网格一就绪就按真实地面重坐一次；在空间里打或死亡中则先不动，等回到大地图再补。
@@ -336,20 +288,12 @@ func _reseat_to_surface() -> void:
 	_base_y = sy
 	position = Vector3(world_x, _base_y, world_z)
 	_home_pos = position
-
-
 func is_dead() -> bool:
 	return _dead
-
-
 func teleport_to(p: Vector3) -> void:
 	position = p
-
-
 func go_home() -> void:
 	position = _home_pos
-
-
 func place_near(spawn_point: Vector3, ground: Node, avoid: Array = []) -> bool:
 	## 随机落点：只接受离玩家出生点 spawn_min~max_dist 米、坡度平缓、离边界有安全距离、
 	## 且与其他 BOSS 至少相隔 30 米的位置；连续尝试失败则退回导出时的大地图坐标
@@ -388,22 +332,14 @@ func place_near(spawn_point: Vector3, ground: Node, avoid: Array = []) -> bool:
 		return true
 	print("[boss] %s 未找到合适落点，沿用默认坐标 (%.1f, %.1f)" % [boss_name, world_x, world_z])
 	return false
-
-
 func size_half(ground: Node) -> float:
 	## 可用半径：地形半宽留 55 米边距，避免贴着边界墙/掉出地形外
 	var s: float = float(ground.get("size")) if ground.get("size") != null else 500.0
 	return maxf(s * 0.5 - 55.0, 80.0)
-
-
 func box_height() -> float:
 	## 碰撞盒高度（Label 挂在盒顶上方，落点变化时同步）
 	return _box_size.y if _box_size.y > 0.0 else 0.25 * scale_factor
-
-
 var _spawn_at := Vector3.INF    # 由 boss_field 预分配的落点（无则用 world_x/world_z）
-
-
 func _load_def() -> void:
 	## 从名册取本只 BOSS 的外观与数值；名册缺项时保留脚本默认值
 	_def = ROSTER.def(def_id)
@@ -452,8 +388,6 @@ func _load_def() -> void:
 	_charge_slow = float(_def.get("charge_slow_sec", 0.0))
 	_charge_ring_dmg = float(_def.get("charge_ring_damage", 0.0))
 	_faces_player = not bool(_def.get("no_turn", false))
-
-
 func _ready() -> void:
 	add_to_group("boss_unit")     # 实体：玩家/HUD 按这个组找"最近的那只 BOSS"
 	_load_def()
@@ -467,11 +401,9 @@ func _ready() -> void:
 		_base_y = _ground_y(ground, world_x, world_z)
 	position = Vector3(world_x, _base_y, world_z)
 	_home_pos = position
-
 	_visual = Node3D.new()
 	add_child(_visual)
 	_build_visual()
-
 	# 实体碰撞（剑射线与玩家阻挡）
 	var body := StaticBody3D.new()
 	body.add_to_group("boss")
@@ -482,7 +414,6 @@ func _ready() -> void:
 	csc.position = Vector3(0, box.size.y * 0.5, 0)
 	body.add_child(csc)
 	add_child(body)
-
 	_label = Label3D.new()
 	_label.text = "%s · BOSS" % boss_name
 	_label.position = Vector3(0, box.size.y + 1.2, 0)
@@ -491,7 +422,6 @@ func _ready() -> void:
 	_label.modulate = Color(1, 0.95, 0.7)
 	_label.outline_size = 24
 	add_child(_label)
-
 	_hp_label = Label3D.new()
 	_hp_label.position = Vector3(0, box.size.y + 0.6, 0)
 	_hp_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -518,8 +448,6 @@ func _ready() -> void:
 			var mp3 := _music.stream as AudioStreamMP3
 			mp3.loop = true
 			mp3.loop_offset = 0.0
-
-
 func _build_visual() -> void:
 	## 外观优先级：名册 model（外部 3D 模型）> placeholder（程序化低模）> 六面贴图盒
 	if _model_path != "" and ResourceLoader.exists(_model_path):
@@ -552,21 +480,13 @@ func _build_visual() -> void:
 	mi.scale = Vector3.ONE * scale_factor
 	_visual.add_child(mi)
 	_visual_source = "box"
-
-
 func visual_source() -> String:
 	return _visual_source
-
-
 func has_skills() -> bool:
 	return _has_skills
-
-
 func aura_radius() -> float:
 	## 无技能档的贴身伤害半径：以车身最长边的一半再留 2 米
 	return maxf(_box_size.x, _box_size.z) * 0.5 + 2.0
-
-
 func _build_marker() -> void:
 	## 砸落预警红圈：本体子节点，贴地水平面片（直径=判定直径），默认隐藏
 	_marker = MeshInstance3D.new()
@@ -584,8 +504,6 @@ func _build_marker() -> void:
 	_marker_mat = mat
 	_marker.visible = false
 	add_child(_marker)
-
-
 func _build_lane() -> void:
 	## 撞击路径预警带：贴地的长条面片，宽 = 车宽留点边、长 = 撞击行程，
 	## 从车头一直铺到撞击终点——玩家只要走出这条带子就不会被撞。
@@ -611,8 +529,6 @@ func _build_lane() -> void:
 	var holder := get_parent()
 	if holder != null:
 		holder.add_child(_lane)
-
-
 func _layout_lane() -> void:
 	## 按锁定的车头朝向把带子摆到地面上（+Z = 车头方向，所以沿 fwd 推出中心点）
 	if _lane == null:
@@ -621,8 +537,6 @@ func _layout_lane() -> void:
 	_lane.rotation.y = _heading
 	_lane.global_position = global_position + fwd * (_box_size.z * 0.5 + _lane_len * 0.5) \
 		+ Vector3(0.0, _arena_base_y + 0.07 - global_position.y, 0.0)
-
-
 func _show_lane(b: bool) -> void:
 	if _lane == null:
 		return
@@ -632,8 +546,6 @@ func _show_lane(b: bool) -> void:
 		if _lane_mat != null:
 			_lane_mat.albedo_color = Color(1.0, 0.20, 0.14, 0.0)
 		_layout_lane()
-
-
 func _update_lane(delta: float) -> void:
 	## 预警期：红带快速淡入、箭头朝撞击方向流动，临撞前 0.35 秒开始急促闪烁
 	if _lane == null or not _lane.visible or _lane_mat == null:
@@ -645,8 +557,6 @@ func _update_lane(delta: float) -> void:
 		panic = 0.55 + 0.45 * absf(sin(_lane_t * 26.0))
 	_lane_mat.albedo_color = Color(1.0, 0.20, 0.14, 0.92 * fade_in * panic)
 	_lane_mat.uv1_offset.y -= delta * 1.1      # 偏移递减 = 图案朝 +v（车头方向）流动
-
-
 # ---- 蓄力星点：立体星点池（蓄力时逐个点亮，攻击期逐颗射出，与射出后的外观同一套网格）----
 # 颜色规律固定为 红→黄→蓝→绿 循环：红=高伤(10)+快 1.5×，黄=常规(5)，蓝=5 伤 + 减速 5 秒 + 慢 0.7×，绿=无伤但回 5 血
 func _build_stars() -> void:
@@ -669,15 +579,11 @@ func _build_stars() -> void:
 		mi.set_meta("kind", kind)
 		add_child(mi)
 		_stars.append(mi)
-
-
 func star_kind_of(i: int) -> String:
 	## 第 i 颗蓄力星点的颜色种类（供测试/表现查询）
 	if i < 0 or i >= _stars.size():
 		return ""
 	return String(_stars[i].get_meta("kind", SLAM_FX.star_kind(i)))
-
-
 func star_damage_of(kind: String) -> float:
 	## 该颜色种类的星点伤害：红色比基准多 STAR_RED_BONUS，绿色无伤害
 	match kind:
@@ -687,8 +593,6 @@ func star_damage_of(kind: String) -> float:
 			return 0.0
 		_:
 			return STAR_DAMAGE
-
-
 func _face_mat(tex_file: String) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_texture = load(_face_dir + tex_file)
@@ -696,8 +600,6 @@ func _face_mat(tex_file: String) -> StandardMaterial3D:
 	m.roughness = 0.7
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return m
-
-
 func _build_box_mesh() -> ArrayMesh:
 	## 六面各一个 surface：顶点按"从外侧看逆时针"排列，法线显式朝外
 	var W := 0.09
@@ -729,16 +631,12 @@ func _build_box_mesh() -> ArrayMesh:
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, st.commit().surface_get_arrays(0))
 		mesh.surface_set_material(mesh.get_surface_count() - 1, _face_mat(def[0]))
 	return mesh
-
-
 func _refresh_labels() -> void:
 	## 名称标签 = 难度，血条标签 = 当前血量/上限 + 该档掉落收益
 	if _label != null and not _dead:
 		_label.text = "%s · %s难度" % [boss_name, difficulty_name()]
 	if _hp_label != null:
 		_hp_label.text = "HP %d / %d ｜ 掉落 ×%d" % [int(hp), int(max_hp), reward_count()]
-
-
 func take_damage(amount: int, weapon := "", quiet := false) -> void:
 	if _dead or not _arena_mode:
 		return   # 大地图上不可直接攻击，须按 E 进入 BOSS 空间
@@ -750,8 +648,6 @@ func take_damage(amount: int, weapon := "", quiet := false) -> void:
 	else:
 		if not quiet:
 			damaged.emit(weapon, amount)   # 流血 tick 传 quiet=true，别把播报刷满屏
-
-
 func bleed(dps: float, seconds: float) -> void:
 	## 流血（剑·突刺附带）：每秒掉 dps 血、持续 seconds 秒，1 秒一跳。
 	## 再中一次取更高的每秒伤害、续上时长（不无限叠伤害）。
@@ -759,8 +655,6 @@ func bleed(dps: float, seconds: float) -> void:
 		return
 	_bleed_dps = maxf(_bleed_dps, dps)
 	_bleed_t = maxf(_bleed_t, seconds)
-
-
 func stun(sec: float, stack := false) -> bool:
 	## 法杖的"只控制、不打断"：不动 _phase / _phase_t / 技能进度，
 	## 只是这段时间里不推进、不移动、不转向，正在放的歌也原地掐住（_freeze_music），
@@ -774,12 +668,8 @@ func stun(sec: float, stack := false) -> bool:
 	else:
 		_stun_t = maxf(_stun_t, sec)
 	return true
-
-
 func is_stunned() -> bool:
 	return _stun_t > 0.0
-
-
 func _die() -> void:
 	_dead = true
 	_stun_t = 0.0
@@ -790,8 +680,6 @@ func _die() -> void:
 	_reset_charge()      # 死在半截冲撞里：立刻收掉预警带，也别再往前滑
 	_halt_music()            # 击杀瞬间停乐（顺带解掉定身可能掐着的暂停）
 	died.emit(self)          # 先记账再通知，玩家侧按 reward_count() 发奖
-
-
 func _process(delta: float) -> void:
 	_t += delta
 	if _dead:
@@ -837,8 +725,6 @@ func _process(delta: float) -> void:
 		else:
 			spd = _update_truck_ai(delta)     # 大运：缓慢驶近 + 「锁定冲撞」
 	_animate_wheels(delta, spd)
-
-
 func _animate_wheels(delta: float, speed: float) -> void:
 	## 车轮滚动：外观里有名为 "Wheels" 的节点（占位低模自带，外部模型可选）就按速度转
 	if speed <= 0.001 or _model_node == null:
@@ -851,8 +737,6 @@ func _animate_wheels(delta: float, speed: float) -> void:
 	for w in wheels.get_children():
 		if w is Node3D:
 			(w as Node3D).rotation.x += ang
-
-
 # ---- 战斗配乐 × 定身：BOSS 冻住，歌也原地掐住 ----
 ## 蓝球定身的一瞬间把正在放的歌暂停（stream_paused，不是 stop），定身结束从掐住那一拍
 ## 接着唱。歌曲的收尾倒计时 _music_tail 留在 _update_windup 里跟着相位一起冻，
@@ -862,16 +746,12 @@ func _freeze_music() -> void:
 		return
 	_music.stream_paused = true
 	_music_frozen = true
-
-
 func _resume_music() -> void:
 	## 注意：Godot 里 stream_paused=true 期间 playing 会被报成 false（听感就是"停了"），
 	## 所以这里绝不能拿 playing 当条件——否则永远解不开，歌就真的一直哑着。
 	_music_frozen = false
 	if _music != null and _music.stream_paused:
 		_music.stream_paused = false
-
-
 func _halt_music() -> void:
 	## 停乐 + 清掉定身留下的暂停标记：Godot 的 stream_paused 是节点上的属性，
 	## 带着它下次 play() 会在 _process 里被立刻再掐住 → 出声变哑巴，必须显式解掉。
@@ -881,8 +761,6 @@ func _halt_music() -> void:
 			_music.stream_paused = false
 		if _music.playing:
 			_music.stop()
-
-
 # ---- 技能档的战斗时间轴：待机 → 前摇(乐句A+星点渐多) → 攻击(飞天+日月交替+掉血) → 落地 ----
 func _update_windup(delta: float) -> void:
 	_phase_t += delta
@@ -979,8 +857,6 @@ func _update_windup(delta: float) -> void:
 				_set_phase(0)
 				_hide_stars()
 				_pick_wander_target()   # 砸完开始正常移动
-
-
 func _fire_star(i: int, player: Node) -> void:
 	## 把第 i 颗环绕星点射出去：从它当前的环绕位置朝玩家当时所在方向飞出，池子里熄灭。
 	## 颜色与效果按红黄蓝绿规律（见 slam_fx.star_kind）：红 10 伤、黄 5 伤、蓝 5 伤 + 减速、绿 0 伤 + 回血
@@ -1009,8 +885,6 @@ func _fire_star(i: int, player: Node) -> void:
 	# （速度传基准值即可：spawn_star 内部会按颜色种类再乘 1.5 / 0.7）
 	SLAM_FX.spawn_star(scene, from, dir.normalized(), STAR_SPEED, STAR_MAX_FLY,
 		st.scale.x, star_damage_of(kind), kind)
-
-
 func _layout_stars(prog: float) -> void:
 	## 星点绕身体螺旋环绕：半径随蓄力收缩、高度错开、尺寸微涨
 	var n := MAX_STARS
@@ -1024,21 +898,15 @@ func _layout_stars(prog: float) -> void:
 		_stars[i].scale = Vector3.ONE * lerpf(s, target, 0.2)
 		# 立体星点：各自快转 + 少量翻滚，相位错开，蓄力期就看得出是"一圈星点"
 		_stars[i].rotation = Vector3(_t * 1.1 + float(i), _t * 3.4 + float(i) * 0.7, 0.0)
-
-
 func _hide_stars() -> void:
 	## 收起全部星点并重置发射计数（下一轮前摇重新蓄满）
 	_stars_fired = 0
 	for st in _stars:
 		st.visible = false
-
-
 func _set_phase(p: int) -> void:
 	## 统一换相位（顺带把计时清零，避免各处漏写 _phase_t = 0.0）
 	_phase = p
 	_phase_t = 0.0
-
-
 func _clamp_arena() -> void:
 	## 追踪时别把 BOSS 甩出场地（按当前空间自己的中心与半宽，留 40 米边距）
 	var arena := arena_node()
@@ -1052,8 +920,6 @@ func _clamp_arena() -> void:
 	var lim := maxf(half - 40.0, 20.0)
 	position.x = clampf(position.x, c.x - lim, c.x + lim)
 	position.z = clampf(position.z, c.z - lim, c.z + lim)
-
-
 func _do_slam_impact(player: Node) -> void:
 	## 砸地瞬间：地裂特效 + 圈内命中判定（命中扣 SLAM_DAMAGE，仍吃防具减伤/无敌）
 	_show_marker(false)
@@ -1068,17 +934,11 @@ func _do_slam_impact(player: Node) -> void:
 			_slam_hit = true
 			if player.has_method("take_damage"):
 				player.take_damage(SLAM_DAMAGE)
-
-
 func slam_hit() -> bool:
 	return _slam_hit
-
-
 func _show_marker(b: bool) -> void:
 	if _marker != null:
 		_marker.visible = b
-
-
 func _update_marker(prog: float) -> void:
 	## 红圈：贴在锁定点的地面上，随预警进度由淡转浓、轻微脉动
 	if _marker == null:
@@ -1091,8 +951,6 @@ func _update_marker(prog: float) -> void:
 	_marker.scale = Vector3(s, 1.0, s)
 	if _marker_mat != null:
 		_marker_mat.albedo_color = Color(1.0, 0.10, 0.08, lerpf(0.62, 1.0, prog))
-
-
 func _pick_wander_target() -> void:
 	## 释放完技能后：在当前位置随机选一个最多 100 单位的新落点，夹在场地内
 	var ang := randf() * TAU
@@ -1104,8 +962,6 @@ func _pick_wander_target() -> void:
 	t.y = _arena_base_y
 	_wander_target = t
 	_wandering = true
-
-
 func _update_wander(delta: float) -> void:
 	if not _wandering:
 		return
@@ -1121,8 +977,6 @@ func _update_wander(delta: float) -> void:
 	var step := minf(WANDER_SPEED * delta, d)
 	position += to.normalized() * step
 	position.y = _arena_base_y
-
-
 func _update_chase(delta: float) -> float:
 	## 载具档（大运）的驶近：只缓慢朝玩家开过去。不飞天、不蓄力、不砸地、不射星点，
 	## 也不改动日月。掉血在 _tick_aura() 里单独结算。返回本帧速度（米/秒）。
@@ -1140,8 +994,6 @@ func _update_chase(delta: float) -> float:
 		_move_truck(to.normalized() * step)
 	_clamp_arena()
 	return step / maxf(delta, 0.0001)
-
-
 func _move_truck(step: Vector3) -> void:
 	## 大运的位移一律过一遍战场的 confine()：它是"焊死在国道上"的车，不会斜着压进
 	## 中央隔离带、也不会冲出右侧路肩（纯白空间没有这个方法 = 不限制）。
@@ -1150,8 +1002,6 @@ func _move_truck(step: Vector3) -> void:
 	if arena != null and arena.has_method("confine"):
 		position = arena.call("confine", position)
 	position.y = _arena_base_y
-
-
 func _tick_aura(delta: float) -> void:
 	## 贴身尾气：玩家进了 aura_radius 就持续掉血。刻意与"车动不动"解耦——
 	## 锁定预警期间车是停着的，但黑烟照样熏人（否则玩家站着等它撞反而最安全）。
@@ -1165,34 +1015,22 @@ func _tick_aura(delta: float) -> void:
 		_dmg_t -= 0.1
 		if player.has_method("take_damage"):
 			player.take_damage(_aura_dmg)
-
-
 # ---- 「锁定冲撞」：锁位冻结 → 沿撞击路径铺红色预警带 → 直线猛冲（全程不转向）----
 func charge_dist() -> float:
 	## 撞击行程 = 玩家一次冲刺的位移 × charge_units（默认 3.6 × 8 ≈ 28.8 米）
 	return _charge_units * DASH_DIST
-
-
 func charge_reach() -> float:
 	## 这一撞最远能碰到你多远：车头再往前冲完整段行程，加上车头本身离车身中心半个车长
 	return charge_dist() + _box_size.z * 0.5
-
-
 func charge_kb_dist() -> float:
 	## 撞上后把玩家顶开多远 = 玩家一次冲刺的位移 × charge_knockback（2 个 ≈ 7.2 米）
 	return _charge_kb * DASH_DIST
-
-
 func charge_ring_radius() -> float:
 	## 冲完收尾那圈光波的半径：按行程的三成五算，最短也有 4 米（贴脸撞完总得有个圈）
 	return maxf(charge_dist() * 0.35, 4.0)
-
-
 func charge_gap_time() -> float:
 	## 两撞之间的间隔（冲完到下次锁位之间的冷却）
 	return _charge_gap
-
-
 func charge_speed_ref() -> float:
 	## 冲撞速度 = 玩家奔跑速度（步行速度 × 2）× charge_speed_mult，默认 10 × 3 = 30 米/秒
 	var p := player_node()
@@ -1200,8 +1038,6 @@ func charge_speed_ref() -> float:
 	if p != null and p.get("move_speed") != null:
 		walk = float(p.get("move_speed"))
 	return walk * float(PLAYER_SCRIPT.RUN_MULT) * _charge_mult
-
-
 func _reset_charge() -> void:
 	## 进/出空间、死亡、复活时把冲撞状态清干净（预警带也一并收掉）
 	_charge_t = 0.0
@@ -1214,16 +1050,10 @@ func _reset_charge() -> void:
 	_aim_locked = false
 	_charge_dir = Vector3(sin(_heading), 0.0, cos(_heading))
 	_show_lane(false)
-
-
 func charging() -> bool:
 	return _charge_run
-
-
 func locked() -> bool:
 	return _charge_t > 0.0
-
-
 func _begin_lock(player: Node) -> void:
 	## 锁位：车头对准玩家此刻的位置，方向就此钉死（之后不会再转向），
 	## 同时沿撞击路径在地面铺一条红色预警带 —— 玩家有 charge_lock 秒走出这条带子
@@ -1238,15 +1068,11 @@ func _begin_lock(player: Node) -> void:
 	_charge_speed = charge_speed_ref()
 	_charge_t = _charge_lock
 	_show_lane(true)
-
-
 func _fire_charge() -> void:
 	## 预警结束，真的开撞。红带留在原地淡出（车正好从它上面压过去）
 	_charge_t = 0.0
 	_charge_run = true
 	_charge_left = charge_dist()
-
-
 func _tick_charge(delta: float) -> float:
 	## 冲撞中：只沿锁定那一刻的方向直线推进，全程不踩方向盘；撞上一次算一次伤害
 	var step := minf(_charge_speed * delta, maxf(_charge_left, 0.0))
@@ -1262,8 +1088,6 @@ func _tick_charge(delta: float) -> float:
 	if _charge_left <= 0.001:
 		_end_charge()
 	return _charge_speed
-
-
 func _end_charge() -> void:
 	_charge_run = false
 	_charge_left = 0.0
@@ -1277,8 +1101,6 @@ func _end_charge() -> void:
 	# 撞到底的动静：地裂 + 一蓬尘（撞伤是在冲撞过程中判的，这里的收尾光波另算一次伤害）
 	var at := Vector3(global_position.x, _arena_base_y + 0.05, global_position.z)
 	SLAM_FX.spawn_slam(get_parent(), at, charge_ring_radius(), Color(1.0, 0.60, 0.25), _charge_ring_dmg)
-
-
 func _settle_charge_hit() -> void:
 	## 撞击完成后结算的三件套里，"顶开 + 减速"这两项归这里（伤害在接触那一帧已经扣过了）
 	_charge_kb_pending = false
@@ -1292,10 +1114,7 @@ func _settle_charge_hit() -> void:
 		player.knockback(_charge_dir, charge_kb_dist())
 	if _charge_slow > 0.0 and player.has_method("apply_slow"):
 		player.apply_slow(_charge_slow)     # 移速 ×0.5，持续这几秒（重复撞到取更长）
-
-
 const CHARGE_MARGIN := 0.7            # 撞击盒外扩（玩家胶囊半径 + 一点余量）
-
 func _touch_player(from: Vector3, to: Vector3) -> bool:
 	## 命中 = 玩家落在这帧车身的"扫过足迹"里：侧向不超过半车宽，纵向往前不超过
 	## 本帧位移 + 半个车长（车尾方向也算，车身这么长，倒着压到也算撞）。
@@ -1326,16 +1145,12 @@ func _touch_player(from: Vector3, to: Vector3) -> bool:
 	# 免得出现"车还从你身上压过去、你同时已经被顶开"这种判定打架。
 	_charge_kb_pending = true
 	return true
-
-
 func _fade_lane(delta: float) -> void:
 	if _lane == null or not _lane.visible or _lane_mat == null:
 		return
 	var col: Color = _lane_mat.albedo_color
 	col.a = maxf(col.a - delta * 1.6, 0.0)
 	_lane_mat.albedo_color = col
-
-
 func _update_truck_ai(delta: float) -> float:
 	## 大运的一帧决策：尾气照算 → 正在冲撞就直线推进 → 正在锁定就整帧冻住（连驶近也不走，
 	## 否则会出现轮子停着、车身还在往前滑的怪相）→ 都不在就缓慢驶近并判断要不要锁位。
@@ -1359,8 +1174,6 @@ func _update_truck_ai(delta: float) -> float:
 			_begin_lock(player)
 			return 0.0
 	return spd
-
-
 func _dist_xz(a: Vector3, b: Vector3) -> float:
 	## 水平距离（不算高差）：玩家站在地板上会比车身原点高 1 米多，按 3D 距离判会偏
 	return Vector2(a.x - b.x, a.z - b.z).length()

@@ -2,13 +2,11 @@ extends Node3D
 ## PVP 竞技场：按大厅名单生成玩家、建房主结算的伤害/流血/定身账本、计分与重生。
 ## 结算规则：谁的武器打中了谁，只在"射手那台机器"发生（弹体只在他那儿存在），
 ## 他把命中报给房主；房主记账后把血量广播给所有人——生杀大权只在房主手里。
-
 const PLAYER_SCRIPT := preload("res://scripts/pvp/pvp_player.gd")
 const HUD_SCRIPT := preload("res://scripts/pvp/pvp_hud.gd")
 const MAPS_SCRIPT := preload("res://scripts/pvp/pvp_maps.gd")
 const REPLICA_SCRIPT := preload("res://scripts/pvp/pvp_replica.gd")
 const MENU_SCENE := "res://scenes/menu.tscn"
-
 var players_root: Node3D
 var hud: CanvasLayer
 var local_player: Node
@@ -21,8 +19,6 @@ var bleed := {}             # id -> {dps, t, from}
 var _claim_last := {}       # sender -> msec（限频：同一人 50ms 内的重复上报只认第一笔）
 var _bleed_tick := 0.0
 var _over := false
-
-
 func _ready() -> void:
 	if PvpState.players.size() < PvpState.MIN_PLAYERS:
 		# 不是从大厅进来的（直接 F6 跑场景）：回主页
@@ -52,18 +48,12 @@ func _ready() -> void:
 		PvpState.map_name, int(PvpState.MAX_HP), PvpState.WIN_KILLS])
 	multiplayer.server_disconnected.connect(_on_server_lost)
 	multiplayer.peer_disconnected.connect(_on_peer_left)
-
-
 func _player_node(id: int) -> Node:
 	return players_root.get_node_or_null("P%d" % id)
-
-
 func _on_server_lost() -> void:
 	multiplayer.multiplayer_peer = null
 	PvpState.reset()
 	get_tree().change_scene_to_file.call_deferred(MENU_SCENE)
-
-
 func _on_peer_left(id: int) -> void:
 	# 有人掉线：房主把他标记出局（不再重生），画面上直接消失
 	if not multiplayer.is_server():
@@ -72,33 +62,23 @@ func _on_peer_left(id: int) -> void:
 	if n != null:
 		n.call("set_dead", true)
 	hud.call("announce", "%s 掉线退出了" % PvpState.name_of(id))
-
-
 # ---- 命中上报（射手所在机器 → 房主）----
 @rpc("any_peer", "call_remote", "reliable")
 func rpc_claim_hit(victim_id: int, dmg: int, weapon: String) -> void:
 	if multiplayer.is_server():
 		settle_hit(victim_id, dmg, weapon, multiplayer.get_remote_sender_id())
-
-
 @rpc("any_peer", "call_remote", "reliable")
 func rpc_claim_bleed(victim_id: int, attacker_id: int, dps: float, seconds: float) -> void:
 	if multiplayer.is_server():
 		settle_bleed(victim_id, attacker_id, dps, seconds)
-
-
 @rpc("any_peer", "call_remote", "reliable")
 func rpc_claim_stun(victim_id: int, sec: float) -> void:
 	if multiplayer.is_server():
 		settle_stun(victim_id, sec)
-
-
 @rpc("any_peer", "call_remote", "reliable")
 func rpc_notify_invincible(peer_id: int, dur: float) -> void:
 	if multiplayer.is_server():
 		notify_invincible(peer_id, dur)
-
-
 # ---- 房主结算 ----
 func settle_hit(victim_id: int, dmg: int, weapon: String, attacker_id: int) -> void:
 	if not multiplayer.is_server() or _over:
@@ -118,33 +98,23 @@ func settle_hit(victim_id: int, dmg: int, weapon: String, attacker_id: int) -> v
 		return
 	last_attacker[victim_id] = attacker_id
 	_apply_damage(victim_id, dmg, weapon, attacker_id)
-
-
 func _apply_damage(victim_id: int, dmg: int, weapon: String, attacker_id: int) -> void:
 	hp[victim_id] = maxf(float(hp[victim_id]) - float(dmg), 0.0)
 	_send_apply_hp(victim_id, float(hp[victim_id]), attacker_id, weapon)
 	if float(hp[victim_id]) <= 0.0:
 		_on_kill(victim_id, attacker_id)
-
-
 func settle_bleed(victim_id: int, attacker_id: int, dps: float, seconds: float) -> void:
 	if not multiplayer.is_server():
 		return
 	bleed[victim_id] = {"dps": dps, "t": seconds, "from": attacker_id}
-
-
 func settle_stun(victim_id: int, sec: float) -> void:
 	if not multiplayer.is_server():
 		return
 	# 定身只跟本人有关：定向发给他（他校验发件人是房主）
 	rpc_id(victim_id, "rpc_apply_stun", victim_id, clampf(sec, 0.0, 2.0))
-
-
 func notify_invincible(peer_id: int, dur: float) -> void:
 	if multiplayer.is_server():
 		inv_until[peer_id] = dur
-
-
 func _process(delta: float) -> void:
 	if not multiplayer.is_server() or _over:
 		return
@@ -169,8 +139,6 @@ func _process(delta: float) -> void:
 	for vid in bleed.keys():
 		if float(bleed[vid].t) <= 0.0:
 			bleed.erase(vid)
-
-
 # ---- 定向发送：本环境（两台无头进程互测/局域网实测）里 rpc() 广播不稳定，
 # 统一改成按名单逐个 rpc_id + 本地直调，谁都不会漏 ----
 func _peers() -> Array:
@@ -180,45 +148,31 @@ func _peers() -> Array:
 		if id != multiplayer.get_unique_id():
 			out.append(id)
 	return out
-
-
 func _send_apply_hp(peer_id: int, value: float, attacker_id: int, weapon: String) -> void:
 	for peer in _peers():
 		rpc_id(peer, "rpc_apply_hp", peer_id, value, attacker_id, weapon)
 	rpc_apply_hp(peer_id, value, attacker_id, weapon)
-
-
 func _send_died(peer_id: int, killer_id: int) -> void:
 	for peer in _peers():
 		rpc_id(peer, "rpc_died", peer_id, killer_id)
 	rpc_died(peer_id, killer_id)
-
-
 func _send_respawn(peer_id: int) -> void:
 	for peer in _peers():
 		rpc_id(peer, "rpc_respawn", peer_id)
 	rpc_respawn(peer_id)
-
-
 func _send_grant_stones(peer_id: int) -> void:
 	for peer in _peers():
 		rpc_id(peer, "rpc_grant_stones", peer_id)
 	rpc_grant_stones(peer_id)
-
-
 func _send_match_over(winner_id: int, final_kills: Dictionary) -> void:
 	for peer in _peers():
 		rpc_id(peer, "rpc_match_over", winner_id, final_kills)
 	rpc_match_over(winner_id, final_kills)
-
-
 # ---- 飞行物外观复制：射手那台机器把"我射出去了什么"广播给其他人 ----
 # 只演样子（箭/魔法球/冰球），伤害仍然只在射手机器判定并上报房主结算
 func send_fx(kind: String, pos: Vector3, vel: Vector3, payload: Dictionary = {}) -> void:
 	for peer in _peers():
 		rpc_id(peer, "rpc_spawn_fx", kind, pos, vel, payload)
-
-
 @rpc("any_peer", "call_remote", "reliable")
 func rpc_spawn_fx(kind: String, pos: Vector3, vel: Vector3, payload: Dictionary) -> void:
 	var sender := multiplayer.get_remote_sender_id()
@@ -230,8 +184,6 @@ func rpc_spawn_fx(kind: String, pos: Vector3, vel: Vector3, payload: Dictionary)
 	if not known:
 		return                      # 不在名单里的人发的不算
 	REPLICA_SCRIPT.spawn(self, kind, pos, vel, payload)
-
-
 # ---- 结果广播 ----
 @rpc("authority", "call_local", "reliable")
 func rpc_apply_hp(peer_id: int, value: float, attacker_id: int, weapon: String) -> void:
@@ -241,8 +193,6 @@ func rpc_apply_hp(peer_id: int, value: float, attacker_id: int, weapon: String) 
 	# 命中播报只给射手本人看（意义就是"我这下打中了"）；流血跳血不播
 	if multiplayer.get_unique_id() == attacker_id and weapon != "流血":
 		hud.call("announce_hit", weapon, PvpState.name_of(peer_id))
-
-
 @rpc("authority", "call_local", "reliable")
 func rpc_died(victim_id: int, killer_id: int) -> void:
 	var n := _player_node(victim_id)
@@ -252,8 +202,6 @@ func rpc_died(victim_id: int, killer_id: int) -> void:
 	if int(multiplayer.get_unique_id()) == victim_id:
 		hud.call("_on_hp", 0.0, PvpState.MAX_HP)
 	_update_scoreboard()
-
-
 @rpc("authority", "call_local", "reliable")
 func rpc_respawn(peer_id: int) -> void:
 	var n := _player_node(peer_id)
@@ -262,8 +210,6 @@ func rpc_respawn(peer_id: int) -> void:
 		n.call("set_dead", false)
 	if int(multiplayer.get_unique_id()) == peer_id:
 		hud.call("clear_death_tag")
-
-
 @rpc("authority", "call_local", "reliable")
 func rpc_grant_stones(peer_id: int) -> void:
 	# 只有击杀者本人的机器往背包里放石头
@@ -272,8 +218,6 @@ func rpc_grant_stones(peer_id: int) -> void:
 	var my_inv := get_node_or_null("HUD/Inventory")
 	if my_inv != null and my_inv.has_method("add_item"):
 		my_inv.call("add_item", "stone", PvpState.KILL_STONES)
-
-
 @rpc("any_peer", "call_remote", "reliable")
 func rpc_apply_stun(peer_id: int, sec: float) -> void:
 	if multiplayer.get_remote_sender_id() != 1:
@@ -283,8 +227,6 @@ func rpc_apply_stun(peer_id: int, sec: float) -> void:
 	var n := _player_node(peer_id)
 	if n != null:
 		n.call("apply_stun", sec)
-
-
 @rpc("authority", "call_local", "reliable")
 func rpc_match_over(winner_id: int, final_kills: Dictionary) -> void:
 	_over = true
@@ -302,8 +244,6 @@ func rpc_match_over(winner_id: int, final_kills: Dictionary) -> void:
 		PvpState.reset()
 		get_tree().change_scene_to_file(MENU_SCENE))
 	hud.add_child(back)
-
-
 # ---- 房主：击杀与胜负 ----
 func _on_kill(victim_id: int, killer_id: int) -> void:
 	if victim_id == killer_id:
@@ -322,8 +262,6 @@ func _on_kill(victim_id: int, killer_id: int) -> void:
 			return
 		hp[victim_id] = PvpState.MAX_HP
 		_send_respawn(victim_id))
-
-
 func _update_scoreboard() -> void:
 	var lines := ""
 	for i in PvpState.players.size():

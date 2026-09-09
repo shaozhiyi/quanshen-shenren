@@ -1,6 +1,5 @@
 class_name HealthBarXDraw
 extends RefCounted
-
 static func make_rounded_rect_polygon(rect: Rect2, radius: float) -> PackedVector2Array:
 	var r = clampf(radius, 0, minf(rect.size.x, rect.size.y) * 0.5)
 	var x0 = rect.position.x
@@ -46,13 +45,11 @@ static func make_rounded_rect_polygon(rect: Rect2, radius: float) -> PackedVecto
 		var angle = PI + (PI * 0.5) * t
 		pts.append(Vector2(x0 + r + r * cos(angle), y0 + r + r * sin(angle)))
 	return pts
-
 static func draw_rounded_rect_filled(canvas: CanvasItem, rect: Rect2, color: Color, radius: float) -> void:
 	var pts = make_rounded_rect_polygon(rect, radius)
 	if pts.size() < 3:
 		return
 	canvas.draw_colored_polygon(pts, color)
-
 static func draw_rounded_rect_stroke(canvas: CanvasItem, rect: Rect2, color: Color, width: float, radius: float, _join_round: bool, inner_fill_color: Color) -> void:
 	var r = clampf(radius, 0, minf(rect.size.x, rect.size.y) * 0.5)
 	if width <= 0:
@@ -63,7 +60,6 @@ static func draw_rounded_rect_stroke(canvas: CanvasItem, rect: Rect2, color: Col
 	var inner_r = maxf(0, r - width)
 	draw_rounded_rect_filled(canvas, rect, color, r)
 	draw_rounded_rect_filled(canvas, inner, inner_fill_color, inner_r)
-
 static func draw_shadow_approximate(canvas: CanvasItem, rect: Rect2, radius: float, shadow_color: Color, offset: Vector2, passes: int) -> void:
 	for i in range(passes, 0, -1):
 		var alpha = shadow_color.a * (float(i) / float(passes)) * 0.5
@@ -73,7 +69,6 @@ static func draw_shadow_approximate(canvas: CanvasItem, rect: Rect2, radius: flo
 		var pts = make_rounded_rect_polygon(r2, radius + i * 2)
 		canvas.draw_colored_polygon(pts, c)
 	canvas.draw_colored_polygon(make_rounded_rect_polygon(rect, radius), Color(0, 0, 0, 0))
-
 static func draw_gradient_overlay(canvas: CanvasItem, rect: Rect2, _radius: float, style: HealthBarXStyle) -> void:
 	if not style.gradient_enabled or style.gradient_intensity <= 0:
 		return
@@ -114,7 +109,6 @@ static func draw_gradient_overlay(canvas: CanvasItem, rect: Rect2, _radius: floa
 				canvas.draw_colored_polygon(pts, c)
 		_:
 			pass
-
 static func draw_texture_fitted(canvas: CanvasItem, rect: Rect2, texture: Texture2D, tint: Color, fit_mode: int) -> void:
 	if not texture:
 		return

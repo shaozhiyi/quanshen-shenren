@@ -8,19 +8,15 @@ extends Control
 ## 法杖初始放在背包第一格。
 ## 交互：拖拽穿卸；单击选中；双击武器/防具＝只强化这一件（吃 1 块强化石）；
 ##       双击消耗品＝使用一次；选中后按 E 丢弃→地上生成箱子。
-
 const BAG_SIZE := 27
 const BAG_COLS := 9
 const SLOT_PX := 58.0
 const GAP := 6.0
-
 # 装备栏只有这三格（早先给法杖单开过第四格，已并回武器栏：三把武器抢两格）
 const EQ_KEYS := ["weapon", "subweapon", "armor"]
-
 # 堆叠：消耗品可堆到同格，格子上显示 ×2/×3…；上限 20
 const STACK_MAX := 20
 const STACKABLE := ["dogmilk", "stone"]
-
 # id -> 定义：名称/可去的装备栏(空=不可装备)/图标/着色/属性说明/[use]
 # 可强化的对象 = 有装备去处的东西，等级由玩家身上的 enhance_levels 保管
 const DB := {
@@ -38,7 +34,6 @@ const DB := {
 	"stone":  {"name": "装备强化石", "eq": [], "icon": "res://assets/items/stone.svg", "tint": Color(0.60, 0.86, 1.00),
 		"desc": "强化材料 · 双击不会消耗\n拿去双击「武器 / 防具」→ 只强化那一件，本石 -1\n\n击杀野生狗奶必掉 1 块，\n之后以 4%、3.95%、3.90%… 逐次递减追加"},
 }
-
 var _bag: Inventory                 # addons/grid_inventory 的数据模型（27 格）
 var _items := {}                    # id -> InvItem
 var _bag_n: Array = []              # 每格物品数量（与 _bag.slots 同长）
@@ -50,8 +45,6 @@ var _open := false
 var freeze_whole_tree := true       # 单机开包=整局暂停；联机关掉（只禁本机玩家输入）
 var _selected_loc: Array = []       # 当前选中的槽位 ["bag",i]/["eq",k]
 var _hint_label: Label
-
-
 func _ready() -> void:
 	# 背包打开时会暂停整棵树，本面板必须在暂停态下也照常收输入；
 	# 注意 WHEN_PAUSED 是"只在暂停时处理"（那样平时按 Tab 就没反应了），所以要用 ALWAYS
@@ -78,8 +71,6 @@ func _ready() -> void:
 	else:
 		refresh_all()
 		_sync_player()
-
-
 ## 存档：导出装备栏、背包内容与每格堆叠数量
 func save_state() -> Dictionary:
 	var bag: Array = []
@@ -88,8 +79,6 @@ func save_state() -> Dictionary:
 		bag.append(bag_get(i))
 		counts.append(bag_count(i))
 	return {"equipment": _eq.duplicate(), "bag": bag, "bag_counts": counts}
-
-
 ## 读档：还原装备栏、背包（含数量），并把"手上拿的哪把武器"同步回玩家
 func load_state(save: Dictionary) -> void:
 	var eq: Dictionary = save.get("equipment", {})
@@ -107,8 +96,6 @@ func load_state(save: Dictionary) -> void:
 	var w := int(save.get("player", {}).get("weapon", 0))
 	if _player != null and _player.has_method("set_current_weapon"):
 		_player.call("set_current_weapon", w)
-
-
 func _ensure_staff() -> void:
 	## 老存档没有法杖（既不在装备栏也不在背包）→ 补发一根。
 	## 优先塞进空着的武器栏（本来就缺武器），否则放第一个空格；都没位置就算了，
@@ -122,8 +109,6 @@ func _ensure_staff() -> void:
 	var i := _first_empty_bag()
 	if i >= 0:
 		bag_set(i, "staff", 1)
-
-
 # ---- 数据 ----
 func _build_items() -> void:
 	for id in DB:
@@ -133,8 +118,6 @@ func _build_items() -> void:
 		it.icon = load(DB[id]["icon"])
 		it.color = DB[id]["tint"]
 		_items[id] = it
-
-
 func _build_bag() -> void:
 	_bag = Inventory.new(BAG_SIZE)
 	_bag_n.clear()
@@ -143,8 +126,6 @@ func _build_bag() -> void:
 	# 防具自动穿戴（_eq.armor 默认已为 armor）；法杖初始放在背包第一格，
 	# 想用它就得自己拖进「武器」或「副武器」栏（另换一把回背包）
 	bag_set(0, "staff", 1)
-
-
 ## 联机 PVP 的初始配置：剑+弓、法杖在背包、自带一瓶野生狗奶（效果不变）、不穿甲
 func setup_pvp() -> void:
 	freeze_whole_tree = false
@@ -153,20 +134,12 @@ func setup_pvp() -> void:
 	bag_set(1, "dogmilk", 1)
 	refresh_all()
 	_sync_player()
-
-
 func item_name(id: String) -> String:
 	return String(DB[id]["name"]) if DB.has(id) else id
-
-
 static func is_stackable(id: String) -> bool:
 	return STACKABLE.has(id)
-
-
 func stack_max_of(id: String) -> int:
 	return STACK_MAX if STACKABLE.has(id) else 1
-
-
 ## 对外：加入物品（可指定数量）。可装备且有空栏位→自动穿戴；
 ## 可堆叠物品先补满已有堆，再占用新格子。
 ## 返回是否全部放下：部分放下时已放的保留，返回值 false 供调用方提示"背包已满"。
@@ -206,8 +179,6 @@ func add_item(id: String, count: int = 1) -> bool:
 	if placed > 0:
 		_sync_player()
 	return placed >= count
-
-
 ## 统计某 id 在背包+装备栏的总数量（按堆叠数累加）
 func count_of(id: String) -> int:
 	var n := 0
@@ -218,31 +189,21 @@ func count_of(id: String) -> int:
 		if _eq[k] == id:
 			n += 1
 	return n
-
-
 func _first_empty_bag() -> int:
 	for i in BAG_SIZE:
 		if bag_get(i) == "":
 			return i
 	return -1
-
-
 func eq_slots_for(id: String) -> Array:
 	## 这件东西能去的装备栏（不可装备 → 空数组）
 	if not DB.has(id):
 		return []
 	return DB[id].get("eq", []) as Array
-
-
 func is_equippable(id: String) -> bool:
 	return not eq_slots_for(id).is_empty()
-
-
 func can_equip(id: String, key: String) -> bool:
 	## 拖放判定：这件物品允不允许落在某一格里
 	return eq_slots_for(id).has(key)
-
-
 func _first_free_eq_for(id: String) -> String:
 	## 按装备栏从左到右找第一个"能放且空着"的格子；没有就返回 ""
 	for key in eq_slots_for(id):
@@ -250,33 +211,21 @@ func _first_free_eq_for(id: String) -> String:
 		if _eq.has(k) and String(_eq[k]) == "":
 			return k
 	return ""
-
-
 func bag_get(i: int) -> String:
 	var s = _bag.slots[i]
 	return String(s.item.id) if s != null else ""
-
-
 func bag_count(i: int) -> int:
 	return int(_bag_n[i]) if i < _bag_n.size() else 0
-
-
 func bag_set(i: int, id: String, n: int = 1) -> void:
 	_bag.slots[i] = ({"item": _items[id]} if id != "" else null)
 	while _bag_n.size() <= i:
 		_bag_n.append(0)
 	_bag_n[i] = (mini(n, stack_max_of(id)) if id != "" else 0)
-
-
 func eq_get(k: String) -> String:
 	## 老存档/老调用可能问起已经不存在的「staff」栏，这里返回空而不是崩
 	return String(_eq[k]) if _eq.has(k) else ""
-
-
 func eq_set(k: String, id: String) -> void:
 	_eq[k] = id
-
-
 ## 统一搬移：src/dst = ["bag", idx] 或 ["eq", key]；栏位不收这类东西返回 false
 func move_item(src: Array, dst: Array) -> bool:
 	# 注意：装备栏的下标是字符串（"weapon"/"subweapon"），背包的是数字。
@@ -310,58 +259,38 @@ func move_item(src: Array, dst: Array) -> bool:
 	refresh_all()
 	_sync_player()
 	return true
-
-
 func _get_at(loc: Array) -> String:
 	return bag_get(loc[1]) if loc[0] == "bag" else eq_get(loc[1])
-
-
 func _count_at(loc: Array) -> int:
 	return bag_count(int(loc[1])) if loc[0] == "bag" else 1
-
-
 func _set_at(loc: Array, id: String, n: int = 1) -> void:
 	if loc[0] == "bag":
 		bag_set(int(loc[1]), id, n)
 	else:
 		eq_set(str(loc[1]), id)
-
-
 func _sync_player() -> void:
 	## 只报三格的内容（武器/副武器/防具）；哪几把武器在身上由玩家按 id 认，不看格子名
 	if _player != null and _player.has_method("set_equipment"):
 		_player.call("set_equipment", _eq.weapon, _eq.subweapon, _eq.armor)
-
-
 # ---- 选中 / 使用 / 丢弃 ----
 func select_slot(loc: Array) -> void:
 	_selected_loc = loc.duplicate()
 	refresh_all()
-
-
 ## 该 id 当前强化等级（等级由玩家保管，取不到按 0）
 func _lv(id: String) -> int:
 	if _player != null and _player.has_method("enhance_level_of"):
 		return int(_player.call("enhance_level_of", id))
 	return 0
-
-
 ## 强化封顶等级（问玩家要，取不到按 10）
 func _enh_max() -> int:
 	if _player != null and _player.has_method("enhance_max"):
 		return int(_player.call("enhance_max"))
 	return 10
-
-
 func is_enhanceable(id: String) -> bool:
 	## 能装备的就是可强化对象（剑 / 弓箭 / 法杖 / 防具），各自独立计级
 	return is_equippable(id)
-
-
 func stones_held() -> int:
 	return count_of("stone")
-
-
 ## 从背包里扣掉 1 块强化石（先扣尾堆，保持前排格子数字大）
 func _take_one_stone() -> bool:
 	for i in range(BAG_SIZE - 1, -1, -1):
@@ -370,8 +299,6 @@ func _take_one_stone() -> bool:
 			bag_set(i, "stone" if n > 0 else "", maxi(n, 0))
 			return true
 	return false
-
-
 ## 双击某件武器/装备：只强化这一件，并消耗 1 块强化石（无提示，成功与否看格子上的 +N）
 func enhance_at(loc: Array) -> bool:
 	var id := _get_at(loc)
@@ -389,8 +316,6 @@ func enhance_at(loc: Array) -> bool:
 	refresh_all()
 	_sync_player()
 	return true
-
-
 func use_slot(loc: Array) -> void:
 	var id := _get_at(loc)
 	if id == "" or not DB.has(id):
@@ -413,8 +338,6 @@ func use_slot(loc: Array) -> void:
 			_selected_loc = []
 		refresh_all()
 		_sync_player()
-
-
 func discard_selected() -> void:
 	if _selected_loc.is_empty():
 		return
@@ -429,22 +352,17 @@ func discard_selected() -> void:
 	_sync_player()
 	if _player != null and _player.has_method("spawn_drop_box"):
 		_player.call("spawn_drop_box", id, n)
-
-
 # ---- UI ----
 func _sync_viewport_size() -> void:
 	## 把自身矩形钉到视口大小：挂在 CanvasLayer 下的 Control 不会自动拿到视口尺寸
 	position = Vector2.ZERO
 	size = get_viewport_rect().size
-
-
 func _build_ui() -> void:
 	var dim := ColorRect.new()
 	dim.color = Color(0, 0, 0, 0.55)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(dim)
-
 	var panel := Panel.new()
 	panel.size = Vector2(838, 340)
 	# 居中必须走锚点，不能用 (size - panel.size) * 0.5：
@@ -468,21 +386,18 @@ func _build_ui() -> void:
 		ps.set("corner_radius_%s" % corner, 10)
 	panel.add_theme_stylebox_override("panel", ps)
 	dim.add_child(panel)
-
 	var title := Label.new()
 	title.text = "背包与装备"
 	title.position = Vector2(20, 8)
 	title.add_theme_font_size_override("font_size", 22)
 	title.add_theme_color_override("font_color", Color(0.95, 0.90, 0.70))
 	panel.add_child(title)
-
 	_hint_label = Label.new()
 	_hint_label.text = "Tab 关闭 · 拖到装备栏穿/卸（三把武器只能带两把）· 双击武器或装备＝强化（耗 1 块强化石）· 双击狗奶＝喝 · 选中按 E 丢弃"
 	_hint_label.position = Vector2(20, 312)
 	_hint_label.add_theme_font_size_override("font_size", 13)
 	_hint_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.55))
 	panel.add_child(_hint_label)
-
 	# 装备栏（左列）：武器 / 副武器 / 防具。剑、弓、法杖三把都只能落在前两格，选两把带身上
 	var ey := 52.0
 	for d in [["weapon", "武器"], ["subweapon", "副武器"], ["armor", "防具"]] as Array:
@@ -498,7 +413,6 @@ func _build_ui() -> void:
 		panel.add_child(s)
 		_eq_slots[String(d[0])] = s
 		ey += SLOT_PX + GAP + 16.0
-
 	# 背包（右侧 3×9）
 	var bx := 262.0
 	var by := 52.0
@@ -508,21 +422,15 @@ func _build_ui() -> void:
 		s2.position = Vector2(bx + float(i % BAG_COLS) * (SLOT_PX + GAP), by + float(i / BAG_COLS) * (SLOT_PX + GAP))
 		panel.add_child(s2)
 		_bag_slots.append(s2)
-
-
 func refresh_all() -> void:
 	for i in _bag_slots.size():
 		_paint_slot(_bag_slots[i], bag_get(i), bag_count(i))
 	for k in _eq_slots:
 		_paint_slot(_eq_slots[k], eq_get(k), 1)
-
-
 func is_selected(loc: Array) -> bool:
 	## 同 move_item：槽位标识可能是字符串（装备栏）也可能是数字（背包），按字符串比才准
 	return not _selected_loc.is_empty() and _selected_loc[0] == loc[0] \
 		and str(_selected_loc[1]) == str(loc[1])
-
-
 func _paint_slot(s: Control, id: String, n: int = 1) -> void:
 	var ic: TextureRect = s.get_meta("icon")
 	var cnt: Label = s.get_meta("count")
@@ -554,8 +462,6 @@ func _paint_slot(s: Control, id: String, n: int = 1) -> void:
 			tip += "\n\n当前 +%d / %d ｜ 持有强化石 ×%d" % [lv, _enh_max(), stones_held()]
 		s.tooltip_text = tip
 	s.call("set_selected", is_selected(s.get_meta("loc")))
-
-
 # ---- 开关 ----
 func _unhandled_input(event: InputEvent) -> void:
 	## Tab：关着能开、开着能关（早先写成 not _open 就 return，导致第一次按 Tab 没反应）
@@ -570,8 +476,6 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif _open and event.keycode == KEY_ESCAPE:
 		_toggle()
 		get_viewport().set_input_as_handled()
-
-
 func _toggle() -> void:
 	_open = not _open
 	visible = _open
@@ -590,14 +494,10 @@ func _toggle() -> void:
 		if _player != null:
 			_player.process_mode = Node.PROCESS_MODE_INHERIT
 		refresh_all()
-
-
 func _exit_tree() -> void:
 	## 切场景/重开时兜底：绝不把 paused=true 留给下一个场景
 	if get_tree() != null:
 		get_tree().paused = false
-
-
 # ============================================================
 # 槽位控件：Panel + 图标；拖放穿卸 + 单击选中 + 双击使用
 # ============================================================
@@ -606,7 +506,6 @@ class SlotCtl extends Panel:
 	var loc: Array
 	var _style: StyleBoxFlat
 	var _selected := false
-
 	static func make(owner_inv: Node, p_loc: Array, px: float) -> SlotCtl:
 		var s := SlotCtl.new()
 		s.inv = owner_inv
@@ -657,11 +556,9 @@ class SlotCtl extends Panel:
 		s.mouse_entered.connect(s._hover.bind(true))
 		s.mouse_exited.connect(s._hover.bind(false))
 		return s
-
 	func set_selected(v: bool) -> void:
 		_selected = v
 		_repaint_border()
-
 	func _repaint_border() -> void:
 		if _selected:
 			_style.border_color = Color(1.0, 0.85, 0.35)
@@ -669,10 +566,8 @@ class SlotCtl extends Panel:
 		else:
 			_style.border_color = Color(0.38, 0.40, 0.46)
 			_style.bg_color = Color(0.16, 0.17, 0.21, 0.95)
-
 	func _hover(_entering: bool) -> void:
 		_repaint_border()
-
 	func _gui_input(event: InputEvent) -> void:
 		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 			if event.double_click:
@@ -680,10 +575,8 @@ class SlotCtl extends Panel:
 			else:
 				inv.select_slot(loc)
 			accept_event()
-
 	func _item_id() -> String:
 		return inv.bag_get(loc[1]) if loc[0] == "bag" else inv.eq_get(loc[1])
-
 	func _get_drag_data(_p: Vector2) -> Variant:
 		var id := _item_id()
 		if id == "":
@@ -696,7 +589,6 @@ class SlotCtl extends Panel:
 		prev.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		set_drag_preview(prev)
 		return {"from": loc}
-
 	func _can_drop_data(_p: Vector2, data: Variant) -> bool:
 		if not (data is Dictionary) or not data.has("from"):
 			return false
@@ -710,6 +602,5 @@ class SlotCtl extends Panel:
 		if src[0] == "eq" and did != "" and not inv.can_equip(did, str(src[1])):
 			return false
 		return true
-
 	func _drop_data(_p: Vector2, data: Variant) -> void:
 		inv.move_item(data["from"], loc)

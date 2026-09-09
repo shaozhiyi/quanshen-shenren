@@ -41,7 +41,6 @@ extends RefCounted
 ##   charge_ring_damage 冲完收尾那圈光波扫到人扣的伤害（0 或缺省 = 纯特效）。
 ##                它与撞击伤害各自结算一次：被顶飞后还在圈里，就会两回都挨上
 ##   bob_amp      待机浮动幅度；visual_y 外观离地高度
-
 const DEFS := {
 	"dogmilk": {
 		"name": "野生狗奶",
@@ -94,16 +93,10 @@ const DEFS := {
 	# 下一只 BOSS 照抄一条写在这里即可（换 face_dir 用新贴图，
 	# 或先用 tint 着色区分），boss.gd / 玩家 / HUD 都不用改。
 }
-
-
 static func ids() -> Array:
 	return DEFS.keys()
-
-
 static func def(id: String) -> Dictionary:
 	return DEFS.get(id, {})
-
-
 static func display_name(id: String) -> String:
 	var d := def(id)
 	return String(d.get("name", id))

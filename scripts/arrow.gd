@@ -3,13 +3,10 @@ extends RigidBody3D
 ## 命中 BOSS 按蓄力伤害扣血，钉住 4 秒后消失；同屏最多 15 支，超出回收最旧的。
 ## 追踪箭（弓·锁定箭）：homing=true 时每帧把速度方向往目标拐（转速有限，拉不满会绕），
 ## 速度大小保持出手值——追踪不改射速，只改方向。
-
 const ARROW_MODEL := preload("res://assets/weapons/arrow.glb")
 const MAX_ALIVE := 15
 const HOMING_TURN := 6.0         # 追踪转向速度（每秒可转多少比例，越大跟得越死）
-
 static var _active: Array = []
-
 var dmg := 50
 var homing := false              # 追踪箭标记（弓·锁定箭）
 var hit_weapon := "弓"           # 播报用武器名（技能箭会带上技能名）
@@ -18,8 +15,6 @@ var _target: Node                # 追踪目标（BOSS 本体），没了/死了
 var _hit := false
 var _life := 0.0
 var shooter_excluded := false
-
-
 static func spawn(parent: Node, cam_basis: Basis, origin: Vector3, speed: float,
 		damage: int, weapon := "弓") -> RigidBody3D:
 	## 从相机处生成一支箭：沿视线方向（-Z）给出初速
@@ -29,8 +24,6 @@ static func spawn(parent: Node, cam_basis: Basis, origin: Vector3, speed: float,
 	ar.global_transform = Transform3D(cam_basis.orthonormalized(), origin)
 	ar.linear_velocity = -cam_basis.z * speed
 	return ar
-
-
 static func spawn_homing(parent: Node, cam_basis: Basis, origin: Vector3, speed: float,
 		damage: int, target: Node, weapon := "弓") -> RigidBody3D:
 	## 追踪箭（弓·锁定箭）：同 spawn，另挂目标；目标无效时就是一支普通箭
@@ -42,8 +35,6 @@ static func spawn_homing(parent: Node, cam_basis: Basis, origin: Vector3, speed:
 	ar.global_transform = Transform3D(cam_basis.orthonormalized(), origin)
 	ar.linear_velocity = -cam_basis.z * speed
 	return ar
-
-
 static func _create(damage: int) -> RigidBody3D:
 	_prune()
 	while _active.size() >= MAX_ALIVE:
@@ -55,16 +46,12 @@ static func _create(damage: int) -> RigidBody3D:
 	ar._configure()
 	_active.append(ar)
 	return ar
-
-
 static func _prune() -> void:
 	var live: Array = []
 	for a in _active:
 		if is_instance_valid(a):
 			live.append(a)
 	_active = live
-
-
 func _configure() -> void:
 	mass = 0.06
 	continuous_cd = true          # 高速箭防穿透
@@ -89,8 +76,6 @@ func _configure() -> void:
 	csc.rotation_degrees = Vector3(90, 0, 0)
 	add_child(csc)
 	body_entered.connect(_on_body_entered)
-
-
 func _on_body_entered(other: Node) -> void:
 	if _hit:
 		return
@@ -107,8 +92,6 @@ func _on_body_entered(other: Node) -> void:
 	freeze = true
 	set_contact_monitor.call_deferred(false)
 	get_tree().create_timer(4.0).timeout.connect(queue_free)
-
-
 func _physics_process(delta: float) -> void:
 	if _hit:
 		return
@@ -132,7 +115,5 @@ func _physics_process(delta: float) -> void:
 		freeze = true
 		set_contact_monitor.call_deferred(false)
 		get_tree().create_timer(3.0).timeout.connect(queue_free)
-
-
 func _exit_tree() -> void:
 	_active.erase(self)

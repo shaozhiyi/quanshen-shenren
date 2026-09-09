@@ -3,12 +3,9 @@ class_name PvpMaps
 ## PVP 三张地图（全程序化，无外部素材依赖）：山地 / 空白 / 国道。
 ## 每张图负责：地面、边界墙（物理墙，谁也出不去）、光照、以及 4 个出生点。
 ## build() 返回出生点数组（大厅座次顺序取用）。
-
 const SIZE := 60.0          # 空白/国道的半边长
 const ROAD_HALF_W := 11.0   # 国道半宽
 const MOUNTAIN_SEED := 20260906   # 联机山地固定种子：各端复用单机地形系统生成同一片山
-
-
 static func build(map_name: String, root: Node) -> Array:
 	match map_name:
 		"山地":
@@ -17,8 +14,6 @@ static func build(map_name: String, root: Node) -> Array:
 			return _road(root)
 		_:
 			return _blank(root)
-
-
 static func _env(root: Node, top := Color(0.32, 0.52, 0.86), horizon := Color(0.92, 0.88, 0.80)) -> void:
 	var owe := WorldEnvironment.new()
 	var env := Environment.new()
@@ -38,8 +33,6 @@ static func _env(root: Node, top := Color(0.32, 0.52, 0.86), horizon := Color(0.
 	sun.light_energy = 1.4
 	sun.shadow_enabled = true
 	root.add_child(sun)
-
-
 static func _box(root: Node, size: Vector3, pos: Vector3, col: Color,
 		with_body := true, rough := 0.9) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
@@ -61,8 +54,6 @@ static func _box(root: Node, size: Vector3, pos: Vector3, col: Color,
 		sb.add_child(cs)
 		mi.add_child(sb)
 	return mi
-
-
 static func _wall_ring(root: Node, half: float, height := 6.0) -> void:
 	var t := 1.0
 	var col := Color(0.4, 0.42, 0.48, 1.0)
@@ -70,8 +61,6 @@ static func _wall_ring(root: Node, half: float, height := 6.0) -> void:
 	_box(root, Vector3(half * 2.0 + t * 2.0, height, t), Vector3(0, height / 2.0, half), col)
 	_box(root, Vector3(t, height, half * 2.0 + t * 2.0), Vector3(-half, height / 2.0, 0), col)
 	_box(root, Vector3(t, height, half * 2.0 + t * 2.0), Vector3(half, height / 2.0, 0), col)
-
-
 static func _blank(root: Node) -> Array:
 	_env(root, Color(0.55, 0.62, 0.72), Color(0.95, 0.95, 0.97))
 	var pm := PlaneMesh.new()
@@ -97,8 +86,6 @@ static func _blank(root: Node) -> Array:
 		_box(root, Vector3(3.0, 4.0, 1.2), Vector3(cos(ang) * 24.0, 2.0, sin(ang) * 24.0), Color(0.88, 0.88, 0.92))
 	_wall_ring(root, SIZE - 1.0)
 	return [Vector3(-20, 1.2, -20), Vector3(20, 1.2, -20), Vector3(-20, 1.2, 20), Vector3(20, 1.2, 20)]
-
-
 static func _mountain(root: Node) -> Array:
 	## 山地 = 直接复用单机的程序化地形系统：terrain.gd（PlaneMesh+shader 顶点位移、
 	## 三角汤碰撞、边界墙）+ ground_detail.gd（石子装饰），不再自己拼网格。
@@ -126,8 +113,6 @@ static func _mountain(root: Node) -> Array:
 		var z := sin(ang) * 34.0
 		out.append(Vector3(x, float(ground.call("surface_height", x, z)) + 1.5, z))
 	return out
-
-
 static func _road(root: Node) -> Array:
 	_env(root)
 	var length := 120.0

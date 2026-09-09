@@ -3,7 +3,6 @@ extends Node3D
 ## 全部 UI 用代码搭建（与 HUD、背包一致的风格），存档为 save/ 下的 JSON。
 ## 选好后写入 SaveManager 的 pending_seed / pending_load，再切到 main.tscn 由游戏侧套用。
 ## 切场景这段会盖上层 LoadingUI：素材在后台线程读、地形分片生成，动画才有帧可跑。
-
 const GAME_SCENE := "res://scenes/main.tscn"
 const FACE_DIR := "res://assets/props/dogmilk/"
 ## 启动时要用到、又不属于场景依赖的大贴图：提前在后台线程读掉（合计约 1 秒主线程活儿）
@@ -13,7 +12,6 @@ const WARM := [
 	"res://assets/ground/leafy_grass_rough_2k.jpg",
 	"res://assets/sky/kloofendal_48d_partly_cloudy.hdr",
 ]
-
 var _bottle: MeshInstance3D
 var _root: Control
 var _main_box: HBoxContainer
@@ -24,19 +22,13 @@ var _save_bg: Panel
 var _seed_edit: LineEdit
 var _status: Label
 var _showing := "main"
-
-
 func _ready() -> void:
 	_build_world()
 	_build_ui()
 	_show("main")
-
-
 ## 联机对战（局域网）：进 PVP 大厅（创建房间/按房号加入）
 func _on_pvp() -> void:
 	get_tree().change_scene_to_file("res://scenes/pvp_lobby.tscn")
-
-
 # ---- 3D 背景：天空 + 阳光 + 旋转奶盒 ----
 func _build_world() -> void:
 	var owe := WorldEnvironment.new()
@@ -56,24 +48,20 @@ func _build_world() -> void:
 	env.glow_intensity = 0.4
 	owe.environment = env
 	add_child(owe)
-
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-42, 35, 0)
 	sun.light_energy = 1.5
 	sun.shadow_enabled = true
 	add_child(sun)
-
 	var cam := Camera3D.new()
 	cam.position = Vector3(0, 1.5, 5.2)
 	cam.fov = 62.0
 	add_child(cam)
-
 	# 奶盒：与 BOSS 同款 SurfaceTool 六面贴图小网格（24 顶点，避开大 ArrayMesh 的渲染坑）
 	_bottle = MeshInstance3D.new()
 	_bottle.mesh = _build_milk_mesh()
 	_bottle.position = Vector3(0, 1.35, 0)
 	add_child(_bottle)
-
 	# 地面：接住影子，避免奶盒"飘在天上"
 	var floor_mi := MeshInstance3D.new()
 	var pm := PlaneMesh.new()
@@ -84,14 +72,10 @@ func _build_world() -> void:
 	pm.material = fm
 	floor_mi.mesh = pm
 	add_child(floor_mi)
-
-
 func _process(delta: float) -> void:
 	if _bottle != null:
 		_bottle.rotation.y += delta * 0.85
 		_bottle.position.y = 1.35 + 0.08 * sin(Time.get_ticks_msec() / 1000.0 * 1.6)
-
-
 ## 六面贴图奶盒（与 boss.gd 同一套做法）：顶点按"从外侧看逆时针"，法线显式朝外，
 ## y 以盒中心为基准，方便整体悬浮与绕 Y 旋转。
 func _build_milk_mesh() -> ArrayMesh:
@@ -124,26 +108,20 @@ func _build_milk_mesh() -> ArrayMesh:
 		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, st.commit().surface_get_arrays(0))
 		mesh.surface_set_material(mesh.get_surface_count() - 1, _face_mat(String(def[0])))
 	return mesh
-
-
 func _face_mat(tex_file: String) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_texture = load(FACE_DIR + tex_file)
 	m.roughness = 0.65
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return m
-
-
 # ---- UI ----
 func _build_ui() -> void:
 	var layer := CanvasLayer.new()
 	layer.layer = 10
 	add_child(layer)
-
 	_root = Control.new()
 	_root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	layer.add_child(_root)
-
 	# 顶部标题
 	var title := Label.new()
 	title.text = "全是神人"
@@ -155,7 +133,6 @@ func _build_ui() -> void:
 	title.add_theme_color_override("font_outline_color", Color(0.1, 0.08, 0.02, 0.9))
 	title.add_theme_constant_override("outline_size", 10)
 	_root.add_child(title)
-
 	var sub := Label.new()
 	sub.text = "程序化随机地形 · 主副武器 · BOSS 空间挑战"
 	sub.position = Vector2(0, 112)
@@ -164,7 +141,6 @@ func _build_ui() -> void:
 	sub.add_theme_font_size_override("font_size", 16)
 	sub.add_theme_color_override("font_color", Color(1, 1, 1, 0.8))
 	_root.add_child(sub)
-
 	_status = Label.new()
 	_status.position = Vector2(0, 654)
 	_status.size = Vector2(1280, 24)
@@ -172,14 +148,12 @@ func _build_ui() -> void:
 	_status.add_theme_font_size_override("font_size", 15)
 	_status.add_theme_color_override("font_color", Color(1, 0.9, 0.5))
 	_root.add_child(_status)
-
 	var dir_label := Label.new()
 	dir_label.text = "存档目录：%s" % SaveManager.save_dir()
 	dir_label.position = Vector2(20, 694)
 	dir_label.add_theme_font_size_override("font_size", 13)
 	dir_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.45))
 	_root.add_child(dir_label)
-
 	# 三个主按钮：屏幕底部横排，中间留给旋转的奶盒
 	_main_box = HBoxContainer.new()
 	_main_box.position = Vector2(640 - 459, 556)
@@ -190,7 +164,6 @@ func _build_ui() -> void:
 	_add_button(_main_box, "读取存档", func(): _show("save"), 216)
 	_add_button(_main_box, "输入种子", func(): _show("seed"), 216)
 	_add_button(_main_box, "联机对战", _on_pvp, 216)
-
 	# 输入种子面板（带深色底板，避免文字糊在 3D 背景上）
 	_seed_bg = _panel_behind(Vector2(640 - 190, 236), Vector2(380, 250))
 	_seed_box = VBoxContainer.new()
@@ -210,7 +183,6 @@ func _build_ui() -> void:
 	_seed_box.add_child(_seed_edit)
 	_add_button(_seed_box, "用该种子开始", _on_seed_start)
 	_add_button(_seed_box, "返回", func(): _show("main"))
-
 	# 读取存档面板
 	_save_bg = _panel_behind(Vector2(640 - 240, 190), Vector2(480, 400))
 	_save_box = VBoxContainer.new()
@@ -218,8 +190,6 @@ func _build_ui() -> void:
 	_save_box.custom_minimum_size = Vector2(432, 0)
 	_save_box.add_theme_constant_override("separation", 10)
 	_root.add_child(_save_box)
-
-
 func _panel_behind(pos: Vector2, panel_size: Vector2) -> Panel:
 	var p := Panel.new()
 	p.position = pos
@@ -234,8 +204,6 @@ func _panel_behind(pos: Vector2, panel_size: Vector2) -> Panel:
 	p.visible = false
 	_root.add_child(p)
 	return p
-
-
 func _add_button(parent: Control, text: String, cb: Callable, min_w: float = 0.0) -> Button:
 	var b := Button.new()
 	b.text = text
@@ -258,8 +226,6 @@ func _add_button(parent: Control, text: String, cb: Callable, min_w: float = 0.0
 	b.pressed.connect(cb)
 	parent.add_child(b)
 	return b
-
-
 func _show(which: String) -> void:
 	_showing = which
 	_main_box.visible = which == "main"
@@ -273,8 +239,6 @@ func _show(which: String) -> void:
 		_seed_edit.grab_focus()
 	if which == "save":
 		_rebuild_save_list()
-
-
 func _rebuild_save_list() -> void:
 	for c in _save_box.get_children():
 		c.queue_free()
@@ -283,7 +247,6 @@ func _rebuild_save_list() -> void:
 	head.add_theme_font_size_override("font_size", 18)
 	head.add_theme_color_override("font_color", Color(0.95, 0.9, 0.7))
 	_save_box.add_child(head)
-
 	var saves: Array = SaveManager.list_saves()
 	if saves.is_empty():
 		var empty := Label.new()
@@ -298,20 +261,14 @@ func _rebuild_save_list() -> void:
 			b.custom_minimum_size = Vector2(0, 36)
 	_save_box.add_child(_make_spacer())
 	_add_button(_save_box, "返回", func(): _show("main"))
-
-
 func _make_spacer() -> Control:
 	var c := Control.new()
 	c.custom_minimum_size = Vector2(0, 6)
 	return c
-
-
 # ---- 行为 ----
 func _on_new_game() -> void:
 	SaveManager.stage_new_game(-1)
 	_start("新游戏：地形随机生成")
-
-
 func _on_seed_start() -> void:
 	var txt := _seed_edit.text.strip_edges()
 	if txt.is_empty() or not txt.is_valid_int():
@@ -319,16 +276,12 @@ func _on_seed_start() -> void:
 		return
 	SaveManager.stage_new_game(int(txt))
 	_start("新游戏：种子 %s" % txt)
-
-
 func _on_load(path: String) -> void:
 	SaveManager.stage_load(path)
 	if SaveManager.pending_load.is_empty():
 		_status.text = "存档读取失败：文件损坏或不是 JSON"
 		return
 	_start("已读取存档：%s" % path.get_file())
-
-
 func _start(msg: String) -> void:
 	print("[menu] %s" % msg)
 	LoadingUI.show("正在读取素材…")
@@ -366,8 +319,6 @@ func _start(msg: String) -> void:
 	# 交给加载层分帧进场景（每个根节点独占一帧）。这里刻意不 await：
 	# 过程中菜单自己会被释放，续体挂在 LoadingUI 的静态协程上才安全。
 	LoadingUI.enter_game(get_tree(), ps)
-
-
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_ESCAPE and _showing != "main":

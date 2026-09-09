@@ -12,7 +12,6 @@ extends RefCounted
 ##
 ## 挂在 root Window 下（不是 current_scene 的孩子），所以换场景时它不会被顺手释放。
 ## 没显示过时调 stage()/finish() 都是空操作；拿不到场景树（无头自检）时同样静默跳过。
-
 const BG := Color(0.043, 0.047, 0.067, 1.0)
 const GOLD := Color(1.0, 0.88, 0.42)
 const DIM := Color(1, 1, 1, 0.62)
@@ -21,7 +20,6 @@ const RING_Y := 344.0               # 星轮中心（屏幕 720 高里的固定�
 const BAR_Y := 422.0                # 进度条顶边
 const FADE_IN := 0.18
 const FADE_OUT := 0.32
-
 static var _layer: CanvasLayer
 static var _dim: Control            # 一个 Control 兜住全部子节点，淡入淡出只动它的 modulate
 static var _card: Card
@@ -30,17 +28,11 @@ static var _pct: Label
 static var _target := 0.0
 static var _fade_in := 0.0
 static var _fade_out := -1.0
-
-
 static func _tree() -> SceneTree:
 	return Engine.get_main_loop() as SceneTree
-
-
 ## 有没有加载界面正盖着（地形据此决定要不要分片建碰撞）
 static func active() -> bool:
 	return _layer != null and is_instance_valid(_layer)
-
-
 ## 盖上加载层（重复调用只更新文字，不会盖第二层）
 static func show(msg := "正在进入世界…") -> void:
 	var tr := _tree()
@@ -61,30 +53,24 @@ static func show(msg := "正在进入世界…") -> void:
 	_layer.layer = 200                              # 盖住 HUD(10) 与背包
 	_layer.process_mode = Node.PROCESS_MODE_ALWAYS   # 暂停/背包也不该挡住加载动画
 	tr.root.add_child(_layer)
-
 	_dim = Control.new()
 	_dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	_dim.modulate = Color(1, 1, 1, 0.0)
 	_layer.add_child(_dim)
-
 	var bg := ColorRect.new()
 	bg.color = BG
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	bg.mouse_filter = Control.MOUSE_FILTER_STOP
 	_dim.add_child(bg)
-
 	_card = Card.new()
 	_card.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_dim.add_child(_card)
-
 	_dim.add_child(_caption("全是神人", 236, 44, Color(1, 0.95, 0.72)))
 	_pct = _caption("0%", 440, 18, GOLD)
 	_dim.add_child(_pct)
 	_stage = _caption(msg, 472, 16, DIM)
 	_dim.add_child(_stage)
-
-
 static func _caption(text: String, y: float, size_pt: int, col: Color) -> Label:
 	var l := Label.new()
 	l.text = text
@@ -97,8 +83,6 @@ static func _caption(text: String, y: float, size_pt: int, col: Color) -> Label:
 		l.add_theme_color_override("font_outline_color", Color(0.1, 0.08, 0.02, 0.9))
 		l.add_theme_constant_override("outline_size", 8)
 	return l
-
-
 ## 报进度：frac 取 0..1（同一个值反复给也没关系），msg 非空则换一行说明
 ## 进度只许前进：各阶段是按物理帧/后台线程推进的，彼此会交错
 ## （例如地形已经跑到 100%，分帧进场景那边才补上最后一个节点的 42%），
@@ -114,16 +98,12 @@ static func stage(frac: float, msg := "") -> void:
 		_card.target = _target
 	if msg != "" and _stage != null and is_instance_valid(_stage):
 		_stage.text = msg
-
-
 ## 收摊：淡出后自毁。没盖着时调用是空操作（幂等）。
 static func finish() -> void:
 	if not active() or _fade_out >= 0.0:
 		return
 	stage(1.0, "世界就绪")
 	_fade_out = FADE_OUT
-
-
 ## 每个根节点在加载界面上的名字（只影响文案，不影响顺序）
 const BOOT_LABEL := {
 	"WorldEnvironment": "正在打亮天空",
@@ -138,8 +118,6 @@ const BOOT_LABEL := {
 	"HUD": "正在装界面",
 	"Inventory": "正在整理背包",
 }
-
-
 ## 分帧进场景：instantiate 出来的根节点先单独进树，再把直接子节点一个一个挂回去。
 ## 每个节点的 _ready 只占一帧，中间这一帧回到这里 → 覆盖层能继续画，
 ## 于是"点开始后整幅画面僵死 4.5 秒"变成"一格一格推进的加载动画"。
@@ -166,8 +144,6 @@ static func enter_game(tr: SceneTree, ps: PackedScene) -> void:
 			String(BOOT_LABEL.get(String(c.name), "正在唤醒世界")), i + 1, total])
 		w.add_child(c)
 		await tr.process_frame
-
-
 ## 每帧由 Card._process 驱动：淡入淡出 + 收尾清理
 static func _tick(delta: float) -> void:
 	if _layer == null or not is_instance_valid(_layer):
@@ -190,14 +166,11 @@ static func _tick(delta: float) -> void:
 		_card = null
 		_stage = null
 		_pct = null
-
-
 # ---- 自绘卡片：12 枚星形指针转圈 + 进度条（进度由外部喂，这里负责让它动起来）----
 class Card extends Control:
 	var target := 0.0
 	var _shown := 0.0
 	var _t := 0.0
-
 	func _process(delta: float) -> void:
 		_t += delta
 		# 缓动追上目标：进度条滑得顺，也避免"卡在某一档"时看着像死机
@@ -207,7 +180,6 @@ class Card extends Control:
 		if pct != null and is_instance_valid(pct):
 			pct.text = "%d%%" % int(roundf(_shown * 100.0))
 		queue_redraw()
-
 	func _draw() -> void:
 		var cx := size.x * 0.5
 		var cy := RING_Y

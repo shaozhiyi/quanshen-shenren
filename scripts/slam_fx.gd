@@ -9,11 +9,9 @@ extends Node3D
 ## 贴图用 Image 逐像素画（Godot 的 Image 没有带宽度的画线 API，裂纹用"沿路径盖圆点"实现），
 ## 生成一次后 static 缓存复用，避免每次砸地都重画 256×256。
 ## 只做"地裂 + 一圈"两层：纯白场地里加尘圈会在斜视角糊出一大片怪边，反而脏。
-
 const CRACK_SIDE := 256          # 地裂贴图分辨率
 const CRACK_LIFE := 2.4          # 地裂残留时长（秒）
 const WAVE_LIFE := 0.55          # 扩散光环时长
-
 static var _crack_tex: ImageTexture
 static var _ring_tex: ImageTexture
 static var _lane_tex: ImageTexture
@@ -21,7 +19,6 @@ static var _star_tex: ImageTexture
 static var _star_mesh: ArrayMesh         # 立体星点（8 面晶簇），全场景共用一份
 static var _slash_tex: ImageTexture
 static var _streak_tex: ImageTexture
-
 var _t := 0.0
 var _radius := 6.0
 var _tint := Color(1, 1, 1)
@@ -59,7 +56,6 @@ var _glow_mi: MeshInstance3D        # 立体星点外的一圈发光晕（公告
 var _mode := ""                     # "" = 砸地/光环；slash = 剑气；wind = 冲刺拖尾
 var _layers: Array = []             # 每项 {mi, mat, col, a0, a1, s0, s1, delay, life}
 var _mode_life := 0.0               # 本模式总时长
-
 # ---- 星点四色：规律固定为红→黄→蓝→绿循环，颜色即效果预告 ----
 const STAR_KINDS := ["red", "yellow", "blue", "green"]
 const STAR_COLORS := {
@@ -70,33 +66,21 @@ const STAR_COLORS := {
 }
 # 飞行速度倍率：红色更快更难躲、蓝色更慢好躲（黄色/绿色保持基准）
 const STAR_SPEED_MULT := {"red": 1.5, "yellow": 1.0, "blue": 0.7, "green": 1.0}
-
-
 static func star_kind(index: int) -> String:
 	## 第 index 颗环绕星点对应的颜色种类（红黄蓝绿依次循环）
 	return STAR_KINDS[posmod(index, STAR_KINDS.size())]
-
-
 static func star_color(kind: String) -> Color:
 	return STAR_COLORS.get(kind, Color(1, 0.93, 0.62))
-
-
 static func star_speed_mult(kind: String) -> float:
 	## 该颜色星点的飞行速度倍率（红 ×1.5、蓝 ×0.7，其余 ×1.0）
 	return float(STAR_SPEED_MULT.get(kind, 1.0))
-
-
 ## 砸地特效：at 为地面点（贴地画），radius 为裂纹半径；damage > 0 时扩散光环扫到玩家会扣血
 static func spawn_slam(parent: Node, at: Vector3, radius: float, tint := Color(1, 1, 1),
 		damage := 0.0) -> void:
 	_spawn(parent, at, radius, tint, true, -1.0, damage)
-
-
 ## 单个扩散光环（二段跳等轻量反馈）
 static func spawn_ring(parent: Node, at: Vector3, radius: float, tint := Color(1, 1, 1), life := 0.45) -> void:
 	_spawn(parent, at, radius, tint, false, life, 0.0)
-
-
 static func _spawn(parent: Node, at: Vector3, radius: float, tint: Color, crack: bool,
 		life: float, damage: float) -> void:
 	if parent == null or not is_instance_valid(parent):
@@ -109,8 +93,6 @@ static func _spawn(parent: Node, at: Vector3, radius: float, tint: Color, crack:
 	fx._ring_damage = maxf(damage, 0.0)
 	parent.add_child(fx)
 	fx.global_position = at
-
-
 ## 射出的星点：从 at 沿 dir 飞出（带重力），**只有落到地板上才消失**（life 只作兜底上限）
 ## kind 决定颜色与效果：red 高伤 / yellow 常规 / blue 命中减速 5 秒 / green 无伤但回 5 血
 static func spawn_star(parent: Node, at: Vector3, dir: Vector3, speed: float, life: float,
@@ -131,8 +113,6 @@ static func spawn_star(parent: Node, at: Vector3, dir: Vector3, speed: float, li
 	fx._base_col = star_color(fx._kind)
 	parent.add_child(fx)
 	fx.global_position = at
-
-
 ## 挥剑剑气：在 at 处朝 facing 立一片斜月牙弧光（垂直于视线、跟着挥砍方向放大后淡出）
 static func spawn_slash(parent: Node, at: Vector3, facing: Vector3, size := 1.7,
 		tint := Color(0.72, 0.86, 1.0)) -> void:
@@ -149,8 +129,6 @@ static func spawn_slash(parent: Node, at: Vector3, facing: Vector3, size := 1.7,
 		to = at + Vector3(0.0, 0.0, -1.0)
 	fx.look_at(to, Vector3.UP)
 	fx._build_slash()
-
-
 ## 冲刺拖尾：从 at 沿 dir 的反方向铺几段风痕（十字片，任何角度都看得见）
 static func spawn_dash_trail(parent: Node, at: Vector3, dir: Vector3, length := 3.6,
 		tint := Color(0.86, 0.93, 1.0)) -> void:
@@ -164,8 +142,6 @@ static func spawn_dash_trail(parent: Node, at: Vector3, dir: Vector3, length := 
 	parent.add_child(fx)
 	fx.global_position = at
 	fx._build_wind()
-
-
 ## 冲刺"眼前"反馈：挂在相机下的一圈径向速度线
 ## （拖尾留在身后，第一人称根本看不见；要让玩家自己感觉到冲出去，得在视野四周拉风线）
 static func spawn_dash_rush(cam: Node3D, tint := Color(0.80, 0.90, 1.0)) -> void:
@@ -176,8 +152,6 @@ static func spawn_dash_rush(cam: Node3D, tint := Color(0.80, 0.90, 1.0)) -> void
 	fx._tint = tint
 	cam.add_child(fx)
 	fx._build_rush()
-
-
 static func star_texture() -> ImageTexture:
 	## 32×32 四角星：十字星芒 + 亮芯，边缘渐隐（环绕与射出共用一张）
 	if _star_tex != null:
@@ -200,8 +174,6 @@ static func star_texture() -> ImageTexture:
 				img.set_pixel(x, y, Color(1, 0.97, 0.78, clampf(v * 1.35, 0.0, 1.0)))
 	_star_tex = ImageTexture.create_from_image(img)
 	return _star_tex
-
-
 func _ready() -> void:
 	add_to_group("slam_fx")
 	if _star:
@@ -252,8 +224,6 @@ func _ready() -> void:
 	_wave = _make_quad(ring_texture(), _radius * 2.6, 0.05)
 	_wave_mat = _wave.material_override as StandardMaterial3D
 	_wave.scale = Vector3(0.12, 1.0, 0.12)
-
-
 func _try_hit_player(from: Vector3, to: Vector3) -> void:
 	## 用"本帧起点→终点"这条线段到玩家身体中心的最近距离判命中：
 	## 星点 42 米/秒、每帧位移约 0.7 米，直接点距判会在低帧率下穿过去
@@ -270,8 +240,6 @@ func _try_hit_player(from: Vector3, to: Vector3) -> void:
 		p.apply_slow(_slow)             # 蓝色：移速 -50% 持续 5 秒（无敌期免疫）
 	if _heal > 0.0 and p.has_method("heal"):
 		p.heal(_heal)                   # 绿色：不回血上限外，直接 +5
-
-
 func _floor_y(p: Vector3) -> float:
 	## 星点下方最近的地面：地形表面；若它还在某套 BOSS 空间地板上方，则该地板更优先
 	## （空间边框 800 米，大地图坐标几乎全落在里面，不能无条件取地板，
@@ -296,8 +264,6 @@ func _floor_y(p: Vector3) -> float:
 		if p.y >= af - 0.5:
 			y = maxf(y, af)
 	return y
-
-
 func _land_puff() -> void:
 	## 落点反馈：一圈本颜色的小光环（绿色落地上也该看得出来是"补血"的那颗）
 	var p := get_parent()
@@ -305,8 +271,6 @@ func _land_puff() -> void:
 		return
 	var gy := _floor_y(global_position)
 	spawn_ring(p, Vector3(global_position.x, gy + 0.05, global_position.z), 1.1, _base_col, 0.34)
-
-
 static func _seg_point_dist(a: Vector3, b: Vector3, p: Vector3) -> float:
 	var ab := b - a
 	var len2 := ab.length_squared()
@@ -314,8 +278,6 @@ static func _seg_point_dist(a: Vector3, b: Vector3, p: Vector3) -> float:
 		return a.distance_to(p)
 	var t := clampf((p - a).dot(ab) / len2, 0.0, 1.0)
 	return (a + ab * t).distance_to(p)
-
-
 func _make_quad(tex: Texture2D, size: float, y: float) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	var pm := PlaneMesh.new()
@@ -333,8 +295,6 @@ func _make_quad(tex: Texture2D, size: float, y: float) -> MeshInstance3D:
 	mi.material_override = mat
 	add_child(mi)
 	return mi
-
-
 func _process(delta: float) -> void:
 	_t += delta
 	if _star:
@@ -402,8 +362,6 @@ func _process(delta: float) -> void:
 					p.take_damage(_ring_damage)   # 吃防具减伤与无敌免疫
 	if _t >= maxf(CRACK_LIFE if _want_crack else 0.0, wl):
 		queue_free()
-
-
 # ---- 剑气：一道细长弧光 + 一层放大淡晕（叠加发光），沿挥砍方向快速放大后淡出 ----
 func _build_slash() -> void:
 	var size := maxf(_radius, 0.6)
@@ -414,8 +372,6 @@ func _build_slash() -> void:
 	_add_layer_quad(slash_texture(), Vector3(0.0, 0.0, -0.37),
 		Vector3(0.0, 0.0, -40.0), Vector2(size * 0.92, size * 0.92),
 		Color(0.85, 0.93, 1.0), 0.90, 1.02, 0.30, 0.0, 0.03, 0.28, true)
-
-
 # ---- 冲刺拖尾：沿运动反方向铺 4 段风痕十字片 + 身前一圈淡白环 ----
 func _build_wind() -> void:
 	var length := maxf(_radius, 1.2)
@@ -437,8 +393,6 @@ func _build_wind() -> void:
 	var p := get_parent()
 	if p != null and is_instance_valid(p):
 		spawn_ring(p, global_position + Vector3(0.0, 0.06, 0.0), 1.35, Color(1, 1, 1), 0.34)
-
-
 # ---- 冲刺速度线：挂在相机下，绕视野一圈 9 条径向风痕向外拉伸淡出 ----
 func _build_rush() -> void:
 	_mode_life = 0.26
@@ -451,8 +405,6 @@ func _build_rush() -> void:
 		_add_layer_quad(streak_texture(), at,
 			Vector3(0.0, 0.0, rad_to_deg(ang)), Vector2(0.34, 0.05),
 			_tint, 0.80, 1.55, 0.62, 0.0, randf_range(0.0, 0.03), 0.22, true)
-
-
 ## 建一片受 _layers 统一驱动的 quad（位置/欧拉角/尺寸/颜色/起止缩放与透明度/延迟时长）
 ## add=true 用叠加混合：亮背景上也不会糊成一团灰雾，而是发光
 func _add_layer_quad(tex: Texture2D, pos: Vector3, rot_deg: Vector3, size: Vector2,
@@ -477,8 +429,6 @@ func _add_layer_quad(tex: Texture2D, pos: Vector3, rot_deg: Vector3, size: Vecto
 	add_child(mi)
 	_layers.append({"mi": mi, "mat": mat, "col": col, "a0": a0, "a1": a1,
 		"s0": s0, "s1": s1, "delay": delay, "life": maxf(life, 0.05)})
-
-
 # ---- 共用资源：立体星点晶簇（8 面，高 1 米、宽 0.44 米，逐面明暗不同）----
 static func star_mesh() -> ArrayMesh:
 	if _star_mesh != null:
@@ -501,8 +451,6 @@ static func star_mesh() -> ArrayMesh:
 		_tri(st, bot, b, mid, 0.56 - 0.12 * float(i))
 	_star_mesh = st.commit()
 	return _star_mesh
-
-
 static func _tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, bright: float) -> void:
 	## 加一个三角面：法线朝外（朝内就换序）、整面同一个亮度（顶点色 → 棱面看得见）
 	var cen := (a + b + c) * (1.0 / 3.0)
@@ -517,8 +465,6 @@ static func _tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, bright: fl
 		st.set_normal(n)
 		st.set_color(col)
 		st.add_vertex(v)
-
-
 # ---- 剑气：细长弧形刀光（半径 0.78→1.0 的窄带，张角约 195°，两端渐隐）----
 static func slash_texture() -> ImageTexture:
 	if _slash_tex != null:
@@ -551,8 +497,6 @@ static func slash_texture() -> ImageTexture:
 				img.set_pixel(x, y, Color(1, 1, 1, clampf(a, 0.0, 1.0)))
 	_slash_tex = ImageTexture.create_from_image(img)
 	return _slash_tex
-
-
 # ---- 风痕条：横向软边亮带（冲刺拖尾用）----
 static func streak_texture() -> ImageTexture:
 	if _streak_tex != null:
@@ -572,8 +516,6 @@ static func streak_texture() -> ImageTexture:
 				img.set_pixel(x, y, Color(1, 1, 1, clampf(a, 0.0, 1.0)))
 	_streak_tex = ImageTexture.create_from_image(img)
 	return _streak_tex
-
-
 # ---- 贴图：径向裂纹（暗色）与软边光环（白色，靠 albedo_color 上色） ----
 static func crack_texture() -> ImageTexture:
 	if _crack_tex != null:
@@ -618,8 +560,6 @@ static func crack_texture() -> ImageTexture:
 			Color(0.08, 0.07, 0.08, rng.randf_range(0.35, 0.8)))
 	_crack_tex = ImageTexture.create_from_image(img)
 	return _crack_tex
-
-
 static func ring_texture() -> ImageTexture:
 	if _ring_tex != null:
 		return _ring_tex
@@ -643,8 +583,6 @@ static func ring_texture() -> ImageTexture:
 				img.set_pixel(x, y, Color(1, 1, 1, clampf(a, 0.0, 1.0)))
 	_ring_tex = ImageTexture.create_from_image(img)
 	return _ring_tex
-
-
 static func lane_texture() -> ImageTexture:
 	## 冲撞预警带（大运）：128×256，横向 = 车宽方向、纵向 = 撞击方向且可纵向平铺。
 	## 两侧一道红色实线边 + 中间一排排朝前的箭头 + 极淡的危险区填充。
@@ -673,8 +611,6 @@ static func lane_texture() -> ImageTexture:
 				img.set_pixel(x, y, Color(1, 0.92, 0.90, clampf(a, 0.0, 1.0)))
 	_lane_tex = ImageTexture.create_from_image(img)
 	return _lane_tex
-
-
 static func _stamp(img: Image, cx: float, cy: float, rad: float, col: Color) -> void:
 	## 在整数像素上盖一个软边圆点（画裂纹用）：越靠边缘越透明，避免锯齿硬边
 	var x0 := maxi(int(cx - rad - 1), 0)

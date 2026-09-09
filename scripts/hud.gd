@@ -3,14 +3,12 @@ extends CanvasLayer
 ## 条控件用 HealthBarX（Godot 素材库，MIT 协议，纯矢量绘制）。
 ## 血条监听 hp_changed 实时更新；无敌期把血条整体染成金色（与普通红血区分）。
 ## 魔法上限 200 是给之后的技能系统预留的；经验条本版不涨（升级系统未做）。
-
 @export var bar_position := Vector2(86, 20)
 @export var bar_size := Vector2(238, 28)
 @export var coord_position := Vector2(24, 92)
 @export var minimap_size := Vector2(160, 160)
 @export var minimap_radius := 90.0
 @export var minimap_position := Vector2(1280 - 24 - 160, 20)
-
 # ---- 播报提示（击中 / 击败）：下面这些数字与文案都可以直接改 ----
 @export var feed_max := 4                        # 最多同时几条，超了就删最末尾（最旧）那条
 @export var feed_line_width := 150.0             # 每条长度：血条 238 的一半多一点
@@ -24,9 +22,7 @@ extends CanvasLayer
 @export var feed_fmt_hit := "你使用%s击中%s"      # 击中单位：武器、单位
 @export var feed_fmt_kill := "你使用%s击败了%s"   # 击败普通单位：武器、单位
 @export var feed_fmt_boss_kill := "你击败了%s"    # 击杀 BOSS：单位
-
 const MAP_GRID := 60  # 采样网格（每刷新 3600 次高度采样，放大显示）
-
 # 血条三档（普通红 / 过渡橙红 / 濒危暗红）与无敌金条
 const HP_FILL := Color(0.86, 0.24, 0.22)
 const HP_MID := Color(0.93, 0.44, 0.16)
@@ -34,7 +30,6 @@ const HP_LOW := Color(0.63, 0.06, 0.07)
 const HP_GOLD := Color(0.95, 0.78, 0.28)
 const MP_FILL := Color(0.26, 0.52, 0.95)
 const EXP_FILL := Color(0.30, 0.82, 0.36)
-
 var _bar: Control
 var _mp_bar: Control
 var _exp_bar: Control
@@ -64,15 +59,12 @@ var _lv_shown := -1
 var _inv_bar_golden := false
 var _feed: Control                       # 播报容器（血条右侧）
 var _feed_lines: Array = []              # 从上到下 = 从新到旧，每项 {label: Label, age: float}
-
-
 func _ready() -> void:
 	layer = 10
 	_player = get_node_or_null("../Player") as Node3D
 	if _player == null:
 		push_warning("HUD: 未找到 Player 节点")
 		return
-
 	# ---- 等级徽章（贴在血条左侧）----
 	_lv_label = Label.new()
 	_lv_label.position = Vector2(bar_position.x - 62, bar_position.y - 1)
@@ -84,7 +76,6 @@ func _ready() -> void:
 	_lv_label.add_theme_constant_override("outline_size", 5)
 	_lv_label.text = "LV1"
 	add_child(_lv_label)
-
 	# ---- 血条（红）----
 	_bar = _make_bar(bar_position, bar_size, HP_FILL, true, HP_LABEL_FMT, 16, 100.0)
 	_set_hp_palette(false)
@@ -92,7 +83,6 @@ func _ready() -> void:
 	var hp: float = _player.get("hp") if _player.get("hp") != null else max_hp
 	_bar.set_value(hp / max_hp * 100.0, false)
 	_player.connect("hp_changed", _on_hp_changed)
-
 	# ---- 魔法条（蓝，上限 200）----
 	# 注意：HealthBarX 是"百分比"条——set_value 会把值归一成 0..100 存，
 	# 画填充时又除以 max_value。所以条量程必须恒为 100、传百分比进去；
@@ -104,13 +94,11 @@ func _ready() -> void:
 	_mp_bar.set_value(mp_now / mp_max * 100.0, false)
 	_mp_shown = mp_now
 	_mp_max_shown = mp_max
-
 	# ---- 经验条（绿，细）：升级系统未做，本版恒为 0 ----
 	_exp_bar = _make_bar(Vector2(bar_position.x, bar_position.y + 52), Vector2(bar_size.x, 8),
 		EXP_FILL, false, "", 10, 1.0)
 	_exp_bar.set_value(_exp_ratio() * 100.0, false)
 	_exp_shown = _exp_ratio()
-
 	# 坐标显示（状态区下方）：大地图报世界坐标，进 BOSS 空间改报战斗坐标
 	_coord_label = Label.new()
 	_coord_label.position = coord_position
@@ -120,7 +108,6 @@ func _ready() -> void:
 	_coord_label.add_theme_constant_override("outline_size", 3)
 	_coord_label.text = "世界 X: 0.0  Y: 0.0  Z: 0.0"
 	add_child(_coord_label)
-
 	# 本局地形种子（同一种子 = 同一片地形与石头分布，可复现/分享）
 	var seed_label := Label.new()
 	seed_label.position = Vector2(24, 692)
@@ -132,7 +119,6 @@ func _ready() -> void:
 	var tseed: int = int(gnd.get("terrain_seed")) if gnd != null else 0
 	seed_label.text = "地形种子 %d ｜ F5 存档（save/*.json）" % tseed
 	add_child(seed_label)
-
 	# 右上角地形小地图：按海拔着色显示周围地形（深=低，浅=高），白点=玩家
 	_ground = get_node_or_null("../Ground")
 	_map_bg = ColorRect.new()
@@ -146,12 +132,10 @@ func _ready() -> void:
 	_map_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_map_rect)
 	_update_minimap()
-
 	# ---- 武器 UI：提示文字 / 蓄力条 / 准星 ----
 	_sword = get_node_or_null("../Player/Camera3D/Sword")
 	_bow = get_node_or_null("../Player/Camera3D/Bow")
 	_staff = get_node_or_null("../Player/Camera3D/Staff")
-
 	_weapon_label = Label.new()
 	_weapon_label.position = coord_position + Vector2(0, 24)
 	_weapon_label.add_theme_font_size_override("font_size", 15)
@@ -160,7 +144,6 @@ func _ready() -> void:
 	_weapon_label.add_theme_constant_override("outline_size", 3)
 	_weapon_label.text = "当前：剑（X 挥砍）｜C 切换武器"
 	add_child(_weapon_label)
-
 	_hint_label = Label.new()
 	_hint_label.position = Vector2(640 - 240, 610)
 	_hint_label.size = Vector2(480, 26)
@@ -171,7 +154,6 @@ func _ready() -> void:
 	_hint_label.add_theme_constant_override("outline_size", 4)
 	_hint_label.visible = false
 	add_child(_hint_label)
-
 	var cstyle := HealthBarXStyle.new()
 	cstyle.background_color = Color(0.06, 0.06, 0.09, 0.75)
 	cstyle.fill_color = CHARGE_GOLD
@@ -190,7 +172,6 @@ func _ready() -> void:
 	_charge_bar.size = Vector2(260, 16)
 	_charge_bar.visible = false
 	add_child(_charge_bar)
-
 	_cross = Control.new()
 	_cross.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_cross.set_anchors_preset(Control.PRESET_CENTER)
@@ -201,20 +182,14 @@ func _ready() -> void:
 	_add_tick(Vector2(-1, -15), Vector2(2, 9))
 	_add_tick(Vector2(-1, 6), Vector2(2, 9))
 	_add_tick(Vector2(-2, -2), Vector2(4, 4))
-
 	_build_feed()
 	_bind_feed_targets()
-
-
 # ---- 播报提示：血条右侧最多 feed_max 条，新条目挤进来就把最末尾（最旧）那条删掉 ----
-
 func _build_feed() -> void:
 	_feed = Control.new()
 	_feed.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_feed.position = bar_position + feed_start_offset + Vector2(bar_size.x, 0)
 	add_child(_feed)
-
-
 func _bind_feed_targets() -> void:
 	## 按分组找实体（层级一改 ../ 路径就静默取 null，见项目惯例）；
 	## BOSS 由 BossField 生成、比 HUD 早进树，所以这里一次绑完就够了
@@ -223,8 +198,6 @@ func _bind_feed_targets() -> void:
 			b.damaged.connect(_on_unit_damaged.bind(b))
 		if b.has_signal("died") and not b.died.is_connected(_on_unit_died):
 			b.died.connect(_on_unit_died)
-
-
 func announce(text: String, col: Color) -> void:
 	## 播一条提示。文案自己拼（见 _on_unit_damaged / _on_unit_died）
 	if _feed == null or text == "":
@@ -244,8 +217,6 @@ func announce(text: String, col: Color) -> void:
 	while _feed_lines.size() > feed_max:
 		_drop_line(_feed_lines.size() - 1)
 	_layout_feed()
-
-
 func _drop_line(i: int) -> void:
 	if i < 0 or i >= _feed_lines.size():
 		return
@@ -254,21 +225,15 @@ func _drop_line(i: int) -> void:
 	var l: Label = item.get("label")
 	if l != null and is_instance_valid(l):
 		l.queue_free()
-
-
 func _layout_feed() -> void:
 	var step := feed_line_height + feed_gap
 	for i in _feed_lines.size():
 		var row := i if feed_newest_on_top else _feed_lines.size() - 1 - i
 		(_feed_lines[i].get("label") as Control).position = Vector2(0, float(row) * step)
-
-
 func _on_unit_damaged(weapon: String, _amount: int, unit: Node) -> void:
 	if not feed_announce_hits:
 		return
 	announce(feed_fmt_hit % [weapon, _unit_name(unit)], Color(1, 0.98, 0.86, 0.95))
-
-
 func _on_unit_died(unit: Node) -> void:
 	var nm := _unit_name(unit)
 	## 击杀 BOSS 只报"你击败了yy"；将来若有普通杂兵，报"你使用xx击败了yy"
@@ -279,15 +244,11 @@ func _on_unit_died(unit: Node) -> void:
 		if unit != null:
 			w = String(unit.get("last_weapon"))
 		announce(feed_fmt_kill % [w, nm], Color(1, 0.84, 0.35, 1))
-
-
 func _unit_name(unit: Node) -> String:
 	if unit == null or not is_instance_valid(unit):
 		return "目标"
 	var nm := String(unit.get("boss_name"))
 	return nm if nm != "" else String(unit.name)
-
-
 func _feed_tick(delta: float) -> void:
 	## feed_life = 0 表示不自动消失，只按条数淘汰
 	if feed_life <= 0.0:
@@ -299,8 +260,6 @@ func _feed_tick(delta: float) -> void:
 			_drop_line(i)
 		i -= 1
 	_layout_feed()
-
-
 func _make_bar(pos: Vector2, size: Vector2, fill: Color, thresholds: bool,
 		fmt: String, fsize: int, label_max: float) -> Control:
 	## 统一风格的状态条：深色底 + 细边框 + 可选数字；thresholds=true 时按三档换色
@@ -341,8 +300,6 @@ func _make_bar(pos: Vector2, size: Vector2, fill: Color, thresholds: bool,
 	bar.size = size
 	add_child(bar)
 	return bar
-
-
 func _set_hp_palette(golden: bool) -> void:
 	## 血条配色：平时红色系（越低越暗），无敌期整体换成金色
 	## （旧版靠 modulate 染金，血条改红后 modulate 会把红压成暗橙，所以改成直接换色）
@@ -360,15 +317,11 @@ func _set_hp_palette(golden: bool) -> void:
 	s.color_orange = mid
 	s.color_red = low
 	_bar.queue_redraw()
-
-
 func _exp_ratio() -> float:
 	## 经验条比例 0..1（升级系统未实现，玩家侧恒为 0；接口留好，之后加了自动就显示）
 	if _player != null and _player.has_method("exp_ratio"):
 		return clampf(float(_player.call("exp_ratio")), 0.0, 1.0)
 	return 0.0
-
-
 func _add_tick(pos: Vector2, size: Vector2) -> void:
 	var r := ColorRect.new()
 	r.position = pos
@@ -376,22 +329,16 @@ func _add_tick(pos: Vector2, size: Vector2) -> void:
 	r.color = Color(1, 1, 1, 0.85)
 	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_cross.add_child(r)
-
-
 func _enh_lv(id: String) -> int:
 	## 某件装备的强化等级（玩家未就绪/无方法时按 0）
 	if _player != null and _player.has_method("enhance_level_of"):
 		return int(_player.call("enhance_level_of", id))
 	return 0
-
-
 func _sword_power() -> int:
 	## 剑的最终攻击力：向玩家要（含指数强化与向下取整），玩家未就绪时退回基础值
 	if _player != null and _player.has_method("sword_damage"):
 		return int(_player.call("sword_damage"))
 	return 50
-
-
 func _next_weapon_text() -> String:
 	## 「C 切换弓箭」那半句：下一把是哪只由玩家算（会跳过没装备的），这里只负责取名字
 	if _player == null or not _player.has_method("next_weapon_index"):
@@ -400,8 +347,6 @@ func _next_weapon_text() -> String:
 		return "（只装备了一把，去背包再拖一把武器上栏）"
 	var i := int(_player.call("next_weapon_index"))
 	return "切换%s" % String(_enh_name(String(_player.call("weapon_id_at", i))))
-
-
 func _skill_text(w: Node, two := false) -> String:
 	## 状态行里的技能段：就绪=「1 名字 说明」；冷却中=「1名字 冷却x.x秒」；缺蓝=「1名字 缺蓝N」
 	## two=true 读第二技能（数字 2）那套。没有技能的武器返回空串，行尾不会多出孤零零的「｜」
@@ -434,8 +379,6 @@ func _skill_text(w: Node, two := false) -> String:
 	if not ok:
 		return "｜%s%s 缺蓝%d" % [key, nm, cost]
 	return "｜%s %s %s" % [key, nm, desc]
-
-
 func _enh_name(id: String) -> String:
 	var inv := get_node_or_null("Inventory")
 	if inv != null and inv.has_method("item_name"):
@@ -446,15 +389,11 @@ func _enh_name(id: String) -> String:
 		"staff": return "法杖"
 		"armor": return "防具"
 	return id
-
-
 ## 坐标显示约定：X = 横轴、Y = 纵轴（前后方向）、Z = 高度。
 ## 引擎内部是 X/Z 水平 + Y 竖直，这里只换"给人看"的顺序（把高度放到第三个数），
 ## 存档、小地图、物理一律仍按引擎轴，别跟着换。
 func _coord_text(v: Vector3) -> String:
 	return "X: %.1f  Y: %.1f  Z: %.1f" % [v.x, v.z, v.y]
-
-
 func _process(delta: float) -> void:
 	_feed_tick(delta)
 	if _player != null and _coord_label != null:
@@ -471,7 +410,6 @@ func _process(delta: float) -> void:
 			if _player.global_position.distance_squared_to(_last_map_pos) >= 36.0:
 				_last_map_pos = _player.global_position
 				_update_minimap()
-
 	# 无敌：血条整体换成金色并把数字换成"永久"（时长仍是 10 秒，不另开倒计时文字）
 	if _player != null and _player.has_method("is_invincible") and _bar != null:
 		var inv: bool = _player.call("is_invincible")
@@ -480,7 +418,6 @@ func _process(delta: float) -> void:
 			_bar.style.label_format = want_fmt
 			_bar.queue_redraw()
 		_set_hp_palette(inv)
-
 	# 魔法条 / 经验条 / 等级：值变了才重绘（静止时零开销）
 	if _player != null and _mp_bar != null:
 		var mp: float = float(_player.get("mp")) if _player.get("mp") != null else 0.0
@@ -500,7 +437,6 @@ func _process(delta: float) -> void:
 			if lv != _lv_shown:
 				_lv_shown = lv
 				_lv_label.text = "LV%d" % lv
-
 	# 武器状态：提示文字 / 准星 / 蓄力条（剑、弓、法杖三把共用这一段）
 	if _bow != null and _sword != null:
 		var staff_on: bool = _staff != null and bool(_staff.get("active"))
@@ -558,7 +494,6 @@ func _process(delta: float) -> void:
 			_charge_bar.call("set_value", bar_val, false)
 		else:
 			_charge_bar.visible = false
-
 	# BOSS 空间交互提示 + 空间内隐藏小地图（只保留按键指引，出招过程不再刷屏）
 	if _player != null and _player.has_method("in_arena"):
 		var in_arena: bool = _player.call("in_arena")
@@ -584,8 +519,6 @@ func _process(delta: float) -> void:
 				_hint_label.text = "靠近 %s —— 按 E 挑战（先赢一次才能切换难度）" % String(boss.get("boss_name"))
 		else:
 			_hint_label.visible = false
-
-
 func _update_minimap() -> void:
 	## 采样周围地形高度，绘制成深-浅高度图（60x60 采样后放大），白色十字为玩家位置
 	## 每次重建 60x60 源图（resize 会就地改尺寸，复用旧图会只刷新左上角）
@@ -625,8 +558,6 @@ func _update_minimap() -> void:
 		_map_rect.texture = _map_tex
 	else:
 		_map_tex.update(img)
-
-
 func _on_hp_changed(current: float, maximum: float) -> void:
 	# 填充量程恒为 100，传百分比（文字上限走 label_custom_max）
 	if _bar != null:

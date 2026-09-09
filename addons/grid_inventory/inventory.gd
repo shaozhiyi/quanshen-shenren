@@ -11,28 +11,19 @@ class_name Inventory
 ## one-call save/load. Same classes, drop-in upgrade:
 ##   https://godot-forge.itch.io/grid-inventory-godot
 ## ─────────────────────────────────────────────────────────────────────────
-
 signal inventory_changed
 signal item_added(item: InvItem)
 signal full(item: InvItem)
-
 @export var size: int = 20:
 	set(value):
 		size = max(1, value)
 		_resize_slots()
-
 ## Each slot is either null or {"item": InvItem}.
 var slots: Array = []
-
-
 func _init(slot_count: int = 20) -> void:
 	size = slot_count
-
-
 func _resize_slots() -> void:
 	slots.resize(size)
-
-
 ## Places `item` in the first empty slot. Returns true if it fit.
 func add_item(item: InvItem) -> bool:
 	if item == null:
@@ -45,8 +36,6 @@ func add_item(item: InvItem) -> bool:
 	item_added.emit(item)
 	inventory_changed.emit()
 	return true
-
-
 ## Removes whatever is in `index`.
 func remove_at(index: int) -> void:
 	if index < 0 or index >= slots.size():
@@ -54,8 +43,6 @@ func remove_at(index: int) -> void:
 	if slots[index] != null:
 		slots[index] = null
 		inventory_changed.emit()
-
-
 ## Swaps the contents of two slots (used by drag and drop).
 func move_slot(from_index: int, to_index: int) -> void:
 	if from_index == to_index:
@@ -68,14 +55,10 @@ func move_slot(from_index: int, to_index: int) -> void:
 	slots[to_index] = slots[from_index]
 	slots[from_index] = tmp
 	inventory_changed.emit()
-
-
 func clear() -> void:
 	for i in slots.size():
 		slots[i] = null
 	inventory_changed.emit()
-
-
 func _first_empty() -> int:
 	for i in slots.size():
 		if slots[i] == null:

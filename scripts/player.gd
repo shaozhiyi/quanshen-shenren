@@ -1,19 +1,15 @@
 extends CharacterBody3D
 ## 第一人称行走控制：WASD 移动、鼠标转视角、空格跳跃、ESC/点击切换鼠标捕获。
 ## 附带 HP 系统：take_damage()/heal() + hp_changed/died 信号，供后续战斗/交互使用。
-
 @export var move_speed := 5.0
 @export var jump_velocity := 4.5
 @export var mouse_sensitivity := 0.0022
 @export var max_hp := 100.0
-
 const SLAM_FX := preload("res://scripts/slam_fx.gd")
 const MAX_AIR_JUMPS := 1        # 离地后还能再跳几次（1 = 二段跳）
 const AIR_JUMP_MULT := 0.92     # 二段跳比地面起跳略弱
-
 signal hp_changed(current: float, maximum: float)
 signal died
-
 var hp := 100.0
 # ---- 魔法：上限固定 200，技能消耗（剑 50 / 弓 30 / 法杖 70），每秒回 2 点 ----
 @export var max_mp := 200.0
@@ -26,7 +22,6 @@ var level := 1
 var exp := 0.0
 var exp_to_next := 100.0
 signal exp_changed(current_level: int, current_exp: float, need: float)
-
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 var _spawn_pos := Vector3(0.0, 5.0, 0.0)
 var _sword: Node
@@ -59,7 +54,6 @@ var _saved_yaw := 0.0
 var _saved_pitch := 0.0
 var _saved_env: Environment
 const BOSS_INTERACT_DIST := 12.0
-
 # 冲刺：单独按 Z 触发一小段爆发位移（方向取当前按住的移动键，没按就朝正前方）
 const DASH_SPEED := 18.0          # 冲刺瞬时速度（约 3.6× 步行）
 const DASH_DURATION := 0.2        # 冲刺持续
@@ -68,7 +62,6 @@ const DASH_COOLDOWN := 0.5        # 冲刺后摇冷却，防连发
 var _dash_time := 0.0
 var _dash_cd := 0.0
 var _dash_dir := Vector3.ZERO
-
 # ---- 剑·突刺（数字 2）：向前戳一记并冲过去，穿透碰到的目标 ----
 const THRUST_DIST := 6.0          # 基础突刺距离（约一个冲刺的身位）
 const THRUST_SPEED := 34.0        # 突刺推进速度（米/秒）
@@ -93,8 +86,6 @@ var _last_tap := {}               # action -> 上次点按时刻(秒)
 # 减速：被蓝色星点命中后一段时间移动速度打折（无敌期免疫）
 const SLOW_MULT := 0.5
 var _slow_t := 0.0
-
-
 func _ready() -> void:
 	add_to_group("player")
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -123,19 +114,13 @@ func _ready() -> void:
 	if _inv == null:
 		_bind_inventory_later()      # 分帧进场景时 HUD 比我们晚一帧挂回来
 	_apply_loaded_state()
-
-
 func _find_inventory() -> Node:
 	return get_node_or_null("../HUD/Inventory")
-
-
 func _ensure_inv() -> Node:
 	## 任何要用背包的地方都先过这一手：万一开局没绑上（HUD 后到），此刻早已在树里
 	if _inv == null or not is_instance_valid(_inv):
 		_inv = _find_inventory()
 	return _inv
-
-
 func _bind_inventory_later() -> void:
 	for _i in 120:
 		await get_tree().process_frame
@@ -143,12 +128,8 @@ func _bind_inventory_later() -> void:
 		if _inv != null:
 			return
 	push_warning("player: 找不到 ../HUD/Inventory，掉落与背包回收会失效")
-
-
 # ---- 存档：状态采集 / 套用 / F5 快速存档 ----
 var kills := 0
-
-
 func save_state() -> Dictionary:
 	var cam := get_node_or_null("Camera3D") as Camera3D
 	var pitch := 0.0
@@ -162,8 +143,6 @@ func save_state() -> Dictionary:
 		"enhance": enhance_levels.duplicate(true),
 		"invincible_left": _invincible_t if _invincible else 0.0,
 	}
-
-
 func _boss_states() -> Dictionary:
 	var out := {}
 	for b in bosses():
@@ -173,8 +152,6 @@ func _boss_states() -> Dictionary:
 		}
 		out[String(b.get("def_id"))] = bd
 	return out
-
-
 func _apply_loaded_state() -> void:
 	## 读档进来时套用血量/位置/BOSS 进度；新游戏（pending_load 为空）什么都不做
 	var d: Dictionary = SaveManager.pending_load
@@ -210,15 +187,11 @@ func _apply_loaded_state() -> void:
 			b.set("difficulty", int(bs[id].get("difficulty", 0)))
 			b.set("_beats", int(bs[id].get("beats", 0)))
 			b.call("apply_difficulty")   # 按还原的难度重算血量与光环
-
-
 func set_current_weapon(w: int) -> void:
 	## 读档时恢复"手上拿的是哪把"（装备状态由背包模块先同步）
 	## 这里故意不走 weapon_busy()：读档是外部状态还原，必须无条件生效。
 	if w >= 0 and w < _has.size() and _has[w]:
 		_equip(w)
-
-
 func _quick_save() -> void:
 	var path := SaveManager.current_slot
 	if path == "":
@@ -238,21 +211,15 @@ func _quick_save() -> void:
 		inv_state = _inv.call("save_state")
 	var data := SaveManager.build_data(seed_used, amp, freq, save_state(), inv_state, _boss_states(), kills)
 	SaveManager.write_to(path, data)
-
-
 # ---- 多 BOSS：按名册生成后，用"最近的那只"作为交互目标 ----
 func bosses() -> Array:
 	## 场上所有 BOSS 实体（"boss" 组只放碰撞体，供剑/箭射线命中判定）
 	return get_tree().get_nodes_in_group("boss_unit")
-
-
 func _watch_bosses() -> void:
 	## 给场上每只 BOSS 的 died 信号连一次结算（新增 BOSS 后重复调用即可，不会重复连）
 	for b in bosses():
 		if b is Node and not b.is_connected("died", _on_boss_died):
 			b.connect("died", _on_boss_died)
-
-
 func nearest_boss() -> Node:
 	## 大地图上离玩家最近且存活的 BOSS；超出交互半径则返回 null
 	var best: Node = null
@@ -267,17 +234,11 @@ func nearest_boss() -> Node:
 			best_d = d
 			best = b
 	return best
-
-
 func current_boss() -> Node:
 	## HUD/交互统一入口：空间内用正在打的那只，大地图上用最近的存活 BOSS
 	return _arena_boss if _in_arena else nearest_boss()
-
-
 func in_arena() -> bool:
 	return _in_arena
-
-
 # ---- 两套坐标：大世界的 global_position 与"战斗坐标"（开战那一刻所站点为原点）----
 # 战斗空间在世界里偏得很远（纯白空间中心 y=100、国道中心 z=-3000），
 # 直接把 global 报给人看会出现"刚进战场就 -2986 米"这种读不懂的数，
@@ -285,24 +246,16 @@ func in_arena() -> bool:
 func coords_are_battle() -> bool:
 	## true = 现在该看战斗坐标（在 BOSS 空间里）；false = 大地图，看世界坐标
 	return _in_arena and _battle_origin != Vector3.INF
-
-
 func battle_origin() -> Vector3:
 	return _battle_origin
-
-
 func display_coords() -> Vector3:
 	## HUD 与日志统一走这里，调用方不用自己判断在不在战斗里
 	if not coords_are_battle():
 		return global_position
 	return global_position - _battle_origin
-
-
 func near_boss() -> bool:
 	## 大地图上靠近某只存活 BOSS 时，HUD 显示按 E 提示
 	return not _in_arena and nearest_boss() != null
-
-
 func _collect_arenas() -> void:
 	## 场景里可以并列多套 BOSS 空间，按各自 theme_key 登记；老场景只有一个 Arena 也能跑
 	_arenas = {}
@@ -310,23 +263,17 @@ func _collect_arenas() -> void:
 		if a.has_method("theme_key"):
 			_arenas[String(a.call("theme_key"))] = a
 	_arena = _arenas.get("white", get_node_or_null("../Arena"))
-
-
 func _pick_arena(b: Node) -> Node:
 	## 每只 BOSS 用自己的战场（名册 arena 字段）；没登记的主题退回纯白空间
 	var want := "white"
 	if b != null and b.has_method("arena_name"):
 		want = String(b.call("arena_name"))
 	return _arenas.get(want, _arena)
-
-
 func _try_interact_boss() -> void:
 	if _in_arena:
 		_exit_arena()
 	elif near_boss():
 		_enter_arena()
-
-
 func _enter_arena() -> void:
 	## 进入 BOSS 空间：隐藏大地图视觉，切到超平坦白色空间，目标 BOSS 传送就位
 	var b := nearest_boss()
@@ -360,8 +307,6 @@ func _enter_arena() -> void:
 	if cam != null:
 		cam.rotation.x = 0.0
 	_in_arena = true
-
-
 func _exit_arena() -> void:
 	## 离开 BOSS 空间：恢复大地图与 BOSS 原位、玩家位姿
 	_in_arena = false
@@ -385,8 +330,6 @@ func _exit_arena() -> void:
 	var cam := get_node_or_null("Camera3D") as Camera3D
 	if cam != null:
 		cam.rotation.x = _saved_pitch
-
-
 func _on_boss_died(b: Node = null) -> void:
 	## 某只 BOSS 在空间中被击败：按它名册里的档位掉落发奖，沉地动画播完后自动回大地图
 	if b == null or not is_instance_valid(b):
@@ -405,12 +348,8 @@ func _on_boss_died(b: Node = null) -> void:
 	if not _in_arena:
 		return
 	get_tree().create_timer(3.0).timeout.connect(_exit_arena)
-
-
 const STONE_CHAIN_START := 0.80 * 0.05    # 追加掉落概率：原 80% 下调 5% → 4%
 const STONE_CHAIN_STEP := 0.01 * 0.05     # 每成功一次概率递减量（原 1% → 0.05%）
-
-
 func _roll_stones() -> int:
 	## 必掉 1 块强化石；随后以 4%、3.95%、3.90%… 逐次递减追加，一旦失败即停
 	## （概率整体调成原来的 5%，期望约 1.04 块/次击杀）
@@ -423,8 +362,6 @@ func _roll_stones() -> int:
 		else:
 			break
 	return stones
-
-
 func _try_cycle_difficulty() -> void:
 	## 大地图上靠近某只 BOSS 时按 R：切到下一档挑战难度（击败过一次后解锁）
 	if _in_arena:
@@ -435,8 +372,6 @@ func _try_cycle_difficulty() -> void:
 	if not b.call("can_adjust_difficulty"):
 		return
 	b.call("cycle_difficulty")
-
-
 func _on_died() -> void:
 	## 血量归零：以 30% 血苏醒；在 BOSS 空间内则视为挑战失败被弹出（BOSS 下次仍满血）
 	hp = max_hp * 0.3
@@ -446,8 +381,6 @@ func _on_died() -> void:
 	_reset_motion_state()      # 苏醒不带奔跑/减速/冲刺残留
 	if _in_arena:
 		_exit_arena()
-
-
 func _reset_motion_state() -> void:
 	## 清掉奔跑、减速、冲刺与击退的瞬时状态（死亡/进出 BOSS 空间时调用）
 	_running = false
@@ -459,8 +392,6 @@ func _reset_motion_state() -> void:
 	_kb_dir = Vector3.ZERO
 	velocity.x = 0.0
 	velocity.z = 0.0
-
-
 func _try_pick_box() -> bool:
 	## 附近有掉落箱则回收其物品（含整堆数量）到背包并销毁箱子
 	if _inv == null or not _inv.has_method("add_item"):
@@ -475,8 +406,6 @@ func _try_pick_box() -> bool:
 		return true
 	box.queue_free()
 	return true
-
-
 func _nearest_box() -> Node:
 	var best: Node = null
 	var best_d := 3.5
@@ -488,8 +417,6 @@ func _nearest_box() -> Node:
 			best_d = d
 			best = b
 	return best
-
-
 func spawn_drop_box(item_id: String, count: int = 1) -> void:
 	## 在玩家身前生成一个掉落箱（Area3D + 箱子图标），承载被丢弃的物品（可整堆）
 	var scene := get_tree().current_scene
@@ -507,8 +434,6 @@ func spawn_drop_box(item_id: String, count: int = 1) -> void:
 	else:
 		pos.y = ground.height_at_fast(pos.x, pos.z) + 0.5
 	box.global_position = pos
-
-
 func weapon_busy() -> bool:
 	## 手上这把武器还在"收不了手"的状态里：
 	##   弓 / 法杖 = 蓄力中（按住左键或 X，松手才出手）
@@ -530,16 +455,12 @@ func weapon_busy() -> bool:
 	if _weapon == 0 and _sword != null and _sword.has_method("is_attacking"):
 		return bool(_sword.call("is_attacking"))
 	return false
-
-
 func equipped_count() -> int:
 	var n := 0
 	for h in _has:
 		if h:
 			n += 1
 	return n
-
-
 func next_weapon_index() -> int:
 	## C 键会切到哪一把（沿 剑→弓→法杖 循环，跳过没装备的）；只有一把时返回自己
 	var total := _has.size()
@@ -548,15 +469,11 @@ func next_weapon_index() -> int:
 		if _has[i]:
 			return i
 	return _weapon
-
-
 func _switch_weapon() -> void:
 	## C 键：在已装备的武器之间循环切换；手上动作没收尾时不许切
 	if equipped_count() < 2 or weapon_busy():
 		return
 	_equip(next_weapon_index())
-
-
 func _equip(w: int) -> void:
 	## 激活指定武器视图（0=剑 1=弓 2=法杖）
 	_weapon = w
@@ -566,8 +483,6 @@ func _equip(w: int) -> void:
 		_bow.set_active(w == 1)
 	if _staff != null:
 		_staff.set_active(w == 2)
-
-
 func set_equipment(weapon_id: String, sub_id: String, armor_id: String, staff_id: String = "") -> void:
 	## 由背包/装备栏调用：同步已装备状态与护甲减伤；当前武器被卸下则自动改用下一把。
 	## 装备栏只有「武器 / 副武器」两格，而武器有三把（剑 / 弓 / 法杖）——所以哪几把在身上
@@ -586,8 +501,6 @@ func set_equipment(weapon_id: String, sub_id: String, armor_id: String, staff_id
 			_equip(w)
 			return
 	_equip(-1)      # 一把武器都没装备（全卸了）：三把都收起来
-
-
 # ---- 装备强化（每件各自算级，消耗"装备强化石"） ----
 func _refresh_armor_factor() -> void:
 	## 穿甲基础 ×0.7，防具每级强化再减 3%（最低 0.4）；系数变化时清空取整余数
@@ -597,65 +510,39 @@ func _refresh_armor_factor() -> void:
 	if new_factor != armor_factor:
 		armor_factor = new_factor
 		_dmg_carry = 0.0
-
-
 func enhance_level_of(id: String) -> int:
 	## 某件装备的强化等级（不可强化的物品恒为 0）
 	return int(enhance_levels.get(id, 0))
-
-
 func enhance_max() -> int:
 	## 封顶等级（供背包面板显示；常量没法 call，这里包一层）
 	return ENHANCE_MAX
-
-
 func damage_scale_for(id: String) -> float:
 	## 该武器的攻击力倍率：每级 ×ENH_GROWTH 的指数增长（+1=1.1、+2=1.21、+3=1.331…），
 	## 只跟这件武器自己的等级有关；最终数值一律走 attack_power() 向下取整
 	return pow(ENH_GROWTH, float(enhance_level_of(id)))
-
-
 func attack_power(id: String, base: float) -> int:
 	## 强化后的实际攻击力 = 底数 × 倍率，再向下取整。
 	## 剑（底数 50）：+0=50 → +1=55 → +2=60（60.5 取整）→ +3=66（66.55 取整）→ +4=73 …
 	## 伤害结算与 HUD 显示都走这一个函数，两边不会打出不一样的数
 	return int(floor(base * damage_scale_for(id)))
-
-
 func sword_damage() -> int:
 	## 剑当前攻击力（HUD 读它，以后改基数只用动 SWORD_DMG）
 	return attack_power("sword", SWORD_DMG)
-
-
 const SWORD_SKILL_MULT := 1.6   # 技能「劈砍」：伤害 = 当前攻击力 ×1.6
-
-
 func sword_skill_damage() -> int:
 	## 劈砍的实际伤害（含强化、向下取整）；HUD 与结算走同一个数
 	return int(floor(float(sword_damage()) * SWORD_SKILL_MULT))
-
-
 const SWORD_SKILL_STUN := 1.0   # 劈砍命中的定身秒数
-
-
 const WEAPON_IDS := ["sword", "bow", "staff"]   # 与 _weapon 下标、_has 一一对应
-
-
 func weapon_id_at(i: int) -> String:
 	## 某个下标对应的强化 id（HUD 用它显示"当前/下一把"的名字，不自己硬编码）
 	if i >= 0 and i < WEAPON_IDS.size():
 		return WEAPON_IDS[i]
 	return ""
-
-
 func current_weapon_id() -> String:
 	return weapon_id_at(_weapon)
-
-
 func is_equipped(i: int) -> bool:
 	return i >= 0 and i < _has.size() and _has[i]
-
-
 func enhance_item(id: String) -> bool:
 	## 双击某件武器/装备：只强化它自己，+1 级（最高 +10）。
 	## 满级或物品不可强化返回 false —— 调用方（背包）据此不消耗强化石。
@@ -667,8 +554,6 @@ func enhance_item(id: String) -> bool:
 	enhance_levels[id] = lv + 1
 	_refresh_armor_factor()
 	return true
-
-
 func _apply_enhance(data) -> void:
 	## 读档套用强化等级：新存档是逐件字典，老存档是全身统一的整数（一律按当件等级还原）
 	if typeof(data) == TYPE_DICTIONARY:
@@ -679,8 +564,6 @@ func _apply_enhance(data) -> void:
 		var lv := clampi(int(data), 0, ENHANCE_MAX)
 		for k in ENHANCE_KINDS:
 			enhance_levels[k] = lv
-
-
 func _slash_ray_boss() -> Node:
 	## 挥砍中段向前射线，返回命中的 BOSS 本体（普砍与技能「劈砍」共用同一条判定）
 	var cam := get_node_or_null("Camera3D") as Camera3D
@@ -699,15 +582,11 @@ func _slash_ray_boss() -> Node:
 		var boss := col.get_parent()
 		return boss if boss.has_method("take_damage") else null
 	return null
-
-
 func _on_slash_hit() -> void:
 	## 普通挥砍命中：攻击力结算（BOSS 暂不反击）
 	var boss := _slash_ray_boss()
 	if boss != null:
 		boss.take_damage(sword_damage(), "剑")
-
-
 func _on_skill_hit() -> void:
 	## 技能「劈砍」命中：1.6 倍攻击，还把 BOSS 定身 1 秒（只控制、不打断，同法杖蓝球）
 	var boss := _slash_ray_boss()
@@ -716,8 +595,6 @@ func _on_skill_hit() -> void:
 	boss.take_damage(sword_skill_damage(), "剑劈砍")   # 播报带技能名：你使用剑劈砍击中…
 	if boss.has_method("stun"):
 		boss.call("stun", SWORD_SKILL_STUN)
-
-
 func _find_spawn() -> Vector3:
 	## 在原点附近找一处小山顶作为出生点，避免开局掉进地形低洼处
 	var ground := get_node_or_null("../Ground")
@@ -737,8 +614,6 @@ func _find_spawn() -> Vector3:
 				best_h = h
 				best = Vector3(x, h + 2.0, z)
 	return best
-
-
 func take_damage(amount: float) -> void:
 	## 受到伤害并发出 hp_changed，血量归零时发出 died（支持小数伤害）
 	## 穿防具：伤害 ×0.7 后向下取整；取整剩下的小数累积到下一次，
@@ -757,47 +632,33 @@ func take_damage(amount: float) -> void:
 	hp_changed.emit(hp, max_hp)
 	if hp <= 0.0:
 		died.emit()
-
-
 func gain_invincibility(dur: float) -> void:
 	## 饮用野生狗奶：dur 秒无敌（免疫伤害），HUD 血条常显；到时解除并恢复满血
 	_invincible = true
 	_invincible_dur = dur
 	_invincible_t = dur
 	invincibility_changed.emit(true, dur)
-
-
 func is_invincible() -> bool:
 	return _invincible
-
-
 func _end_invincibility() -> void:
 	_invincible = false
 	_invincible_t = 0.0
 	invincibility_changed.emit(false, 0.0)
 	heal(max_hp)   # 解除时恢复满血
-
-
 func heal(amount: float) -> void:
 	## 治疗：回血并发出 hp_changed
 	if amount <= 0.0 or hp >= max_hp:
 		return
 	hp = clampf(hp + amount, 0.0, max_hp)
 	hp_changed.emit(hp, max_hp)
-
-
 # ---- 魔法条：上限 200，本版没有技能会消耗它；接口留给后续技能系统 ----
 func mp_ratio() -> float:
 	## 0..1，供 HUD 魔法条读取
 	if max_mp <= 0.0:
 		return 0.0
 	return clampf(mp / max_mp, 0.0, 1.0)
-
-
 func has_mp(amount: float) -> bool:
 	return mp >= amount
-
-
 func spend_mp(amount: float) -> bool:
 	## 尝试消耗魔法：够则扣并广播，不够返回 false（不做任何提示）
 	if amount <= 0.0:
@@ -807,27 +668,19 @@ func spend_mp(amount: float) -> bool:
 	mp = clampf(mp - amount, 0.0, max_mp)
 	mp_changed.emit(mp, max_mp)
 	return true
-
-
 func restore_mp(amount: float) -> void:
 	## 回魔法（上限封顶）；amount<=0 什么都不做
 	if amount <= 0.0 or mp >= max_mp:
 		return
 	mp = clampf(mp + amount, 0.0, max_mp)
 	mp_changed.emit(mp, max_mp)
-
-
 # ---- 等级：只读显示用，升级系统尚未实现（经验恒为 0，绿条空着）----
 func exp_ratio() -> float:
 	if exp_to_next <= 0.0:
 		return 0.0
 	return clampf(exp / exp_to_next, 0.0, 1.0)
-
-
 func level_text() -> String:
 	return "LV%d" % level
-
-
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		# 水平：绕 Y 轴旋转身体；垂直：仅旋转相机并限制角度
@@ -872,8 +725,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			# 注意这必须放在 event.pressed 总闸外面——松开事件 pressed=false，
 			# 关在闸里就永远等不到"松手"，蓄力起手后卡死不发射。
 			_cast_skill2(false)
-
-
 func _weapon_node() -> Node:
 	## 手上这把武器的节点（技能转发用）
 	match _weapon:
@@ -881,8 +732,6 @@ func _weapon_node() -> Node:
 		1: return _bow
 		2: return _staff
 	return null
-
-
 func _cast_skill() -> void:
 	## 数字 1：技能交给手上这把武器自己放——冷却/蓝量/动作它自己管，
 	## 放不出来（没蓝、冷却中）就什么都不发生，不扣蓝也不动冷却。
@@ -890,16 +739,12 @@ func _cast_skill() -> void:
 	var w := _weapon_node()
 	if w != null and w.has_method("cast_skill"):
 		w.call("cast_skill")
-
-
 func _cast_skill2(pressed: bool) -> void:
 	## 数字 2：第二技能（各武器冷却与 1 技能各自独立，互不共享）。
 	var w := _weapon_node()
 	if w == null or not w.has_method("skill2_hold"):
 		return
 	w.call("skill2_hold", pressed)
-
-
 # ---- 剑·突刺的冲刺段（由 sword.gd 的 skill2_hold 起手）----
 func thrust_dash() -> void:
 	## 向准星水平方向戳一记并冲过去：距离提前算好——墙/地形在哪儿停哪儿（BOSS 不挡路），
@@ -916,8 +761,6 @@ func thrust_dash() -> void:
 	_thrust_hit.clear()
 	velocity.x *= 0.2
 	velocity.z *= 0.2
-
-
 func _plan_thrust_distance(base: float) -> float:
 	## 先看路：射线逐段跳过 BOSS 找第一面墙，墙前收步；终点若还在 BOSS 身体里则加距离
 	var space := get_world_3d().direct_space_state
@@ -948,8 +791,6 @@ func _plan_thrust_distance(base: float) -> float:
 		if end_d >= base + THRUST_EXTRA_MAX:
 			break
 	return end_d
-
-
 func _wall_between(a: Vector3, b: Vector3) -> bool:
 	## 两点之间有没有墙（地形/物件算墙；BOSS 不算——突刺就是要穿它）
 	var space := get_world_3d().direct_space_state
@@ -972,8 +813,6 @@ func _wall_between(a: Vector3, b: Vector3) -> bool:
 			return true
 		from = hit.position + dir * 0.3
 	return false
-
-
 func _point_in_boss(p: Vector3) -> bool:
 	## 某个点是不是还落在某只 BOSS 的身体范围内（粗box判定，用来决定突刺要不要加距离）
 	for b in bosses():
@@ -983,8 +822,6 @@ func _point_in_boss(p: Vector3) -> bool:
 		if absf(d.y) < 3.4 and Vector2(d.x, d.z).length() < THRUST_HIT_R:
 			return true
 	return false
-
-
 func _sweep_thrust_hits() -> void:
 	## 突刺路径扫过的目标结账：固定 80 + 流血（每秒扣 攻击力×0.9，持续 10 秒），每只只结一次
 	for b in bosses():
@@ -996,8 +833,6 @@ func _sweep_thrust_hits() -> void:
 			b.take_damage(THRUST_DMG, "剑突刺")   # 播报带技能名：你使用剑突刺击中…
 			if b.has_method("bleed"):
 				b.call("bleed", float(sword_damage()) * THRUST_BLEED_MULT, THRUST_BLEED_T)
-
-
 func _physics_process(delta: float) -> void:
 	# 法力回复：每秒 MP_REGEN_PER_SEC 点（攒够 1 点才入账，免得蓝条每帧微跳）
 	_mp_regen_acc += delta * MP_REGEN_PER_SEC
@@ -1022,16 +857,12 @@ func _physics_process(delta: float) -> void:
 		global_position = _spawn_pos
 		velocity = Vector3.ZERO
 		return
-
 	if not is_on_floor():
 		velocity.y -= _gravity * delta
-
 	if is_on_floor():
 		_air_jumps = MAX_AIR_JUMPS      # 落地就补满空中跳数
-
 	if Input.is_action_just_pressed("jump"):
 		try_jump()
-
 	# 双击同一方向键 → 进入奔跑状态（速度 ×2）；松开所有方向键自动退出
 	var now := Time.get_ticks_msec() / 1000.0
 	var holding := false
@@ -1045,10 +876,8 @@ func _physics_process(delta: float) -> void:
 			holding = true
 	if not holding:
 		_running = false
-
 	if _slow_t > 0.0:
 		_slow_t = maxf(_slow_t - delta, 0.0)
-
 	if _thrust_left > 0.0:
 		# 剑·突刺：逐帧位移（直接改坐标，BOSS 挡不住；墙会在起跳前算好、半路也盯着）。
 		# 这几帧不走 move_and_slide——它会把卡在 BOSS 身体里的玩家往外推，跟冲刺对着干。
@@ -1080,22 +909,17 @@ func _physics_process(delta: float) -> void:
 		else:
 			velocity.x = move_toward(velocity.x, 0.0, spd)
 			velocity.z = move_toward(velocity.z, 0.0, spd)
-
 	if _kb_left > 0.0:
 		# 击退覆盖本帧水平速度（方向由撞击方钉死）：按名义位移扣掉剩余距离，推完立刻交还操作权
 		velocity.x = _kb_dir.x * _kb_speed
 		velocity.z = _kb_dir.z * _kb_speed
 		_kb_left = maxf(_kb_left - _kb_speed * delta, 0.0)
-
 	if _dash_cd > 0.0:
 		_dash_cd -= delta
-
 	if _thrust_left <= 0.0:
 		move_and_slide()   # 突刺那几帧不走这里（见上），其余时候照常
 	_confine_to_arena()
 	_anchor_battle_origin()
-
-
 func _anchor_battle_origin() -> void:
 	## 出生点悬空 0.15 米，落地这一刻才是"开战时我站在哪儿"。把原点校正到这里，
 	## 战斗坐标才真的从 (0,0,0) 起算（否则会眼看它从 0 慢慢滑到 -0.15）。
@@ -1103,8 +927,6 @@ func _anchor_battle_origin() -> void:
 		return
 	_battle_origin = global_position
 	_battle_anchored = true
-
-
 func _confine_to_arena() -> void:
 	## 「无法离开国道」：BOSS 空间可以自己声明一道横向约束（国道用它把玩家夹在
 	## 中央隔离带与路肩护栏之间）。纯白空间与大地图不限制，所以只在空间内且
@@ -1116,12 +938,8 @@ func _confine_to_arena() -> void:
 		global_position = clamped
 		if absf(velocity.x) > 0.01:
 			velocity.x = 0.0
-
-
 func air_jumps_left() -> int:
 	return _air_jumps
-
-
 func try_jump() -> int:
 	## 0=跳不动 1=地面起跳 2=空中二段跳（落地补满次数，二段跳略弱并给一圈脚底光环）
 	if is_on_floor():
@@ -1134,21 +952,15 @@ func try_jump() -> int:
 		_jump_ring()
 		return 2
 	return 0
-
-
 func _fx_scene() -> Node:
 	## 特效挂点：优先当前场景，退回 root
 	var scene := get_tree().current_scene
 	if scene == null:
 		scene = get_tree().root
 	return scene
-
-
 func _jump_ring() -> void:
 	## 二段跳：脚下一圈淡白光环迅速散开（克制版反馈，不做粒子）
 	SLAM_FX.spawn_ring(_fx_scene(), global_position + Vector3(0.0, 0.08, 0.0), 1.5, Color(1, 1, 1), 0.42)
-
-
 func knockback(dir: Vector3, dist: float) -> bool:
 	## 被撞飞：沿 dir（水平方向）在一瞬间被推开 dist 米。
 	## 无敌期连击退一起免掉，和 take_damage 同一条规矩（不然"免疫"只免了一半）。
@@ -1159,13 +971,9 @@ func knockback(dir: Vector3, dist: float) -> bool:
 	_kb_left = dist
 	_kb_speed = dist / KB_TIME
 	return true
-
-
 func knockback_left() -> float:
 	## 还剩多少米没被推完（测试与调手感用）
 	return _kb_left
-
-
 func try_dash() -> bool:
 	## Z 键冲刺：沿当前按住的移动方向；没按方向键就朝身体正前方。冷却中返回 false
 	if _dash_cd > 0.0 or _dash_time > 0.0:
@@ -1183,8 +991,6 @@ func try_dash() -> bool:
 	_dash_cd = DASH_COOLDOWN
 	_dash_fx()
 	return true
-
-
 func _dash_fx() -> void:
 	## 冲刺特效（不加任何文字提示）：
 	##  · 身后一段风痕拖尾（长度≈本次冲刺的实际位移）——别人看得见
@@ -1192,8 +998,6 @@ func _dash_fx() -> void:
 	SLAM_FX.spawn_dash_trail(_fx_scene(), global_position, _dash_dir,
 		DASH_SPEED * DASH_DURATION, Color(0.86, 0.93, 1.0))
 	SLAM_FX.spawn_dash_rush(get_node_or_null("Camera3D") as Camera3D)
-
-
 func speed_now() -> float:
 	## 本帧应有的水平速度：基础 × 奔跑 2 倍 × 减速系数
 	var spd := move_speed
@@ -1202,22 +1006,14 @@ func speed_now() -> float:
 	if _slow_t > 0.0:
 		spd *= SLOW_MULT
 	return spd
-
-
 func is_running() -> bool:
 	return _running
-
-
 func set_running(b: bool) -> void:
 	_running = b
-
-
 func apply_slow(seconds: float) -> void:
 	## 蓝色星点命中：移速 -50% 持续 seconds 秒；无敌期免疫，重复命中取更长剩余
 	if _invincible or seconds <= 0.0:
 		return
 	_slow_t = maxf(_slow_t, seconds)
-
-
 func slow_left() -> float:
 	return _slow_t

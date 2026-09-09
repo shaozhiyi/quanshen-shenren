@@ -4,12 +4,9 @@ extends RigidBody3D
 ## 冰色（冰冻术三连球）＝蓝球同款判定，但定身可以往上叠，且三球绕出手轴排成
 ## 旋转的正三角飞行。飞行时身后拖一条同色光点尾迹；命中后原地缩掉。
 ## 数值（伤害/半径/颜色/定身秒数/球速）全在 scripts/staff.gd 顶部，这里只接现成参数。
-
 const MAX_ALIVE := 12            # 同屏上限，超出回收最早那颗
 const POP_TIME := 0.14           # 命中后缩没用的秒数
-
 static var _active: Array = []
-
 var dmg := 80
 var control_sec := 0.0
 var orb_color := Color(1.0, 0.22, 0.20)
@@ -27,8 +24,6 @@ var _orbit_center := Vector3.ZERO
 var _orbit_dir := Vector3.ZERO
 var _orbit_speed := 0.0
 var _orbit_omega := 0.0
-
-
 static func spawn(parent: Node, origin: Vector3, dir: Vector3, speed: float,
 		damage: int, col: Color, r: float, control: float, weapon := "法杖",
 		thrower: PhysicsBody3D = null) -> void:
@@ -44,8 +39,6 @@ static func spawn(parent: Node, origin: Vector3, dir: Vector3, speed: float,
 	orb.linear_velocity = dir.normalized() * speed
 	orb._avoid_thrower(thrower)
 	_active.append(orb)
-
-
 static func spawn_formation(parent: Node, center: Vector3, dir: Vector3, speed: float,
 		damage: int, col: Color, r: float, control: float, stack: bool,
 		count: int, form_r: float, omega: float, weapon := "法杖",
@@ -75,8 +68,6 @@ static func spawn_formation(parent: Node, center: Vector3, dir: Vector3, speed: 
 		orb.linear_velocity = dir * speed
 		orb._avoid_thrower(thrower)
 		_active.append(orb)
-
-
 static func _create(damage: int, col: Color, r: float, control: float, stack: bool,
 		weapon := "法杖") -> RigidBody3D:
 	var orb: RigidBody3D = load("res://scripts/staff_orb.gd").new()
@@ -88,16 +79,12 @@ static func _create(damage: int, col: Color, r: float, control: float, stack: bo
 	orb.hit_weapon = weapon
 	orb._configure()
 	return orb
-
-
 static func _prune() -> void:
 	var live: Array = []
 	for a in _active:
 		if is_instance_valid(a):
 			live.append(a)
 	_active = live
-
-
 func _configure() -> void:
 	add_to_group("staff_orb")
 	mass = 0.2
@@ -118,8 +105,6 @@ func _configure() -> void:
 	csc.shape = sh
 	add_child(csc)
 	body_entered.connect(_on_body_entered)
-
-
 func _build_visuals() -> void:
 	_core = MeshInstance3D.new()
 	_core.mesh = _sphere(radius, 10, 6)
@@ -135,8 +120,6 @@ func _build_visuals() -> void:
 	add_child(_halo)
 	_trail = _make_trail()
 	add_child(_trail)
-
-
 func _sphere(r: float, rings: int, seg: int) -> SphereMesh:
 	var s := SphereMesh.new()
 	s.radius = r
@@ -144,8 +127,6 @@ func _sphere(r: float, rings: int, seg: int) -> SphereMesh:
 	s.radial_segments = seg
 	s.rings = rings
 	return s
-
-
 func _mat(col: Color, energy: float, alpha: float) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = Color(col.r, col.g, col.b, alpha)
@@ -156,8 +137,6 @@ func _mat(col: Color, energy: float, alpha: float) -> StandardMaterial3D:
 	m.metallic = 0.0
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	return m
-
-
 func _make_trail() -> CPUParticles3D:
 	## 同色光点尾迹：粒子留在世界坐标里（local_coords=false），球飞过去就留下一条线
 	var t := CPUParticles3D.new()
@@ -193,8 +172,6 @@ func _make_trail() -> CPUParticles3D:
 	# 尾迹会散到身后一整条，包围盒要给足，否则会被视锥剔除得看不见
 	t.visibility_aabb = AABB(Vector3(-6, -6, -6), Vector3(12, 12, 12))
 	return t
-
-
 func _avoid_thrower(thrower: PhysicsBody3D = null) -> void:
 	## 出手点就在玩家鼻尖前，把玩家自己排除在碰撞之外（否则出膛即命中）。
 	## 联机时按 group 找"第一个玩家"会认错人，所以优先用调用方直接递进来的射手。
@@ -203,8 +180,6 @@ func _avoid_thrower(thrower: PhysicsBody3D = null) -> void:
 		p = get_tree().get_first_node_in_group("player")
 	if p != null and p is PhysicsBody3D and (p as Node).is_inside_tree():
 		add_collision_exception_with(p as PhysicsBody3D)
-
-
 func _on_body_entered(other: Node) -> void:
 	if _hit:
 		return
@@ -222,8 +197,6 @@ func _on_body_entered(other: Node) -> void:
 	_trail.emitting = false
 	freeze = true
 	set_contact_monitor.call_deferred(false)
-
-
 func _physics_process(delta: float) -> void:
 	if _pop > 0.0:
 		# 命中收尾：缩掉再收，免得球"粘"在对方身上
@@ -246,7 +219,5 @@ func _physics_process(delta: float) -> void:
 	_life += delta
 	if global_position.y < -30.0 or _life > 6.0:
 		queue_free()
-
-
 func _exit_tree() -> void:
 	_active.erase(self)

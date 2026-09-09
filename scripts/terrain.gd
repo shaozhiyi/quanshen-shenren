@@ -4,7 +4,6 @@ extends Node3D
 ## 随机生成：randomize_terrain=true 时每局的山脊走向、疏密、起伏幅度都由 terrain_seed
 ## 决定（-1 = 每次启动随机；填固定种子可复现同一片地形）。CPU 与 shader 共用同一组
 ## 噪声偏移，务必保持两侧公式一致，否则视觉、碰撞、贴物会错位。
-
 @export var size := 500.0
 @export var segments := 128
 @export var height_amp := 13.0
@@ -13,22 +12,17 @@ extends Node3D
 @export var seed_value := -1             # -1 = 每次启动随机；>=0 = 固定种子
 @export var amp_range := Vector2(13.0, 17.0)        # 随机起伏幅度区间（偏好明显大起伏，不给平原）
 @export var freq_range := Vector2(0.0085, 0.0115)   # 随机山体疏密区间（偏密一点，山丘更频繁）
-
 const GROUND_SHADER := preload("res://shaders/ground.gdshader")
 const CHUNK_ROWS := 6               # 分片行数：129 行 ≈ 22 片，每片约 80 毫秒，动画才有得动
-
 var terrain_seed := 0                    # 本局实际生效的种子
 var noise_off0 := Vector2.ZERO           # 三层 fbm 的域偏移（与 shader 同名 uniform 一致）
 var noise_off2 := Vector2(17.0, 3.0)
 var noise_off3 := Vector2(7.0, 11.0)
-
 # 碰撞构建时缓存的高度网格（供 height_at_fast）
 var _grid: PackedFloat32Array
 var _grid_n := 0
 var _grid_half := 0.0
 var _grid_cell := 1.0
-
-
 func _ready() -> void:
 	add_to_group("ground")
 	_resolve_seed()
@@ -45,8 +39,6 @@ func _ready() -> void:
 	_build_boundary_walls()
 	LoadingUI.stage(0.98, "世界就绪")
 	LoadingUI.finish()
-
-
 func _resolve_seed() -> void:
 	## 定种子 → 定噪声偏移/幅度/频率；同时把全局 RNG 绑到该种子，
 	## 让 BOSS 落点、技能随机游走、石子散布都能靠同一颗种子复现
@@ -74,13 +66,9 @@ func _resolve_seed() -> void:
 			frequency = float(saved.get("freq", frequency))
 	print("[terrain] 地形种子=%d 起伏幅度=%.2f 频率=%.5f 随机=%s" % [
 		terrain_seed, height_amp, frequency, randomize_terrain])
-
-
 # ---- 公共高度查询：草/杂物用它贴合地表 ----
 func height_at(x: float, z: float) -> float:
 	return _height_at(x, z)
-
-
 func height_at_fast(x: float, z: float) -> float:
 	## 双线性采样缓存高度网格（微秒级），供小地图等概览用途；
 	## 网格未就绪（碰撞构建前）时回退解析式。
@@ -101,13 +89,9 @@ func height_at_fast(x: float, z: float) -> float:
 	var h01: float = _grid[r1]
 	var h11: float = _grid[r1 + 1]
 	return lerpf(lerpf(h00, h10, tx), lerpf(h01, h11, tx), tz)
-
-
 func grid_ready() -> bool:
 	## 高度网格（= 地面 mesh 的顶点表）是否已经建好，surface_height 才有准头
 	return _grid_n > 1 and _grid.size() == _grid_n * _grid_n
-
-
 func surface_height(x: float, z: float) -> float:
 	## 贴物专用：返回地面 mesh **真正铺出来**的那个高度，不是解析式高度。
 	## height_at 带 5 层倍频，最高频那几层在 3.9 米一格的顶点网格上根本没采到，
@@ -135,8 +119,6 @@ func surface_height(x: float, z: float) -> float:
 	var u := tx + tz - 1.0
 	var v := 1.0 - tx
 	return h10 + (h11 - h10) * u + (h01 - h10) * v
-
-
 func normal_at(x: float, z: float) -> Vector3:
 	## 地表法线（中心差分，与 shader 顶点法线同公式），供草/杂物沿坡倾斜
 	var e := 0.5
@@ -144,8 +126,6 @@ func normal_at(x: float, z: float) -> Vector3:
 	var hx := _height_at(x + e, z)
 	var hz := _height_at(x, z + e)
 	return Vector3(h - hx, e, h - hz).normalized()
-
-
 func _height_at(x: float, z: float) -> float:
 	## 与 ground.gdshader 的 terrain_height() 同式（含随机域偏移），改动必须两侧同步
 	var p := Vector2(x, z) * frequency
@@ -153,8 +133,6 @@ func _height_at(x: float, z: float) -> float:
 	var n2 := _fbm(p * 4.0 + noise_off2)
 	var n3 := _fbm(p * 6.0 + noise_off3)
 	return (n * 0.75 + n2 * 0.25 + n3 * 0.12) * height_amp * 2.0 - height_amp
-
-
 func _build_terrain_mesh() -> void:
 	# 注意：大 ArrayMesh 在本机环境渲染有 bug（顶点数多时整个 mesh 不可见），
 	# 地面改用 PlaneMesh（PrimitiveMesh 渲染正常）+ shader 顶点位移生成起伏。
@@ -162,7 +140,6 @@ func _build_terrain_mesh() -> void:
 	plane.size = Vector2(size, size)
 	plane.subdivide_width = segments
 	plane.subdivide_depth = segments
-
 	var mat := ShaderMaterial.new()
 	mat.shader = GROUND_SHADER
 	mat.set_shader_parameter("height_amp", height_amp)
@@ -175,12 +152,9 @@ func _build_terrain_mesh() -> void:
 	mat.set_shader_parameter("normal_tex", load("res://assets/ground/leafy_grass_nor_gl_2k.jpg"))
 	mat.set_shader_parameter("rough_tex", load("res://assets/ground/leafy_grass_rough_2k.jpg"))
 	plane.material = mat
-
 	var mi := MeshInstance3D.new()
 	mi.mesh = plane
 	add_child(mi)
-
-
 func _build_collision() -> void:
 	## 一口建完（无加载层时用）：与分片版走同一套逐行函数，结果完全一致
 	var n := segments + 1
@@ -189,8 +163,6 @@ func _build_collision() -> void:
 	var hgrid := _sample_grid(n, half, cell)
 	_cache_grid(hgrid, n, half, cell)
 	_attach_collision_body(_build_collision_faces(hgrid, n, half, cell))
-
-
 func _build_collision_chunked() -> void:
 	## 分片版（加载界面盖着时用）：高度场是启动耗时大头（约 1.5~1.9 秒），
 	## 按行切片、每片之间 await 一帧，让 LoadingUI 真的能画出新帧。
@@ -217,24 +189,18 @@ func _build_collision_chunked() -> void:
 			await get_tree().physics_frame
 	print("[terrain] 碰撞构建：高度场 %d ms + 三角面 %d ms" % [t1 - t0, Time.get_ticks_msec() - t1])
 	_attach_collision_body(pts)
-
-
 func _sample_grid(n: int, half: float, cell: float) -> PackedFloat32Array:
 	var hgrid := PackedFloat32Array()
 	hgrid.resize(n * n)
 	for iz in n:
 		_sample_grid_row(hgrid, n, half, cell, iz)
 	return hgrid
-
-
 func _sample_grid_row(hgrid: PackedFloat32Array, n: int, half: float, cell: float, iz: int) -> void:
 	## 一行高度（与 ground.gdshader 同式，逐点解析采样，保证视觉/碰撞/贴物对齐）
 	var z := -half + float(iz) * cell
 	for ix in n:
 		var x := -half + float(ix) * cell
 		hgrid[iz * n + ix] = _height_at(x, z)
-
-
 func _cache_grid(hgrid: PackedFloat32Array, n: int, half: float, cell: float) -> void:
 	## 保留网格供廉价查询：height_at_fast 双线性（小地图等概览）、
 	## surface_height 三角插值（贴石子/放 BOSS，与视觉面严格同一张皮）
@@ -242,8 +208,6 @@ func _cache_grid(hgrid: PackedFloat32Array, n: int, half: float, cell: float) ->
 	_grid_n = n
 	_grid_half = half
 	_grid_cell = cell
-
-
 func _build_collision_faces(hgrid: PackedFloat32Array, n: int, half: float, cell: float) -> PackedVector3Array:
 	## 把高度网格展开为三角形汤（与视觉 mesh 同密度）
 	var pts := PackedVector3Array()
@@ -252,8 +216,6 @@ func _build_collision_faces(hgrid: PackedFloat32Array, n: int, half: float, cell
 	for iz in segments:
 		w = _fill_grid_tris(pts, w, hgrid, n, half, cell, iz)
 	return pts
-
-
 func _fill_grid_tris(pts: PackedVector3Array, w: int, hgrid: PackedFloat32Array,
 		n: int, half: float, cell: float, iz: int) -> int:
 	## 第 iz 行格子 → 6 个顶点（两个三角形），返回下一个写入位置
@@ -273,8 +235,6 @@ func _fill_grid_tris(pts: PackedVector3Array, w: int, hgrid: PackedFloat32Array,
 		pts[w] = Vector3(x1, h11, z1); w += 1
 		pts[w] = Vector3(x0, h01, z1); w += 1
 	return w
-
-
 func _attach_collision_body(pts: PackedVector3Array) -> void:
 	## 三角网格物理体：必须在物理帧之后创建，场景加载期创建的碰撞体不会被物理世界接收
 	var shape := ConcavePolygonShape3D.new()
@@ -284,8 +244,6 @@ func _attach_collision_body(pts: PackedVector3Array) -> void:
 	csc.shape = shape
 	body.add_child(csc)
 	add_child(body)
-
-
 func _build_boundary_walls() -> void:
 	## 地形四周边界墙，防止走出地形范围掉落（地形起伏 ±12，墙须埋深加高防跳过）
 	var half := size * 0.5
@@ -304,8 +262,6 @@ func _build_boundary_walls() -> void:
 		wall.add_child(csc)
 		wall.position = pos
 		add_child(wall)
-
-
 # ---- 与 shader 同款 fbm 噪声（CPU 端，必须与 ground.gdshader 完全一致） ----
 func _hash21(p: Vector2) -> float:
 	var q: Vector2 = p * Vector2(123.34, 456.21)
@@ -314,8 +270,6 @@ func _hash21(p: Vector2) -> float:
 	q = q + Vector2(s, s)
 	var r: float = q.x * q.y
 	return r - floor(r)
-
-
 func _vnoise(p: Vector2) -> float:
 	var ix: float = floor(p.x)
 	var iy: float = floor(p.y)
@@ -328,8 +282,6 @@ func _vnoise(p: Vector2) -> float:
 	var c: float = _hash21(Vector2(ix, iy + 1.0))
 	var d: float = _hash21(Vector2(ix + 1.0, iy + 1.0))
 	return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy
-
-
 func _fbm(p: Vector2) -> float:
 	var v: float = 0.0
 	var amp: float = 0.5

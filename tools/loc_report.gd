@@ -4,7 +4,6 @@ extends SceneTree
 ##   Godot --headless --path 项目 --script res://tools/loc_report.gd
 ## 或直接双击项目根目录的「统计代码.bat」。
 ## 输出：控制台分组明细 + 写一份 docs/代码统计.md（含每个部分、每个文件多少行）。
-
 const ROOT := "res://"
 # 统计范围：目录前缀 → 分区名（顺序即报告里的展示顺序）
 const SECTIONS := {
@@ -16,20 +15,15 @@ const SECTIONS := {
 	"tools/": "开发者工具",
 }
 const SKIP_DIRS := [".godot", "build", "web", "docs", ".git"]
-
 var _rows := {}        # 分区 → Array[{path, lines, code, comment, blank}]
 var _totals := {}      # 分区 → {lines, code, comment, blank}
 var _t0 := 0
-
-
 func _initialize() -> void:
 	_t0 = Time.get_ticks_msec()
 	for prefix in SECTIONS:
 		_walk(ROOT + prefix, prefix)
 	_report()
 	quit(0)
-
-
 func _walk(dir_path: String, section: String) -> void:
 	var d := DirAccess.open(dir_path)
 	if d == null:
@@ -46,8 +40,6 @@ func _walk(dir_path: String, section: String) -> void:
 				_count(full, section)
 		name = d.get_next()
 	d.list_dir_end()
-
-
 func _count(file: String, section: String) -> void:
 	var f := FileAccess.open(file, FileAccess.READ)
 	if f == null:
@@ -78,8 +70,6 @@ func _count(file: String, section: String) -> void:
 	t.code += code
 	t.comment += comment
 	t.blank += blank
-
-
 func _report() -> void:
 	var md: Array[String] = []
 	md.append("# 代码统计")

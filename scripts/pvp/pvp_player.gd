@@ -5,14 +5,11 @@ class_name PvpPlayer
 ## 远程玩家的本体只做位置插值 + 头顶名牌血条。
 ## 节点约定：所有玩家都挂在竞技场 root/Players/P<peer_id> 下，两边的路径完全一致，
 ## RPC 才能对上；本机自己的那只在 group "local_player" 里（背包靠它找我）。
-
 signal hp_changed(current: float, maximum: float)
 signal died_signal(killer_id: int)
-
 @export var mouse_sensitivity := 0.0022
 @export var move_speed := 5.0
 @export var jump_velocity := 4.5
-
 const MAX_AIR_JUMPS := 1
 const AIR_JUMP_MULT := 0.92
 const RUN_MULT := 2.0
@@ -20,7 +17,6 @@ const DASH_SPEED := 18.0
 const DASH_DURATION := 0.2
 const DASH_COOLDOWN := 0.5
 const SLOW_MULT := 0.5           # 被劈砍命中的减速倍率（乘在移动速度上）
-
 # ---- 强化（与单机同一套指数算法，双击装备吃强化石）----
 const ENHANCE_MAX := 10
 const ENH_GROWTH := 1.10
@@ -29,14 +25,12 @@ const SWORD_DMG := 50.0
 const SWORD_SKILL_MULT := 1.6
 const SWORD_SKILL_STUN := 1.0
 var enhance_levels := {"sword": 0, "bow": 0, "armor": 0, "staff": 0}
-
 # ---- 魔法（技能消耗）----
 @export var max_mp := 200.0
 const MP_REGEN_PER_SEC := 2.0
 var mp := 200.0
 var _mp_regen_acc := 0.0
 signal mp_changed(current: float, maximum: float)
-
 # ---- PVP 血量与身份 ----
 var pvp_id := 1                   # = ENet peer id（房主=1）
 var display_name := "玩家1"
@@ -46,7 +40,6 @@ var kills := 0
 var dead := false
 var _invincible_t := 0.0          # 狗奶无敌（本机表现；房主也有倒计时做结算）
 signal invincibility_changed(active: bool, duration: float)
-
 # ---- 移动 ----
 var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 var _air_jumps := 0
@@ -56,7 +49,6 @@ var _dash_time := 0.0
 var _dash_cd := 0.0
 var _dash_dir := Vector3.ZERO
 var _slow_t := 0.0                # PVP 暂无减速来源，留接口
-
 # ---- 突刺（与单机同一套参数，扫到的目标走 take_damage 上报房主）----
 const THRUST_DIST := 6.0
 const THRUST_SPEED := 34.0
@@ -68,8 +60,6 @@ const THRUST_HIT_R := 2.8
 var _thrust_left := 0.0
 var _thrust_dir := Vector3.ZERO
 var _thrust_hit: Array = []
-
-
 # ---- 武器 ----
 var _weapon := 0                  # 0=剑 1=弓 2=法杖（与 WEAPON_IDS 同下标）
 var _has := [true, true, false]   # 三把武器谁在身上（两格装备栏，最多两把为真）
@@ -77,13 +67,11 @@ var _sword: Node
 var _bow: Node
 var _staff: Node
 const WEAPON_IDS := ["sword", "bow", "staff"]
-
 # ---- 网络插值 ----
 var _net_target := Vector3.ZERO
 var _net_yaw := 0.0
 var _net_send_accum := 0.0
 var _spawn_point := Vector3.ZERO
-
 # ---- 武器/动作同步：让别人看见你拿着什么、正在做什么 ----
 # 广播侧（本机权威玩家）：_net_weapon/_net_act/_net_act_seq/_net_charge 随位置一起 20Hz 发
 # 接收侧（远程玩家节点）：_hand 手部挂点 + 复制出来的武器外观，按收到的动作做程序化动画
@@ -133,8 +121,6 @@ var _rem_act := ACT_NONE
 var _rem_t := 0.0
 var _rem_dur := 0.35
 var _rem_charge := 0.0
-
-
 func _ready() -> void:
 	add_to_group("player")
 	add_to_group("pvp_target")
@@ -154,22 +140,16 @@ func _ready() -> void:
 			if w != null:
 				w.connect("action", _on_weapon_action)
 	$Avatar/Name.text = display_name
-
-
 func _on_weapon_action(kind: String) -> void:
 	## 武器脚本起手时喊一声：把动作编号+序号写进广播状态，别人 50ms 内就能看到
 	var map := {"slash": ACT_SLASH, "heavy": ACT_HEAVY, "thrust": ACT_THRUST,
 		"draw": ACT_DRAW, "shoot": ACT_SHOOT, "swing": ACT_SWING, "charge": ACT_CHARGE}
 	_net_act = int(map.get(kind, ACT_NONE))
 	_net_act_seq += 1
-
-
 func _set_viewmodel_visible(v: bool) -> void:
 	for w in [$Camera3D/Sword, $Camera3D/Bow, $Camera3D/Staff]:
 		if w != null:
 			w.visible = v
-
-
 ## 组装视角（相机 + 三把武器）与第三人称外观；必须在 add_child 之前调用
 func setup(id: int, nm: String, spawn_pos: Vector3) -> void:
 	pvp_id = id
@@ -179,8 +159,6 @@ func setup(id: int, nm: String, spawn_pos: Vector3) -> void:
 	_spawn_point = spawn_pos
 	_net_target = spawn_pos
 	set_multiplayer_authority(id)
-
-
 func _build_view() -> void:
 	var cap := CollisionShape3D.new()
 	cap.name = "Col"
@@ -190,13 +168,11 @@ func _build_view() -> void:
 	cap.shape = shape
 	cap.position = Vector3(0, 0.85, 0)
 	add_child(cap)
-
 	var cam := Camera3D.new()
 	cam.name = "Camera3D"
 	cam.position = Vector3(0, 1.6, 0)
 	cam.fov = 75.0
 	add_child(cam)
-
 	# 三把武器：与 main.tscn 相同的挂法（武器脚本自己建模型、自己收输入）
 	_sword = Node3D.new()
 	_sword.name = "Sword"
@@ -213,7 +189,6 @@ func _build_view() -> void:
 	_sword.connect("slash_hit", _on_slash_hit)
 	_sword.connect("skill_hit", _on_skill_hit)
 	_equip(0)
-
 	# 第三人称外观：优先用单机那套 king.glb 真人骨架（62 根骨骼 + 动捕动画），
 	# 加载失败才退回彩色方块；名牌/血条/脚下色环跟着走
 	var avatar := Node3D.new()
@@ -265,15 +240,11 @@ func _build_view() -> void:
 	if not is_multiplayer_authority():
 		body.visible = not _build_character_rig()
 		_build_hand_mount()
-
-
 func _tint() -> Color:
 	## 每个玩家一个辨识色（名牌、脚下色环、方块身体共用）
 	var palette := [Color(0.92, 0.42, 0.34), Color(0.36, 0.66, 0.94),
 		Color(0.98, 0.78, 0.30), Color(0.46, 0.82, 0.50)]
 	return palette[int(pvp_id) % palette.size()]
-
-
 func _build_character_rig() -> bool:
 	## 把单机的 king.glb 角色装到远程玩家身上：真实骨架 + 动捕动画
 	## （待机/走/跑/挥砍/放箭/施法/倒地），比方块身体精细得多。
@@ -297,8 +268,6 @@ func _build_character_rig() -> bool:
 	_rig_anim.animation_finished.connect(_on_rig_anim_finished)
 	_rig_anim.play(String(ANIM[_base_anim]))
 	return true
-
-
 func _find_class(n: Node, cls: String) -> Node:
 	for c in n.get_children():
 		if c.get_class() == cls:
@@ -307,26 +276,18 @@ func _find_class(n: Node, cls: String) -> Node:
 		if r != null:
 			return r
 	return null
-
-
 func _rig_play_base() -> void:
 	if _rig_anim == null or dead:
 		return
 	_rig_anim.play(String(ANIM[_base_anim]), 0.2)
-
-
 func _rig_play_once(key: String, speed: float) -> void:
 	if _rig_anim == null or dead:
 		return
 	_rig_once = true
 	_rig_anim.play(String(ANIM[key]), 0.1, speed)
-
-
 func _on_rig_anim_finished(_name: String) -> void:
 	_rig_once = false
 	_rig_play_base()
-
-
 func _rig_update_move() -> void:
 	## 移动动画：按插值出来的估算速度切 待机/走/跑（一次性动作期间不打断）
 	if _rig_anim == null or _rig_once or dead:
@@ -341,8 +302,6 @@ func _rig_update_move() -> void:
 	if want != _rig_move:
 		_rig_move = want
 		_rig_anim.play(String(ANIM[want]), 0.25)
-
-
 func _build_hand_mount() -> void:
 	## 远程玩家：右手挂点 + 三把武器外观（弓/法杖直接复制本机相机下的网格层，
 	## 剑的第一人称网格是骨骼驱动的、复制过来会散架，所以给它做一柄简洁的示意剑）
@@ -374,8 +333,6 @@ func _build_hand_mount() -> void:
 	_hand_parts["sword"] = _mount_part(_sword_part())
 	_hand_parts["bow"] = _mount_part(_copy_visual(_bow))
 	_hand_parts["staff"] = _mount_part(_copy_visual(_staff))
-
-
 func _bone_scale_compensate() -> float:
 	## 骨骼挂点继承骨架的世界缩放，武器要按真实米数显示 → 反算一个补偿系数
 	var cum := 1.0
@@ -384,8 +341,6 @@ func _bone_scale_compensate() -> float:
 		cum *= maxf(absf(n.scale.x), 0.0001)
 		n = n.get_parent()
 	return 1.0 / maxf(cum, 0.0001)
-
-
 func _mount_part(node: Node) -> Node3D:
 	var part := Node3D.new()
 	part.visible = false
@@ -393,8 +348,6 @@ func _mount_part(node: Node) -> Node3D:
 		part.add_child(node)
 	_hand.add_child(part)
 	return part
-
-
 func _copy_visual(weapon: Node) -> Node:
 	## 把武器脚本的可视根整棵复制一份（剥掉脚本，只留网格与局部变换）
 	if weapon == null or not weapon.has_method("visual_root"):
@@ -408,16 +361,12 @@ func _copy_visual(weapon: Node) -> Node:
 	# （弓约 1.2 米、法杖约 1.4 米，实测标定）
 	dup.scale = dup.scale * 2.0
 	return dup
-
-
 func _strip_nonvisual(n: Node) -> void:
 	n.set_script(null)
 	if n is AnimationPlayer:
 		n.queue_free()
 	for c in n.get_children():
 		_strip_nonvisual(c)
-
-
 func _sword_part() -> Node3D:
 	## 直接复制第一人称那把真剑的子网格（剑柄/护手/配重球/剑刃/血槽/剑尖都是
 	## 固定局部变换的 MeshInstance3D，父节点的姿态由手腕挂点负责，搬过来正好）；
@@ -466,14 +415,10 @@ func _sword_part() -> Node3D:
 	grip.material_override = gmat
 	root.add_child(grip)
 	return root
-
-
 func _refresh_hp_tag() -> void:
 	var tag := get_node_or_null("Avatar/Hp")
 	if tag != null:
 		tag.text = "%d / %d" % [int(hp), int(max_hp)]
-
-
 # ---- 伤害：本机永远只"上报"，结算在房主（见 pvp_arena.rpc_claim_hit）----
 func take_damage(amount: int, weapon := "") -> void:
 	if dead or not is_inside_tree():
@@ -486,19 +431,13 @@ func take_damage(amount: int, weapon := "") -> void:
 		arena.call("settle_hit", pvp_id, amount, weapon, 1)
 	else:
 		arena.rpc_id(1, "rpc_claim_hit", pvp_id, amount, weapon)
-
-
 ## 房主结算后的结果广播到每个人（含本人）：改的是本地显示值，生杀大权在房主
 func apply_hp(v: float) -> void:
 	hp = clampf(v, 0.0, max_hp)
 	hp_changed.emit(hp, max_hp)
 	_refresh_hp_tag()
-
-
 func is_dead() -> bool:
 	return dead
-
-
 func set_dead(v: bool) -> void:
 	dead = v
 	visible = not dead
@@ -528,8 +467,6 @@ func set_dead(v: bool) -> void:
 			_rig_once = false
 			_speed_est = 0.0
 			_rig_play_base()
-
-
 ## 狗奶：10 秒无敌（免疫伤害），本机表现 + 房主记账结算
 func gain_invincibility(dur: float) -> void:
 	_invincible_t = maxf(_invincible_t, dur)
@@ -540,41 +477,23 @@ func gain_invincibility(dur: float) -> void:
 			arena.call("notify_invincible", pvp_id, _invincible_t)
 		else:
 			arena.rpc_id(1, "rpc_notify_invincible", pvp_id, _invincible_t)
-
-
 func is_invincible() -> bool:
 	return _invincible_t > 0.0
-
-
 func _arena_node() -> Node:
 	return get_tree().current_scene if is_inside_tree() else null
-
-
 # ---- 强化（与单机同一套指数算法）----
 func damage_scale_for(id: String) -> float:
 	return pow(ENH_GROWTH, float(enhance_level_of(id)))
-
-
 func attack_power(id: String, base: float) -> int:
 	return int(floor(base * damage_scale_for(id)))
-
-
 func sword_damage() -> int:
 	return attack_power("sword", SWORD_DMG)
-
-
 func sword_skill_damage() -> int:
 	return int(floor(float(sword_damage()) * SWORD_SKILL_MULT))
-
-
 func enhance_max() -> int:
 	return ENHANCE_MAX
-
-
 func enhance_level_of(id: String) -> int:
 	return int(enhance_levels.get(id, 0))
-
-
 func enhance_item(id: String) -> bool:
 	if not ENHANCE_KINDS.has(id):
 		return false
@@ -583,13 +502,9 @@ func enhance_item(id: String) -> bool:
 		return false
 	enhance_levels[id] = lv + 1
 	return true
-
-
 # ---- 魔法 ----
 func has_mp(amount: float) -> bool:
 	return mp >= amount
-
-
 func spend_mp(amount: float) -> bool:
 	if amount <= 0.0:
 		return true
@@ -598,15 +513,11 @@ func spend_mp(amount: float) -> bool:
 	mp = clampf(mp - amount, 0.0, max_mp)
 	mp_changed.emit(mp, max_mp)
 	return true
-
-
 func restore_mp(amount: float) -> void:
 	if amount <= 0.0 or mp >= max_mp:
 		return
 	mp = clampf(mp + amount, 0.0, max_mp)
 	mp_changed.emit(mp, max_mp)
-
-
 # ---- 武器在身上（两格装备栏：武器/副武器；法杖可以占任意一格）----
 func set_equipment(weapon_id: String, sub_id: String, armor_id: String, staff_id: String = "") -> void:
 	var ids := [weapon_id, sub_id, staff_id]
@@ -620,35 +531,23 @@ func set_equipment(weapon_id: String, sub_id: String, armor_id: String, staff_id
 			_equip(w)
 			return
 	_equip(-1)
-
-
 func weapon_id_at(i: int) -> String:
 	if i >= 0 and i < WEAPON_IDS.size():
 		return WEAPON_IDS[i]
 	return ""
-
-
 func current_weapon_id() -> String:
 	return weapon_id_at(_weapon)
-
-
 func is_equipped(i: int) -> bool:
 	return i >= 0 and i < _has.size() and _has[i]
-
-
 func set_current_weapon(w: int) -> void:
 	if w >= 0 and w < _has.size() and _has[w]:
 		_equip(w)
-
-
 func equipped_count() -> int:
 	var n := 0
 	for h in _has:
 		if h:
 			n += 1
 	return n
-
-
 func next_weapon_index() -> int:
 	var total := _has.size()
 	for step in range(1, total + 1):
@@ -656,14 +555,10 @@ func next_weapon_index() -> int:
 		if _has[i]:
 			return i
 	return _weapon
-
-
 func _switch_weapon() -> void:
 	if equipped_count() < 2 or weapon_busy():
 		return
 	_equip(next_weapon_index())
-
-
 func _equip(w: int) -> void:
 	_weapon = w
 	_net_weapon = w + 1 if w >= 0 else 0
@@ -673,8 +568,6 @@ func _equip(w: int) -> void:
 		_bow.set_active(w == 1)
 	if _staff != null:
 		_staff.set_active(w == 2)
-
-
 func weapon_busy() -> bool:
 	if _weapon == 1 and _bow != null and _bow.has_method("is_charging"):
 		return bool(_bow.call("is_charging"))
@@ -688,8 +581,6 @@ func weapon_busy() -> bool:
 	if _weapon == 0 and _sword != null and _sword.has_method("is_attacking"):
 		return bool(_sword.call("is_attacking"))
 	return false
-
-
 ## 被劈砍命中：减速 50%（持续 sec 秒）。本人上报房主结算，房主广播给本人执行。
 func stun(sec: float, _stack := false) -> void:
 	if dead or sec <= 0.0:
@@ -701,13 +592,9 @@ func stun(sec: float, _stack := false) -> void:
 		arena.call("settle_stun", pvp_id, sec)
 	else:
 		arena.rpc_id(1, "rpc_claim_stun", pvp_id, sec)
-
-
 ## 房主广播给本人的执行：减速 50%（打不断技能，移动与跳跃手感变沉）
 func apply_stun(sec: float) -> void:
 	_slow_t = maxf(_slow_t, sec)
-
-
 # ---- 突刺（由 sword.gd 的 skill2_hold 起手）----
 func thrust_dash() -> void:
 	var cam := get_node_or_null("Camera3D") as Camera3D
@@ -722,8 +609,6 @@ func thrust_dash() -> void:
 	_thrust_hit.clear()
 	velocity.x *= 0.2
 	velocity.z *= 0.2
-
-
 func _plan_thrust_distance(base: float) -> float:
 	## 先看路：射线跳过其他玩家找第一面墙；终点还卡在别人身体里就往前顺
 	var space := get_world_3d().direct_space_state
@@ -754,8 +639,6 @@ func _plan_thrust_distance(base: float) -> float:
 		if end_d >= base + THRUST_EXTRA_MAX:
 			break
 	return end_d
-
-
 func _point_in_other(p: Vector3) -> bool:
 	for n in get_tree().get_nodes_in_group("pvp_target"):
 		if n == self or not (n is PvpPlayer) or n.dead:
@@ -764,29 +647,21 @@ func _point_in_other(p: Vector3) -> bool:
 		if absf(d.y) < 2.2 and Vector2(d.x, d.z).length() < 0.9:
 			return true
 	return false
-
-
 func _weapon_node() -> Node:
 	match _weapon:
 		0: return _sword
 		1: return _bow
 		2: return _staff
 	return null
-
-
 func _cast_skill() -> void:
 	var w := _weapon_node()
 	if w != null and w.has_method("cast_skill"):
 		w.call("cast_skill")
-
-
 func _cast_skill2(pressed: bool) -> void:
 	var w := _weapon_node()
 	if w == null or not w.has_method("skill2_hold"):
 		return
 	w.call("skill2_hold", pressed)
-
-
 func bosses() -> Array:
 	## 追踪箭等要的"目标列表"：其他玩家（不含自己）
 	var out: Array = []
@@ -794,15 +669,11 @@ func bosses() -> Array:
 		if n != self and n is PvpPlayer and not n.dead:
 			out.append(n)
 	return out
-
-
 # ---- 命中判定（本机打的，目标节点上报房主）----
 func _on_slash_hit() -> void:
 	var t := _slash_ray_target()
 	if t != null:
 		t.take_damage(sword_damage(), "剑")
-
-
 func _on_skill_hit() -> void:
 	var t := _slash_ray_target()
 	if t == null:
@@ -810,8 +681,6 @@ func _on_skill_hit() -> void:
 	t.take_damage(sword_skill_damage(), "剑劈砍")
 	if t.has_method("stun"):
 		t.call("stun", SWORD_SKILL_STUN)
-
-
 func _slash_ray_target() -> Node:
 	## 挥砍射线：排除自己，打中别人的玩家节点就交上去
 	var cam := get_node_or_null("Camera3D") as Camera3D
@@ -832,8 +701,6 @@ func _slash_ray_target() -> Node:
 	if n != null and n != self:
 		return n
 	return null
-
-
 # ---- 输入 ----
 func _unhandled_input(event: InputEvent) -> void:
 	if not is_multiplayer_authority() or dead:
@@ -862,8 +729,6 @@ func _unhandled_input(event: InputEvent) -> void:
 				_cast_skill2(true)
 		elif event.keycode == KEY_2 or event.keycode == KEY_KP_2:
 			_cast_skill2(false)
-
-
 func try_dash() -> bool:
 	if _dash_cd > 0.0 or _dash_time > 0.0:
 		return false
@@ -879,8 +744,6 @@ func try_dash() -> bool:
 	_dash_time = DASH_DURATION
 	_dash_cd = DASH_COOLDOWN
 	return true
-
-
 func try_jump() -> void:
 	if is_on_floor():
 		_air_jumps = MAX_AIR_JUMPS
@@ -888,8 +751,6 @@ func try_jump() -> void:
 	elif _air_jumps > 0:
 		_air_jumps -= 1
 		velocity.y = jump_velocity * AIR_JUMP_MULT
-
-
 func speed_now() -> float:
 	var spd := move_speed
 	if _running:
@@ -897,8 +758,6 @@ func speed_now() -> float:
 	if _slow_t > 0.0:
 		spd *= SLOW_MULT   # 被劈砍命中：减速 50%
 	return spd
-
-
 func _physics_process(delta: float) -> void:
 	if not is_multiplayer_authority():
 		_net_interpolate(delta)
@@ -961,8 +820,6 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 	# 位置广播：自己的机器说了算（每帧发，unreliable 省带宽）
 	_net_push(delta)
-
-
 func _net_push(delta: float) -> void:
 	_net_send_accum += delta
 	if _net_send_accum < 0.05:
@@ -978,16 +835,12 @@ func _net_push(delta: float) -> void:
 		if id != pvp_id:
 			net_pos.rpc_id(id, global_position, rotation.y,
 				_net_weapon, _net_act_seq, _net_act, _net_charge)
-
-
 ## 武器发射飞行物时调用：把"我射了什么"广播给其他玩家（纯外观，伤害仍走房主结算）
 func broadcast_fx(kind: String, pos: Vector3, vel: Vector3, payload := {}) -> void:
 	var arena := _arena_node()
 	if arena == null or not arena.has_method("send_fx"):
 		return
 	arena.call("send_fx", kind, pos, vel, payload)
-
-
 ## 房主给突刺穿透的目标结账：固定 80 + 流血（上报房主结算）
 func _sweep_thrust_hits() -> void:
 	for n in get_tree().get_nodes_in_group("pvp_target"):
@@ -999,8 +852,6 @@ func _sweep_thrust_hits() -> void:
 			n.take_damage(THRUST_DMG, "剑突刺")
 			if n.has_method("bleed_from"):
 				n.call("bleed_from", pvp_id, float(sword_damage()) * THRUST_BLEED_MULT, THRUST_BLEED_T)
-
-
 ## 突刺的流血：直接给房主上报"这笔持续伤害你来记"
 func bleed_from(attacker_id: int, dps: float, seconds: float) -> void:
 	var arena := _arena_node()
@@ -1010,16 +861,12 @@ func bleed_from(attacker_id: int, dps: float, seconds: float) -> void:
 		arena.call("settle_bleed", pvp_id, attacker_id, dps, seconds)
 	else:
 		arena.rpc_id(1, "rpc_claim_bleed", pvp_id, attacker_id, dps, seconds)
-
-
 # ---- 远程玩家：位置/武器/动作插值 ----
 @rpc("authority", "call_remote", "unreliable_ordered")
 func net_pos(pos: Vector3, yaw: float, weapon: int, act_seq: int, act: int, charge: float) -> void:
 	_net_target = pos
 	_net_yaw = yaw
 	_apply_remote_state(weapon, act_seq, act, charge)
-
-
 func _apply_remote_state(weapon: int, act_seq: int, act: int, charge: float) -> void:
 	if _hand == null:
 		return
@@ -1049,8 +896,6 @@ func _apply_remote_state(weapon: int, act_seq: int, act: int, charge: float) -> 
 			ACT_SWING: _rig_play_once("punch", 1.2)
 			_: pass
 	_rem_charge = charge
-
-
 func _anim_hand(delta: float) -> void:
 	## 没有骨架时才用的兜底动画：把手部挂点按收到的动作甩一下。
 	## 有 king.glb 骨架时手臂由动捕动画驱动，这里只负责计时与蓄力姿态微调。
@@ -1084,8 +929,6 @@ func _anim_hand(delta: float) -> void:
 			pass
 	_hand.rotation_degrees = rot
 	_hand.position = HAND_BASE_POS + ofs
-
-
 func _net_interpolate(delta: float) -> void:
 	var prev := global_position
 	global_position = global_position.lerp(_net_target, minf(1.0, delta * 14.0))

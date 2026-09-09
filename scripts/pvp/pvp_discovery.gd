@@ -4,9 +4,7 @@ class_name PvpDiscovery
 ## 加入方监听广播并对上房间号——所以谁都不用知道对方的 IP。
 ## 同一套端口约定：广播走 UDP 24566，正式联机走 ENet 24565（见 PvpState）。
 ## 注意：必须同一局域网且路由器没开"客户端隔离"，否则互相听不见（大厅界面有提示）。
-
 const GAME_TAG := "qrld_pvp_v1"   # 广播包身份（别的程序乱发 UDP 不会误认）
-
 var _udp: PacketPeerUDP
 var _room := 0
 var _map := ""
@@ -14,8 +12,6 @@ var _count := 0
 var _accum := 0.0
 # 加入方视角：听到的房间 {房号: {ip:String, map:String, count:int, seen:float}}
 var found := {}
-
-
 ## 房主侧：开始/停止广播自己的房间
 func start_host_broadcast(room: int, map: String, count: int) -> void:
 	stop()
@@ -29,18 +25,12 @@ func start_host_broadcast(room: int, map: String, count: int) -> void:
 	if not _udp.is_bound():
 		_udp.bind(0)
 	set_process(true)
-
-
 func update_host_info(count: int, map: String) -> void:
 	_count = count
 	_map = map
-
-
 func stop() -> void:
 	_room = 0
 	set_process(false)
-
-
 ## 加入方侧：只听广播（不需要先输入 IP），按房号对上后填进 found
 func start_listen() -> void:
 	stop()
@@ -52,8 +42,6 @@ func start_listen() -> void:
 		if err != OK:
 			push_warning("PvpDiscovery: 广播端口 %d 被占用（%s）" % [PvpState.DISC_PORT, error_string(err)])
 	set_process(true)
-
-
 func _process(delta: float) -> void:
 	if _udp == null:
 		return
@@ -76,8 +64,6 @@ func _process(delta: float) -> void:
 		if room <= 0:
 			continue
 		found[room] = {"ip": ip, "map": parts[3], "count": int(parts[2]), "seen": Time.get_ticks_msec()}
-
-
 ## 加入方：按 4 位房间号取一个还活着的房间地址（6 秒内听到过才算活着）
 func pick(room: int) -> Dictionary:
 	var dead: Array = []

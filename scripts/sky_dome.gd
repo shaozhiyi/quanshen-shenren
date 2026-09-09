@@ -1,17 +1,11 @@
 extends MeshInstance3D
 ## 天空穹顶：真实 3D 球体 + HDRI 照片纹理（unshaded），绕开 PanoramaSkyMaterial 导致地形不渲染的问题。
-
 @export var dome_radius := 450.0
 @export var hdr_path := "res://assets/sky/kloofendal_48d_partly_cloudy.hdr"
-
 const SKY_DOME_SHADER := preload("res://shaders/sky_dome.gdshader")
-
-
 func _ready() -> void:
 	if mesh == null:
 		_build_dome()
-
-
 func _build_dome() -> void:
 	var sphere := SphereMesh.new()
 	sphere.radius = dome_radius

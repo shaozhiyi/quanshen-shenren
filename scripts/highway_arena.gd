@@ -14,11 +14,9 @@ extends Node3D
 ##      跑到哪灯都在头顶前后亮着，永远数不完。
 ## 只有地面那块厚盒参与碰撞（隔离带、护栏、灯杆、龙门架都是纯视觉），
 ## 免得战斗时玩家或大运被路沿卡住。
-
 const ARENA_CENTER := Vector3(0.0, 100.0, -3000.0)
 const FLOOR_SIZE := 800.0
 const HALF := FLOOR_SIZE / 2.0
-
 # ---- 道路横断面（相对空间中心的 x，米）----
 const MEDIAN_HALF := 3.5        # 中央分隔带半宽
 const LANE_OUT := 15.5          # 单向车行道外缘
@@ -32,9 +30,7 @@ const LAMP_POOL := 4            # 池化光源数量
 # 左边界 = 中央隔离带护栏内侧，右边界 = 路肩护栏内侧；各留余量免得人物贴进护栏
 const WALK_MIN_X := MEDIAN_HALF + 0.7      # 4.2
 const WALK_MAX_X := SHOULDER_OUT - 0.6     # 18.4
-
 var arena_env: Environment
-
 var _sun: DirectionalLight3D
 var _fill: DirectionalLight3D
 var _sky_mat: ProceduralSkyMaterial
@@ -42,7 +38,6 @@ var _lamp_mat: StandardMaterial3D
 var _lamps: Array[OmniLight3D] = []
 var _lamp_heads: PackedVector3Array = PackedVector3Array()
 var _night := 0.0
-
 # 黄昏基调
 const DUSK_TOP := Color(0.10, 0.13, 0.30)
 const DUSK_HORIZON := Color(0.92, 0.52, 0.26)
@@ -53,8 +48,6 @@ const SHOULDER_COL := Color(0.235, 0.225, 0.215)
 const FIELD_COL := Color(0.155, 0.19, 0.135)
 const CURB_COL := Color(0.42, 0.42, 0.44)
 const LAMP_COL := Color(1.0, 0.86, 0.58)
-
-
 func _ready() -> void:
 	add_to_group("arena")
 	position = ARENA_CENTER
@@ -67,8 +60,6 @@ func _ready() -> void:
 	_build_lamps()
 	_build_poles()
 	_build_gantries()
-
-
 # ---- 环境：黄昏天空 + 浓雾（雾是"看不到尽头"的关键）----
 func _build_env() -> void:
 	var env := Environment.new()
@@ -96,8 +87,6 @@ func _build_env() -> void:
 	env.glow_intensity = 0.62
 	env.glow_bloom = 0.06
 	arena_env = env
-
-
 func _build_lights() -> void:
 	# 低角度暖色夕阳（拉出长影）+ 冷色补光（背光面不糊成黑）
 	_sun = DirectionalLight3D.new()
@@ -112,8 +101,6 @@ func _build_lights() -> void:
 	_fill.light_energy = 0.32
 	_fill.shadow_enabled = false
 	add_child(_fill)
-
-
 # ---- 地面：整块田野 + 一块参与碰撞的厚盒 ----
 func _build_ground() -> void:
 	var mi := MeshInstance3D.new()
@@ -123,8 +110,6 @@ func _build_ground() -> void:
 	mi.mesh = pm
 	add_child(mi)
 	add_child(_slab(Vector3(0, -0.5, 0), Vector3(FLOOR_SIZE, 1.0, FLOOR_SIZE)))
-
-
 # ---- 路面：两条车行道 + 路肩 + 四类标线 ----
 func _build_roads() -> void:
 	var asp := _asphalt_mat()
@@ -136,8 +121,6 @@ func _build_roads() -> void:
 		_strip(side * (LANE_OUT - 0.35), 0.18, 0.05, _flat_mat(Color(0.93, 0.93, 0.91)))
 		_strip(side * (MEDIAN_HALF + 0.35), 0.18, 0.05, _flat_mat(Color(0.96, 0.78, 0.15)))
 		_strip(mid, 0.16, 0.05, _dash_mat(Color(0.94, 0.94, 0.92)))   # 同向车道分界虚线
-
-
 # ---- 中央分隔带：水泥带 + 两侧波形护栏（纯视觉，不挡人）----
 func _build_median() -> void:
 	var curb := MeshInstance3D.new()
@@ -164,8 +147,6 @@ func _build_median() -> void:
 	var post := BoxMesh.new()
 	post.size = Vector3(0.12, 0.90, 0.12)
 	add_child(_multimesh(post, posts, _metal_mat(Color(0.55, 0.57, 0.60))))
-
-
 # ---- 路灯：灯杆 + 发光灯头（MultiMesh）+ 池化 OmniLight 跟着玩家走 ----
 func _build_lamps() -> void:
 	var pole_mats: Array[Transform3D] = []
@@ -200,8 +181,6 @@ func _build_lamps() -> void:
 		om.shadow_enabled = false
 		add_child(om)
 		_lamps.append(om)
-
-
 # ---- 远处电线杆：给"路还在往前伸"一个更远的参照 ----
 func _build_poles() -> void:
 	var mats: Array[Transform3D] = []
@@ -217,8 +196,6 @@ func _build_poles() -> void:
 	pole.bottom_radius = 0.22
 	pole.height = 9.0
 	add_child(_multimesh(pole, mats, _base_mat(Color(0.30, 0.27, 0.24))))
-
-
 # ---- 龙门架路牌：蓝底白字「国道 G108」----
 func _build_gantries() -> void:
 	var sign_tex: Texture2D = null
@@ -259,8 +236,6 @@ func _build_gantries() -> void:
 				sm.material_override = m
 				g.add_child(sm)
 		add_child(g)
-
-
 # ---- 每帧：把池化灯光挪到离玩家最近的几盏灯头（灯头数组只读，不改）----
 func _process(_delta: float) -> void:
 	if not visible or _lamps.is_empty() or _lamp_heads.is_empty():
@@ -276,8 +251,6 @@ func _process(_delta: float) -> void:
 	var n := mini(_lamps.size(), pairs.size())
 	for i in n:
 		_lamps[i].global_position = _lamp_heads[int(pairs[i][1])]
-
-
 ## 白天↔深夜（大运目前没有攻击相位，接口先留着；夜里灯更亮）
 func set_day_night(night: float) -> void:
 	_night = clampf(night, 0.0, 1.0)
@@ -292,8 +265,6 @@ func set_day_night(night: float) -> void:
 		_lamp_mat.emission_energy_multiplier = lerpf(2.8, 5.4, _night)
 	for om in _lamps:
 		om.light_energy = lerpf(1.2, 2.6, _night)
-
-
 # ---- 小工具 ----
 func _strip(x: float, width: float, y: float, mat: Material) -> void:
 	var mi := MeshInstance3D.new()
@@ -303,8 +274,6 @@ func _strip(x: float, width: float, y: float, mat: Material) -> void:
 	mi.mesh = pm
 	mi.position = Vector3(x, y, 0)
 	add_child(mi)
-
-
 func _base_mat(col: Color, emission := 0.0) -> StandardMaterial3D:
 	## 受光的实体材质（需要自发光时传 emission）
 	var m := StandardMaterial3D.new()
@@ -315,8 +284,6 @@ func _base_mat(col: Color, emission := 0.0) -> StandardMaterial3D:
 		m.emission = col
 		m.emission_energy_multiplier = emission
 	return m
-
-
 func _flat_mat(col: Color) -> StandardMaterial3D:
 	## 标线：不受光照影响的纯平色（夜里车灯/路灯下也够醒目）
 	var m := StandardMaterial3D.new()
@@ -324,16 +291,12 @@ func _flat_mat(col: Color) -> StandardMaterial3D:
 	m.albedo_color = col
 	m.cull_mode = BaseMaterial3D.CULL_DISABLED
 	return m
-
-
 func _metal_mat(col: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = col
 	m.metallic = 0.75
 	m.roughness = 0.38
 	return m
-
-
 func _asphalt_mat() -> StandardMaterial3D:
 	## 程序化沥青：噪点底 + 平铺，避免一大片纯色
 	var m := StandardMaterial3D.new()
@@ -344,8 +307,6 @@ func _asphalt_mat() -> StandardMaterial3D:
 	m.uv1_scale = Vector3(26.0, 26.0, 1.0)
 	m.albedo_texture = _noise_tex(128, 20260902)
 	return m
-
-
 func _dash_mat(col: Color) -> StandardMaterial3D:
 	## 车道虚线：一整条面片 + 纵向平铺（3 米一段：2 米实线段 + 1 米空）
 	var m := StandardMaterial3D.new()
@@ -357,8 +318,6 @@ func _dash_mat(col: Color) -> StandardMaterial3D:
 	m.uv1_scale = Vector3(1.0, FLOOR_SIZE / 3.0, 1.0)
 	m.albedo_texture = _dash_tex()
 	return m
-
-
 static var _dash_cache: ImageTexture
 static func _dash_tex() -> ImageTexture:
 	if _dash_cache != null:
@@ -373,8 +332,6 @@ static func _dash_tex() -> ImageTexture:
 			img.set_pixel(x, y, Color(1, 1, 1, a))
 	_dash_cache = ImageTexture.create_from_image(img)
 	return _dash_cache
-
-
 static var _noise_cache := {}
 static func _noise_tex(side: int, seed_val: int) -> ImageTexture:
 	var key := "%d_%d" % [side, seed_val]
@@ -392,8 +349,6 @@ static func _noise_tex(side: int, seed_val: int) -> ImageTexture:
 	var t := ImageTexture.create_from_image(img)
 	_noise_cache[key] = t
 	return t
-
-
 func _multimesh(mesh: Mesh, mats: Array[Transform3D], mat: Material) -> MultiMeshInstance3D:
 	var mm := MultiMesh.new()
 	mm.transform_format = MultiMesh.TRANSFORM_3D
@@ -406,8 +361,6 @@ func _multimesh(mesh: Mesh, mats: Array[Transform3D], mat: Material) -> MultiMes
 	if mat != null:
 		mi.material_override = mat
 	return mi
-
-
 func _slab(pos: Vector3, size: Vector3) -> StaticBody3D:
 	var body := StaticBody3D.new()
 	var csc := CollisionShape3D.new()
@@ -417,47 +370,27 @@ func _slab(pos: Vector3, size: Vector3) -> StaticBody3D:
 	csc.position = pos
 	body.add_child(csc)
 	return body
-
-
 # ---- 对外 API（与 arena.gd 保持一致）----
 func theme_key() -> String:
 	return "highway"
-
-
 func center() -> Vector3:
 	return ARENA_CENTER
-
-
 func bounds_half() -> float:
 	return HALF
-
-
 func floor_y() -> float:
 	return ARENA_CENTER.y
-
-
 func set_active(b: bool) -> void:
 	visible = b
-
-
 func is_active() -> bool:
 	return visible
-
-
 ## 双方都放在右行的那条车道中心（x=+12.5）：大运顺着国道朝你开过来，
 ## 而不是压在 9.5 的车道分界虚线上
 func player_spawn() -> Vector3:
 	return ARENA_CENTER + Vector3(LANE_RIGHT, 1.05, 8.0)
-
-
 func boss_spawn() -> Vector3:
 	return ARENA_CENTER + Vector3(LANE_RIGHT, 0.0, -16.0)
-
-
 func inside(p: Vector3) -> bool:
 	return absf(p.x - ARENA_CENTER.x) < HALF and absf(p.z - ARENA_CENTER.z) < HALF
-
-
 ## 「无法离开国道」：玩家横向被夹在右幅车道内——左边是中央隔离带护栏、右边是路肩护栏，
 ## 顺着公路跑（z）完全自由。护栏本身仍不做碰撞体，靠这里逐帧夹，免得人物被路沿卡死。
 func confine(p: Vector3) -> Vector3:

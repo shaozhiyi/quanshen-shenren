@@ -7,16 +7,12 @@ extends RefCounted
 ## 带竖向加强筋的自卸斗、侧面竖排白字「大运重卡」、前双转向桥 + 后双驱动桥共四轴八轮。
 ## 面数：约 90 个 BoxMesh/CylinderMesh 图元、几千三角形，MX250 上毫无压力。
 ## 轮子挂在名为 "Wheels" 的节点下，boss.gd 会按速度让它们滚动。
-
-
 static func _mat(col: Color, rough := 0.6, metal := 0.0) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = col
 	m.roughness = rough
 	m.metallic = metal
 	return m
-
-
 static func _box(size: Vector3, pos: Vector3, mat: Material) -> MeshInstance3D:
 	var mi := MeshInstance3D.new()
 	var bm := BoxMesh.new()
@@ -25,8 +21,6 @@ static func _box(size: Vector3, pos: Vector3, mat: Material) -> MeshInstance3D:
 	mi.position = pos
 	mi.material_override = mat
 	return mi
-
-
 static func _cyl(r: float, h: float, mat: Material, steps := 20) -> MeshInstance3D:
 	## 圆柱：默认轴沿局部 Y，调用方自己旋转到需要朝向。
 	## 车轮这种"轴要横过来（沿 X）"必须绕 Z 转 90°：绕 X 转 90° 会把轴送到 Z，
@@ -41,13 +35,10 @@ static func _cyl(r: float, h: float, mat: Material, steps := 20) -> MeshInstance
 	mi.mesh = cm
 	mi.material_override = mat
 	return mi
-
-
 static func build_truck(tint := Color(1, 1, 1)) -> Node3D:
 	## 橙色 8×4 自卸重卡：长 10.6 · 宽 3.0 · 高 3.8 米，车头朝 +Z
 	var root := Node3D.new()
 	root.name = "TruckPlaceholder"
-
 	var orange := _mat(Color(0.760, 0.085, 0.020) * tint, 0.42, 0.10)      # 主色（参考图那种橙红）
 	var orange_dark := _mat(Color(0.560, 0.055, 0.015) * tint, 0.50, 0.10)  # 竖筋/暗面
 	var black := _mat(Color(0.075, 0.072, 0.070), 0.75)
@@ -60,13 +51,11 @@ static func build_truck(tint := Color(1, 1, 1)) -> Node3D:
 	lamp.emission_enabled = true
 	lamp.emission = Color(1.0, 0.93, 0.62)
 	lamp.emission_energy_multiplier = 1.8
-
 	# ---- 底盘大梁（纵梁 + 横梁）----
 	root.add_child(_box(Vector3(0.26, 0.34, 9.6), Vector3(-0.95, 1.12, -0.1), black))
 	root.add_child(_box(Vector3(0.26, 0.34, 9.6), Vector3(0.95, 1.12, -0.1), black))
 	for i in 5:
 		root.add_child(_box(Vector3(2.0, 0.16, 0.22), Vector3(0.0, 1.10, 3.4 - float(i) * 1.9), black))
-
 	# ---- 高顶驾驶室 ----
 	root.add_child(_box(Vector3(2.62, 2.05, 2.35), Vector3(0.0, 2.30, 4.15), orange))       # 主体
 	root.add_child(_box(Vector3(2.62, 0.42, 2.30), Vector3(0.0, 3.52, 4.15), orange))       # 高顶
@@ -77,7 +66,6 @@ static func build_truck(tint := Color(1, 1, 1)) -> Node3D:
 	root.add_child(_box(Vector3(0.98, 0.72, 0.08), Vector3(0.86, 2.86, 2.99), glass))       # 右门窗
 	root.add_child(_box(Vector3(0.34, 0.72, 0.08), Vector3(-1.32, 2.86, 2.99), glass))      # 左三角窗
 	root.add_child(_box(Vector3(0.34, 0.72, 0.08), Vector3(1.32, 2.86, 2.99), glass))       # 右三角窗
-
 	# ---- 前脸：中网 + 镀铬横条 + 车标 + 大灯 + 保险杠 ----
 	root.add_child(_box(Vector3(2.10, 0.86, 0.14), Vector3(0.0, 2.02, 5.34), black))
 	for i in 3:
@@ -91,16 +79,13 @@ static func build_truck(tint := Color(1, 1, 1)) -> Node3D:
 		root.add_child(_box(Vector3(0.42, 0.24, 0.12), Vector3(float(s) * 1.10, 1.20, 5.38), lamp))
 	root.add_child(_box(Vector3(2.86, 0.44, 0.40), Vector3(0.0, 1.02, 5.30), gray))
 	root.add_child(_box(Vector3(1.10, 0.16, 0.30), Vector3(0.0, 0.72, 5.28), black))
-
 	# ---- 后视镜（长支架 + 镜壳）----
 	for s in [-1, 1]:
 		root.add_child(_box(Vector3(0.10, 0.10, 0.44), Vector3(float(s) * 1.46, 3.20, 4.86), black))
 		root.add_child(_box(Vector3(0.12, 0.62, 0.20), Vector3(float(s) * 1.52, 3.16, 5.06), black))
-
 	# ---- 登车踏步 ----
 	root.add_child(_box(Vector3(0.42, 0.10, 0.60), Vector3(-1.36, 1.42, 3.30), steel))
 	root.add_child(_box(Vector3(0.42, 0.10, 0.60), Vector3(-1.36, 1.02, 3.30), steel))
-
 	# ---- 油箱 / 储气筒 / 排气竖管 ----
 	var tank := _cyl(0.36, 1.55, steel, 18)
 	tank.rotation_degrees = Vector3(90, 0, 0)
@@ -118,7 +103,6 @@ static func build_truck(tint := Color(1, 1, 1)) -> Node3D:
 	var stack := _cyl(0.075, 1.00, steel, 12)
 	stack.position = Vector3(1.24, 2.55, 2.86)
 	root.add_child(stack)
-
 	# ---- 自卸斗：底板 + 侧壁 + 前挡板 + 尾板 + 上下横梁 + 竖向加强筋 ----
 	root.add_child(_box(Vector3(2.86, 0.20, 6.90), Vector3(0.0, 1.80, -1.55), orange_dark))
 	root.add_child(_box(Vector3(0.12, 1.55, 6.90), Vector3(-1.40, 2.66, -1.55), orange))
@@ -137,7 +121,6 @@ static func build_truck(tint := Color(1, 1, 1)) -> Node3D:
 		hinge.rotation_degrees = Vector3(0, 0, 90)
 		hinge.position = Vector3(float(s) * 1.05, 3.44, -5.06)
 		root.add_child(hinge)
-
 	# ---- 侧面竖排白字「大运重卡」（贴图缺失时自动跳过）----
 	if ResourceLoader.exists("res://assets/models/truck_lettering.png"):
 		var lm := StandardMaterial3D.new()
@@ -155,14 +138,12 @@ static func build_truck(tint := Color(1, 1, 1)) -> Node3D:
 			q.rotation_degrees = Vector3(0.0, 90.0 * float(s), 0.0)
 			q.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			root.add_child(q)
-
 	# ---- 后桥挡泥板 / 侧面防护栏 / 挡泥皮 ----
 	root.add_child(_box(Vector3(2.90, 0.12, 2.10), Vector3(0.0, 1.92, -3.55), black))
 	for s in [-1, 1]:
 		root.add_child(_box(Vector3(0.10, 0.10, 2.30), Vector3(float(s) * 1.45, 0.95, -3.40), gray))
 		root.add_child(_box(Vector3(0.30, 0.90, 0.06), Vector3(float(s) * 1.35, 0.62, -5.06), black))
 		root.add_child(_box(Vector3(0.34, 0.10, 1.50), Vector3(float(s) * 1.42, 1.68, 3.34), black))
-
 	# ---- 四轴八轮（前双转向桥 + 后双驱动桥），挂在 "Wheels" 下供滚动 ----
 	var wheels := Node3D.new()
 	wheels.name = "Wheels"

@@ -2,7 +2,6 @@ extends Node3D
 ## 联机飞行物"复制体"：只负责在**别人的机器上**把箭/魔法球的样子演出来。
 ## 伤害仍然只在射手那台机器判定并上报房主结算，这里没有任何碰撞与伤害逻辑，
 ## 所以复制体不建碰撞体、不进任何分组，纯视觉，寿命到了自己回收。
-
 var _vel := Vector3.ZERO
 var _grav := 0.0
 var _life := 3.0
@@ -18,8 +17,6 @@ var _omega := 0.0
 var _phase := 0.0
 var _bx := Vector3.RIGHT
 var _by := Vector3.UP
-
-
 static func spawn(parent: Node, kind: String, pos: Vector3, vel: Vector3, payload: Dictionary = {}) -> void:
 	if parent == null or not is_instance_valid(parent):
 		return
@@ -28,8 +25,6 @@ static func spawn(parent: Node, kind: String, pos: Vector3, vel: Vector3, payloa
 	n.name = "Replica"
 	parent.add_child(n)
 	n._begin(kind, pos, vel, payload)
-
-
 func _begin(kind: String, pos: Vector3, vel: Vector3, payload: Dictionary) -> void:
 	_kind = kind
 	global_position = pos
@@ -59,8 +54,6 @@ func _begin(kind: String, pos: Vector3, vel: Vector3, payload: Dictionary) -> vo
 				float(payload.get("glow", 2.2)))
 			_grav = float(payload.get("gravity", 9.8))
 	_orient()
-
-
 func _physics_process(delta: float) -> void:
 	_age += delta
 	if _age >= _life or not is_inside_tree():
@@ -75,8 +68,6 @@ func _physics_process(delta: float) -> void:
 	_vel.y -= _grav * delta
 	global_position += _vel * delta
 	_orient()
-
-
 func _orient() -> void:
 	if _vel.length_squared() < 0.0001:
 		return
@@ -85,16 +76,10 @@ func _orient() -> void:
 		look_at(global_position - _vel.normalized(), Vector3.UP)
 	else:
 		rotate_y(delta_rot())
-
-
 var _spin := 0.0
-
-
 func delta_rot() -> float:
 	_spin += 0.25
 	return _spin
-
-
 func _build_arrow(shaft_col: Color) -> void:
 	var shaft := MeshInstance3D.new()
 	var cm := CylinderMesh.new()
@@ -128,8 +113,6 @@ func _build_arrow(shaft_col: Color) -> void:
 	fletch.material_override = fmat
 	add_child(fletch)
 	_no_shadow()
-
-
 func _build_orb(col: Color, r: float, glow: float) -> void:
 	var mi := MeshInstance3D.new()
 	var sm := SphereMesh.new()
@@ -166,8 +149,6 @@ func _build_orb(col: Color, r: float, glow: float) -> void:
 	halo.material_override = hm
 	add_child(halo)
 	_no_shadow()
-
-
 func _no_shadow() -> void:
 	for c in get_children():
 		if c is MeshInstance3D:

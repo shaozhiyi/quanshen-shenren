@@ -3,9 +3,7 @@ extends RefCounted
 ## 素材放在 assets/audio/（jc-sounds「Fantasy SFX Pack Vol 1」，CC-BY 4.0，见 CREDITS.txt）。
 ## 一个"音效"由一到若干层组成；同一层可以配多个变体文件，每次随机挑一个（连挥不会机关枪感）。
 ## 任一文件缺失都不会报错，只是没声音 —— 代码可以先接，素材后补也不会黑屏。
-
 const DIR := "res://assets/audio/"
-
 # id -> {db: 整体音量, cut: 是否打断上一个同种音效, layers: [{files:[...], db, delay}]}
 const SOUNDS := {
 	"swing": {"db": -6.0, "cut": true, "layers": [
@@ -18,11 +16,8 @@ const SOUNDS := {
 		{"files": ["bow_shot.wav"], "db": 0.0, "delay": 0.0},
 	]},
 }
-
 static var _streams := {}        # path -> AudioStream（缺失记 false，避免反复探测）
 static var _last := {}           # id -> 上次播放时刻(msec)，用于节流
-
-
 static func play(id: String, vol_db := 0.0) -> void:
 	## 播一次音效（所有层）。vol_db：本次额外音量；同种 60 毫秒内不重播
 	var cfg: Dictionary = SOUNDS.get(id, {})
@@ -50,8 +45,6 @@ static func play(id: String, vol_db := 0.0) -> void:
 			continue
 		_play_one(stream, float(cfg.get("db", 0.0)) + float(L.get("db", 0.0)) + vol_db,
 			float(L.get("delay", 0.0)), id, bool(cfg.get("cut", false)))
-
-
 static func _play_one(stream: AudioStream, db: float, delay: float, id: String, cut: bool) -> void:
 	var tree := Engine.get_main_loop() as SceneTree
 	if tree == null:
@@ -76,8 +69,6 @@ static func _play_one(stream: AudioStream, db: float, delay: float, id: String, 
 		p.play(delay)                     # AudioStreamPlayer 自带延迟起播
 	else:
 		p.play()
-
-
 static func _stream_of(file: String) -> AudioStream:
 	## 首次使用时从磁盘加载并缓存；文件不存在则记 false，之后不再探测
 	if file == "":

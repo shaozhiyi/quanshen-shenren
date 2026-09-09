@@ -9,19 +9,15 @@ extends Node3D
 ## slash_hit 信号在挥砍动画 35% 进度处发出，供后续命中判定。
 ## 挥砍动画播放期间不能换武器：is_attacking() 供 player.gd 的 weapon_busy() 拦 C，
 ## 收招（动画结束）后才切得动，避免半途换把把这一剑的判定与动画劈成两截。
-
 signal slash_hit
 signal skill_hit        # 技能「劈砍」的命中时机（player 据此扣 1.6 倍伤害并定身 1 秒）
 signal action(kind: String)   # 联机：起手动作（"slash"/"heavy"/"thrust"），别人要看到挥砍
-
 const SLAM_FX := preload("res://scripts/slam_fx.gd")
 const SFX := preload("res://scripts/sfx.gd")
-
 const KNIGHT_SCENE := preload("res://assets/character/king.glb")
 const SLASH_ANIM := "CharacterArmature|Sword_Slash"
 const IDLE_ANIM := "CharacterArmature|Idle_Sword"
 const HAND_BONE := "Wrist.R"
-
 # 骨架相对相机的摆放（让右手落在视野右下）
 const RIG_POS := Vector3(0.10, -1.32, -0.72)
 const RIG_ROT_DEG := Vector3(0, 150, 0)
@@ -34,14 +30,11 @@ var HAND_CORRECTION := Transform3D(
 	),
 	Vector3(0, 0.02, -0.04)
 )
-
 const TRAIL_COUNT := 3
 const TRAIL_DELAY := 0.045
-
 # 动作夸张化：以待机腕骨姿态为基准，挥砍偏移的转角/位移增益
 const ROT_GAIN := 2.2
 const POS_GAIN := 1.4
-
 # ---- 技能·劈砍（数字 1）：1.6 倍攻击 + 定身 1 秒，冷却 10 秒，耗 50 法力 ----
 # 技能冷却期间照常普攻、照常切武器；切走了冷却也继续跳（_process 里不受 active 限制）。
 const SKILL_NAME := "劈砍"
@@ -52,7 +45,6 @@ const SKILL_SPEED := 0.72   # 动画速度：放慢一点，更沉更用力
 const SKILL_SFX_DB := 8.0   # 音效更用力：比普砍响 8dB
 const SKILL_FX_SCALE := 1.5 # 剑气放大倍率
 const SKILL_FX_COLOR := Color(1.0, 0.84, 0.42)   # 剑气换成重斩的金色
-
 # ---- 技能·突刺（数字 2）：向前戳一记并冲刺穿透，冷却 15 秒，耗 60 法力 ----
 # 冲刺位移与"穿透结算（固定 80 + 流血 10 秒）"都在 player.gd（要动玩家坐标）；
 # 这里只管起手扣蓝进冷却、戳击的动作与音效。
@@ -62,7 +54,6 @@ const SKILL2_MP := 60
 const SKILL2_ANIM_T := 0.42  # 剑随人前探再收回的动作时长（秒）
 const SKILL2_SPEED := 1.5    # 斩击动画加速：戳完立刻收
 const SKILL2_SFX_DB := 6.0
-
 var _attacking := false
 var _hit_emitted := false
 var _skill_swing := false       # 这一剑是不是技能「劈砍」（决定发哪个信号/幅度/音效）
@@ -78,15 +69,11 @@ var _ref_local := Transform3D.IDENTITY   # 腕骨相对骨架的待机基准姿�
 var _has_ref := false
 var _trails: Array[MeshInstance3D] = []
 var _hist: Array[Transform3D] = []
-
-
 func _ready() -> void:
 	_build_grip()
 	_build_blade()
 	_build_trails()
 	_setup_rig()
-
-
 # ---- 动画骨架：隐藏模型，只取右手腕骨姿态 ----
 func _setup_rig() -> void:
 	_rig = KNIGHT_SCENE.instantiate()
@@ -122,12 +109,8 @@ func _setup_rig() -> void:
 	var ref: Transform3D = _rig.global_transform.affine_inverse() * _hand_attach.global_transform
 	_ref_local = Transform3D(_norm_basis(ref.basis), ref.origin)
 	_has_ref = true
-
-
 static func _norm_basis(b: Basis) -> Basis:
 	return Basis(b.x.normalized(), b.y.normalized(), b.z.normalized())
-
-
 func _on_anim_finished(_name: String) -> void:
 	if _anim_player == null:
 		return
@@ -140,17 +123,11 @@ func _on_anim_finished(_name: String) -> void:
 	for t in _trails:
 		t.visible = false
 	_hist.clear()
-
-
 func attack() -> void:
 	_begin_swing(false)
-
-
 func visual_root() -> Node3D:
 	## 联机：给远程玩家复制"别人看得见的武器"用的可视根（剑的网格直接挂在本节点下）
 	return self
-
-
 func cast_skill() -> bool:
 	## 数字 1：技能「劈砍」。冷却中/蓝不够/没在手上 → false（不扣蓝也不动冷却）。
 	## 成功：先扣 50 蓝、进 10 秒冷却，再起一记更大更沉的重斩（命中定身由 player 结算）。
@@ -162,8 +139,6 @@ func cast_skill() -> bool:
 	_skill_cd = SKILL_CD
 	_begin_swing(true)
 	return true
-
-
 func skill2_hold(pressed: bool) -> void:
 	## 数字 2：突刺。按下出招（向前戳一记、人跟着冲过去穿透目标），松开无事。
 	## 冲刺/穿透结算在 player.gd（要动玩家坐标）；这里负责动作、音效、扣蓝与冷却。
@@ -176,8 +151,6 @@ func skill2_hold(pressed: bool) -> void:
 	_begin_thrust()
 	if p != null and p.has_method("thrust_dash"):
 		p.call("thrust_dash")
-
-
 func _begin_thrust() -> void:
 	## 向前戳击的动作：没有专门的戳刺动捕，用"斩击加速 + 骨架整体前探"凑出人随剑走的突刺感。
 	## _hit_emitted 先置真：这一下的伤害走 player 的路径扫过判定，动画本身不发命中信号。
@@ -192,8 +165,6 @@ func _begin_thrust() -> void:
 	_anim_player.play(SLASH_ANIM, -1.0, SKILL2_SPEED)
 	SFX.play("swing", SKILL2_SFX_DB)
 	action.emit("thrust")
-
-
 func _begin_swing(heavy: bool) -> void:
 	## 起一剑：heavy=false 普通戳击；true=技能「劈砍」——幅度更大、更慢、更响、金色剑气
 	if _attacking or _anim_player == null:
@@ -209,8 +180,6 @@ func _begin_swing(heavy: bool) -> void:
 	_slash_fx(SKILL_FX_SCALE if heavy else 1.0,
 		SKILL_FX_COLOR if heavy else Color(0.62, 0.80, 1.0))
 	action.emit("heavy" if heavy else "slash")
-
-
 func _slash_fx(scale := 1.0, col := Color(0.62, 0.80, 1.0)) -> void:
 	## 剑气：立在相机前 1.15 米的一片斜月牙，朝向随视线水平方向
 	## 挂在相机下（而不是场景根）：挥砍 0.3 秒内玩家照常跑动/落地，
@@ -225,8 +194,6 @@ func _slash_fx(scale := 1.0, col := Color(0.62, 0.80, 1.0)) -> void:
 	fwd = fwd.normalized()
 	SLAM_FX.spawn_slash(cam, cam.global_position + fwd * 0.95 + Vector3(0.0, -0.18, 0.0),
 		fwd, 1.95 * scale, col)
-
-
 # ---- 剑柄组件 ----
 func _build_grip() -> void:
 	var leather := StandardMaterial3D.new()
@@ -236,7 +203,6 @@ func _build_grip() -> void:
 	brass.albedo_color = Color(0.75, 0.58, 0.25)
 	brass.metallic = 0.8
 	brass.roughness = 0.35
-
 	var guard := MeshInstance3D.new()
 	var gm := BoxMesh.new()
 	gm.size = Vector3(0.17, 0.028, 0.035)
@@ -245,7 +211,6 @@ func _build_grip() -> void:
 	guard.position = Vector3(0, 0, -0.075)
 	guard.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(guard)
-
 	var grip := MeshInstance3D.new()
 	var cgm := CylinderMesh.new()
 	cgm.top_radius = 0.019
@@ -257,7 +222,6 @@ func _build_grip() -> void:
 	grip.rotation_degrees = Vector3(90, 0, 0)
 	grip.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(grip)
-
 	var pommel := MeshInstance3D.new()
 	var pm := SphereMesh.new()
 	pm.radius = 0.028
@@ -267,8 +231,6 @@ func _build_grip() -> void:
 	pommel.position = Vector3(0, 0, 0.12)
 	pommel.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(pommel)
-
-
 # ---- 剑刃组件（沿 -Z 前向） ----
 func _build_blade() -> void:
 	var steel := StandardMaterial3D.new()
@@ -279,7 +241,6 @@ func _build_blade() -> void:
 	fuller_mat.albedo_color = Color(0.45, 0.47, 0.52)
 	fuller_mat.metallic = 0.9
 	fuller_mat.roughness = 0.4
-
 	var blade := MeshInstance3D.new()
 	var bm := BoxMesh.new()
 	bm.size = Vector3(0.05, 0.014, 0.62)
@@ -288,7 +249,6 @@ func _build_blade() -> void:
 	blade.position = Vector3(0, 0, -0.40)
 	blade.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(blade)
-
 	var fuller := MeshInstance3D.new()
 	var fm := BoxMesh.new()
 	fm.size = Vector3(0.016, 0.016, 0.50)
@@ -297,7 +257,6 @@ func _build_blade() -> void:
 	fuller.position = Vector3(0, 0, -0.38)
 	fuller.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(fuller)
-
 	var tip := MeshInstance3D.new()
 	var tm := BoxMesh.new()
 	tm.size = Vector3(0.05, 0.014, 0.09)
@@ -307,8 +266,6 @@ func _build_blade() -> void:
 	tip.rotation_degrees = Vector3(0, 45, 0)
 	tip.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(tip)
-
-
 # ---- 残影（动态模糊）：挂在相机下（剑的父节点），按历史姿态显示 ----
 func _build_trails() -> void:
 	var parent := get_parent()
@@ -330,25 +287,17 @@ func _build_trails() -> void:
 		t.visible = false
 		parent.add_child.call_deferred(t)
 		_trails.append(t)
-
-
 func _unhandled_input(event: InputEvent) -> void:
 	if not active:
 		return
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_X:
 		attack()
-
-
 func is_active() -> bool:
 	return active
-
-
 func is_attacking() -> bool:
 	## 挥砍动画是否还在放（从按 X 起手到动画结束）。
 	## 这段时间 player 会拦住 C 切武器，和弓的"蓄力中不许切"是同一条规矩。
 	return _attacking
-
-
 func set_active(a: bool) -> void:
 	active = a
 	visible = a
@@ -360,74 +309,44 @@ func set_active(a: bool) -> void:
 		for t in _trails:
 			t.visible = false
 		_hist.clear()
-
-
 # ---- 对外：技能信息（HUD 状态行与蓄力条读这套，player 只管按 1 转发）----
 func skill_name() -> String:
 	return SKILL_NAME
-
-
 func skill_cost() -> int:
 	return SKILL_MP
-
-
 func skill_cooldown() -> float:
 	return SKILL_CD
-
-
 func skill_cooldown_left() -> float:
 	return _skill_cd
-
-
 func skill_damage() -> int:
 	## 劈砍伤害（1.6 × 当前攻击力，含强化）：问玩家要最终值，看到的=打出的
 	var p := get_tree().get_first_node_in_group("player")
 	if p != null and p.has_method("sword_skill_damage"):
 		return int(p.call("sword_skill_damage"))
 	return int(floor(50.0 * SWORD_SKILL_FALLBACK))
-
-
 const SWORD_SKILL_FALLBACK := 1.6   # 玩家没就绪时的兜底倍率（跟 player.gd 的 SWORD_SKILL_MULT 同值）
-
-
 func skill_desc() -> String:
 	return "%d伤+定身1秒" % skill_damage()
-
-
 func skill2_name() -> String:
 	return SKILL2_NAME
-
-
 func skill2_cost() -> int:
 	return SKILL2_MP
-
-
 func skill2_cooldown() -> float:
 	return SKILL2_CD
-
-
 func skill2_cooldown_left() -> float:
 	return _skill2_cd
-
-
 func skill2_desc() -> String:
 	return "穿透80伤·流血10秒"
-
-
 func skill2_ready() -> bool:
 	if _skill2_cd > 0.0:
 		return false
 	var p := get_tree().get_first_node_in_group("player")
 	return p == null or bool(p.call("has_mp", float(SKILL2_MP)))
-
-
 func skill_ready() -> bool:
 	if _skill_cd > 0.0:
 		return false
 	var p := get_tree().get_first_node_in_group("player")
 	return p == null or bool(p.call("has_mp", float(SKILL_MP)))
-
-
 func _process(delta: float) -> void:
 	if _skill_cd > 0.0:
 		_skill_cd = maxf(0.0, _skill_cd - delta)   # 技能冷却不认手上没手上：切走了也照跳
@@ -467,8 +386,6 @@ func _process(delta: float) -> void:
 	if _attacking:
 		_record_and_draw_trails(delta)
 		_check_hit_timing()
-
-
 func _check_hit_timing() -> void:
 	if _hit_emitted or _anim_player == null:
 		return
@@ -484,8 +401,6 @@ func _check_hit_timing() -> void:
 			skill_hit.emit()      # 劈砍：player 结算 1.6 倍伤害 + 定身 1 秒
 		else:
 			slash_hit.emit()
-
-
 func _record_and_draw_trails(delta: float) -> void:
 	# 记录剑相对相机的局部姿态（视角旋转不影响残影贴合）
 	_hist.push_front(transform)
@@ -499,8 +414,6 @@ func _record_and_draw_trails(delta: float) -> void:
 		# 残影中心对齐刃身中点（刃相对剑柄 -0.31~-0.40）
 		_trails[i].transform = Transform3D(tr.basis, tr.origin + tr.basis * Vector3(0, 0, -0.36))
 		_trails[i].visible = true
-
-
 func _find_node(n: Node, cls: String) -> Node:
 	for c in n.get_children():
 		if c.get_class() == cls:
@@ -509,8 +422,6 @@ func _find_node(n: Node, cls: String) -> Node:
 		if r != null:
 			return r
 	return null
-
-
 func _find_nodes(n: Node, cls: String) -> Array[Node]:
 	var out: Array[Node] = []
 	for c in n.get_children():
