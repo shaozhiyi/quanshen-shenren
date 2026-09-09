@@ -6,12 +6,14 @@ $ErrorActionPreference = 'Stop'
 $proj = Split-Path -Parent $PSScriptRoot
 
 # 找 Godot 控制台版：先试已知路径，再在常见目录里搜
+# 2026-09-09：全套开发工具已集中到 E:\游戏工具（旧位置 E:\工具 保留兜底）
 $candidates = @(
+    'e:\游戏工具\Godot\Godot_v4.7.2-stable_win64_console.exe',
     'e:\工具\Godot\Godot_v4.7.2-stable_win64_console.exe'
 )
 $godot = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $godot) {
-    $searchRoots = @('e:\工具', 'D:\工具', "$env:LOCALAPPDATA\Programs", 'C:\Program Files') | Where-Object { Test-Path $_ }
+    $searchRoots = @('e:\游戏工具', 'e:\工具', 'D:\工具', "$env:LOCALAPPDATA\Programs", 'C:\Program Files') | Where-Object { Test-Path $_ }
     foreach ($r in $searchRoots) {
         $hit = Get-ChildItem -Path $r -Filter 'Godot_v4*console.exe' -Recurse -ErrorAction SilentlyContinue |
             Select-Object -First 1
