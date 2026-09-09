@@ -4,15 +4,22 @@ extends RefCounted
 ## 一个"音效"由一到若干层组成；同一层可以配多个变体文件，每次随机挑一个（连挥不会机关枪感）。
 ## 任一文件缺失都不会报错，只是没声音 —— 代码可以先接，素材后补也不会黑屏。
 const DIR := "res://assets/audio/"
-# id -> {db: 整体音量, cut: 是否打断上一个同种音效, layers: [{files:[...], db, delay}]}
+## 音量约定（2026-09-09 用 ffmpeg 归一后成立）：
+##   四个素材的**采样峰值统一是 -3 dBFS**（纯增益，没压缩没限幅，波形时间轴一字未动）。
+##   所以下面每个 id 的 db 只表达"设计上该多响"，不再兼职补偿素材本身的音量差。
+##   留出的 3 dB 是给调用方加成的：满蓄撒放最多 +1.5dB、重击技能 +8dB，
+##   叠完最响也停在 -1 dBFS 左右，不会再像以前那样把 sword_swing_2 推到 +0.27dBFS 削顶失真。
+##   新加素材请先用同一条命令归一到 -3dBFS 再进来，别回来改这里的 db：
+##     ffmpeg -i 输入.wav -af volume=<增益>dB -c:a pcm_s16le 输出.wav
+## id -> {db: 整体音量, cut: 是否打断上一个同种音效, layers: [{files:[...], db, delay}]}
 const SOUNDS := {
 	"swing": {"db": -6.0, "cut": true, "layers": [
 		{"files": ["sword_swing.wav", "sword_swing_2.wav"], "db": 0.0, "delay": 0.0},
 	]},
-	"draw":  {"db": -10.0, "cut": false, "layers": [
+	"draw":  {"db": -14.0, "cut": false, "layers": [
 		{"files": ["bow_draw.wav"], "db": 0.0, "delay": 0.0},
 	]},
-	"shot":  {"db": -7.0, "cut": true, "layers": [
+	"shot":  {"db": -4.0, "cut": true, "layers": [
 		{"files": ["bow_shot.wav"], "db": 0.0, "delay": 0.0},
 	]},
 }
