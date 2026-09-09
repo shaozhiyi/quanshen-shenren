@@ -1,2 +1,6 @@
 # Normalize EOL for all files that Git considers text files.
 * text=auto eol=lf
+
+# 但 Windows 批处理必须留 CRLF：cmd 解析 LF 结尾的 if (...) 多行块会出错
+*.bat text eol=crlf
+*.cmd text eol=crlf
