@@ -1,0 +1,50 @@
+name: 回归检查
+
+# 每次推送到 main 就跑一遍：全量 GDScript 语法检查 + 无头自检。
+# 只跑无头安全的用例（需要窗口模式的列在 tools/selftests/window_only.txt，这里自动跳过）。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  GODOT_VER: 4.7.2
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 取 Godot 控制台版
+        run: |
+          set -euo pipefail
+          V="$GODOT_VER"
+          mkdir -p /tmp/gd
+          urls="https://github.com/godotengine/godot-builds/releases/download/${V}-stable/Godot_v${V}-stable_linux.x86_64.zip
+          https://github.com/godotengine/godot/releases/download/${V}-stable/Godot_v${V}-stable_linux.x86_64.zip
+          https://downloads.tuxfamily.org/godotengine/${V}/Godot_v${V}-stable_linux.x86_64.zip"
+          for u in $urls; do
+            echo "试 $u"
+            if curl -fsSL --retry 2 -o /tmp/gd/g.zip "$u"; then break; fi
+          done
+          if [ ! -s /tmp/gd/g.zip ]; then echo "三个源都没下到"; exit 1; fi
+          (cd /tmp/gd && unzip -o -q g.zip)
+          BIN=$(find /tmp/gd -maxdepth 2 -type f -name 'Godot_v*' ! -name '*.zip' | head -1)
+          chmod +x "$BIN"
+          echo "GODOT_BIN=$BIN" >> "$GITHUB_ENV"
+          "$BIN" --version
+
+      - name: 导入资源（顺带暴露资源层面的错误）
+        run: timeout 600 "$GODOT_BIN" --headless --path . --import
+
+      - name: 全量 GDScript 语法检查
+        run: timeout 300 "$GODOT_BIN" --headless --path . --script res://tools/check_all_scripts.gd
+
+      - name: 无头回归自检
+        run: bash tools/run_selftests.sh
+
+      - name: 汇总
+        if: always()
+        run: echo "看上面各步的 PASS/FAIL；任何一步红了这个 job 就是红。"

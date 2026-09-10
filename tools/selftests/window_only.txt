@@ -1,0 +1,12 @@
+bow_x_selftest.gd
+coords_selftest.gd
+diag_selftest.gd
+input_selftest.gd
+invbar_selftest.gd
+loading_selftest.gd
+pvp_hud_selftest.gd
+pvp_inv_selftest.gd
+pvp_look_selftest.gd
+pvp_map_selftest.gd
+stun_music_selftest.gd
+switch_lock_selftest.gd
