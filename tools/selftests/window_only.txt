@@ -1,3 +1,4 @@
+bigdog_selftest.gd
 bow_x_selftest.gd
 coords_selftest.gd
 diag_selftest.gd

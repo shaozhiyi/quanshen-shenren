@@ -9,6 +9,18 @@ truck_lettering.png
   自有内容：黑体竖排白字「大运重卡」+ 深色描边，384×1024，运行时贴在货箱两侧面片上。
   文字内容取自用户提供的参考车型涂装，仅作游戏内恶搞外观使用。
 
+bigdog.glb
+  自有内容：本项目用 Blender 脚本手搓（Blender 4.5.9 LTS，装在 E:\游戏工具\Blender），
+  不含任何第三方模型/贴图，无需第三方署名。
+  建模脚本：tools/blender/build_bigdog.py —— 改参数后一条命令即可重生成：
+    blender -b --factory-startup --python tools/blender/build_bigdog.py -- <out.glb> <预览目录> 1.0 face,front,left,three
+  外观取材：网络热梗「大狗叫」（2022 海南防疫广播「听通知戴口罩」的空耳），
+  原型是博主「六十六鲨鱼」家那只龇牙仰头的黄色拉布拉多「六六」。
+  规格：单网格 10 个材质槽（毛/深毛/口鼻/鼻头/鼻孔/口腔/牙龈/牙/眼白/眼珠），
+  约 1.21 万三角面，1.02 m 长 × 0.38 m 宽 × 0.60 m 高，狗头朝 -Z（Godot 前方），
+  原点在四脚着地的地面。
+  状态：仅入库，**尚未接入运行时**（武器槽与手感待定，不参与当前任何场景）。
+
 ref/truck_ref_dump.png · ref/truck_ref_dump_big.png
   用户提供的橙色 8×4 自卸重卡参考照片（后者 3× 放大，便于喂图生 3D 工具）。
 ref/truck_ref.png · ref/truck_ref_clean.png
