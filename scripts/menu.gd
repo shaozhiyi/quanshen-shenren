@@ -31,6 +31,9 @@ func _ready() -> void:
 ## 联机对战（局域网）：进 PVP 大厅（创建房间/按房号加入）
 func _on_pvp() -> void:
 	get_tree().change_scene_to_file("res://scenes/pvp_lobby.tscn")
+## 正经模式（仅测试）：点开播放开场对话，剧情内容在 scripts/dialogue_data.gd 里改。
+func _on_serious() -> void:
+	get_node("/root/Dialogue").play("正经·开场")
 # ---- 3D 背景：天空 + 阳光 + 旋转奶盒 ----
 func _build_world() -> void:
 	var owe := WorldEnvironment.new()
@@ -156,23 +159,13 @@ func _build_ui() -> void:
 	dir_label.add_theme_font_size_override("font_size", 13)
 	dir_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.45))
 	_root.add_child(dir_label)
-	# 模式选择行：正经模式（未制作，禁用）+ 雷霆模式（现有玩法）
+	# 模式选择行：正经模式（仅测试：点开播放开场对话）+ 雷霆模式（现有玩法）
 	_mode_box = HBoxContainer.new()
 	_mode_box.position = Vector2(640 - 210, 498)
 	_mode_box.custom_minimum_size = Vector2(420, 0)
 	_mode_box.add_theme_constant_override("separation", 18)
 	_root.add_child(_mode_box)
-	var serious := _add_button(_mode_box, "正经模式 · 未制作", func(): pass, 200)
-	serious.disabled = true
-	var dsb := StyleBoxFlat.new()
-	dsb.bg_color = Color(0.09, 0.09, 0.11, 0.85)
-	dsb.border_color = Color(0.35, 0.35, 0.40, 0.7)
-	dsb.set_border_width_all(2)
-	dsb.set_corner_radius_all(8)
-	dsb.content_margin_left = 12
-	dsb.content_margin_right = 12
-	serious.add_theme_stylebox_override("disabled", dsb)
-	serious.add_theme_color_override("font_disabled_color", Color(0.62, 0.62, 0.66))
+	_add_button(_mode_box, "正经模式 · 测试", _on_serious, 200)
 	_add_button(_mode_box, "雷霆模式", _on_new_game, 200)
 	# 三个主按钮：屏幕底部横排，中间留给旋转的奶盒
 	_main_box = HBoxContainer.new()

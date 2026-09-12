@@ -1,7 +1,7 @@
 extends SceneTree
 ## 主菜单模式行自检（窗口模式，要 save_png）：
-##  1) 新增的 _mode_box 有两个按钮：正经模式（未制作，禁用）与雷霆模式（可点）
-##  2) 正经模式按钮 disabled=true、文字含"未制作"；雷霆模式按钮 enabled、文字含"雷霆"
+##  1) 新增的 _mode_box 有两个按钮：正经模式（可点·测试）与雷霆模式（可点）
+##  2) 点『正经模式』会播放"正经·开场"对话（首句"欢迎来到我做的游戏"）；雷霆模式可点
 ##  3) 原有主按钮行 _main_box 仍是 4 个（新游戏/读取存档/输入种子/联机对战），没被挤掉
 ##  4) 切到 seed/save 面板时模式行隐藏，回主菜单又出现
 ##  5) 截图肉眼确认排版
@@ -55,8 +55,16 @@ func _run() -> void:
 	chk(serious != null, "模式行里有『正经模式』按钮")
 	chk(thunder != null, "模式行里有『雷霆模式』按钮")
 	if serious != null:
-		chk(bool(serious.disabled), "『正经模式』是禁用态（未制作）")
-		chk(String(serious.text).contains("未制作"), "『正经模式』按钮文字标了『未制作』")
+		chk(not bool(serious.disabled), "『正经模式』已可点击（测试）")
+		var dlg: Node = root.get_node_or_null("Dialogue")
+		chk(dlg != null, "全局 Dialogue 可用")
+		serious.emit_signal("pressed")
+		await _idle(2)
+		if dlg != null:
+			chk(bool(dlg.is_showing()), "点『正经模式』后对话框打开")
+			var first := String(dlg.get("_full"))
+			chk(first == "欢迎来到我做的游戏", "开场第一句正确（%s）" % first)
+			dlg.call("stop")
 	if thunder != null:
 		chk(not bool(thunder.disabled), "『雷霆模式』可点击")
 
