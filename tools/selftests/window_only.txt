@@ -5,6 +5,7 @@ diag_selftest.gd
 input_selftest.gd
 invbar_selftest.gd
 loading_selftest.gd
+menu_mode_selftest.gd
 pvp_hud_selftest.gd
 pvp_inv_selftest.gd
 pvp_look_selftest.gd

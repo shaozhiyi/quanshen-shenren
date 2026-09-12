@@ -1,5 +1,6 @@
 extends Node3D
-## 主菜单：中间一瓶旋转的野生狗奶 + 三个按钮（新游戏 / 读取存档 / 输入种子）。
+## 主菜单：中间一瓶旋转的野生狗奶；上方一行模式选择（正经模式·未制作 / 雷霆模式），
+## 下方一行主按钮（新游戏 / 读取存档 / 输入种子 / 联机对战）。
 ## 全部 UI 用代码搭建（与 HUD、背包一致的风格），存档为 save/ 下的 JSON。
 ## 选好后写入 SaveManager 的 pending_seed / pending_load，再切到 main.tscn 由游戏侧套用。
 ## 切场景这段会盖上层 LoadingUI：素材在后台线程读、地形分片生成，动画才有帧可跑。
@@ -14,6 +15,7 @@ const WARM := [
 ]
 var _bottle: MeshInstance3D
 var _root: Control
+var _mode_box: HBoxContainer
 var _main_box: HBoxContainer
 var _seed_box: VBoxContainer
 var _save_box: VBoxContainer
@@ -154,6 +156,24 @@ func _build_ui() -> void:
 	dir_label.add_theme_font_size_override("font_size", 13)
 	dir_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.45))
 	_root.add_child(dir_label)
+	# 模式选择行：正经模式（未制作，禁用）+ 雷霆模式（现有玩法）
+	_mode_box = HBoxContainer.new()
+	_mode_box.position = Vector2(640 - 210, 498)
+	_mode_box.custom_minimum_size = Vector2(420, 0)
+	_mode_box.add_theme_constant_override("separation", 18)
+	_root.add_child(_mode_box)
+	var serious := _add_button(_mode_box, "正经模式 · 未制作", func(): pass, 200)
+	serious.disabled = true
+	var dsb := StyleBoxFlat.new()
+	dsb.bg_color = Color(0.09, 0.09, 0.11, 0.85)
+	dsb.border_color = Color(0.35, 0.35, 0.40, 0.7)
+	dsb.set_border_width_all(2)
+	dsb.set_corner_radius_all(8)
+	dsb.content_margin_left = 12
+	dsb.content_margin_right = 12
+	serious.add_theme_stylebox_override("disabled", dsb)
+	serious.add_theme_color_override("font_disabled_color", Color(0.62, 0.62, 0.66))
+	_add_button(_mode_box, "雷霆模式", _on_new_game, 200)
 	# 三个主按钮：屏幕底部横排，中间留给旋转的奶盒
 	_main_box = HBoxContainer.new()
 	_main_box.position = Vector2(640 - 459, 556)
@@ -228,6 +248,7 @@ func _add_button(parent: Control, text: String, cb: Callable, min_w: float = 0.0
 	return b
 func _show(which: String) -> void:
 	_showing = which
+	_mode_box.visible = which == "main"
 	_main_box.visible = which == "main"
 	_seed_box.visible = which == "seed"
 	_save_box.visible = which == "save"
