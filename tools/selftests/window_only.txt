@@ -1,5 +1,6 @@
 bow_x_selftest.gd
 coords_selftest.gd
+dialogue_selftest.gd
 diag_selftest.gd
 input_selftest.gd
 invbar_selftest.gd
