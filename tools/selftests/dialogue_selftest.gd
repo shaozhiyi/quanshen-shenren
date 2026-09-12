@@ -90,7 +90,50 @@ func _run() -> void:
 	chk(saw_name, "opts.vars 覆盖了 {player_name} → 显示『张三』")
 	chk(not bool(dlg.is_showing()), "第二段也正常结束")
 
+	# ---- 底部功能条 ----
+	var bar: Node = dlg.get("_bar")
+	chk(bar != null and _count_buttons(bar) == 7,
+		"功能条有 7 个按钮（实测 %d）" % (0 if bar == null else _count_buttons(bar)))
+
+	dlg.play("示例·开场", {"pause": false})
+	await _idle(1)
+	dlg.call("_toggle_auto")
+	chk(bool(dlg.get("_auto")), "『自动』可开启")
+	dlg.call("_toggle_auto")
+	chk(not bool(dlg.get("_auto")), "『自动』可关闭")
+
+	dlg.call("_toggle_history")
+	await _idle(1)
+	chk(bool(dlg.get("_history_open")) and bool(dlg.get("_log_panel").visible), "『历史』打开回看面板")
+	dlg.call("_toggle_history")
+	chk(not bool(dlg.get("_history_open")), "『历史』可关闭")
+
+	# 存档 → stop → 读档，应恢复到存档时的进度
+	dlg.call("advance")   # 补全当前行
+	await _idle(1)
+	dlg.call("advance")   # 进入第 2 句
+	await _idle(1)
+	var idx_before := int(dlg.get("_idx"))
+	dlg.call("_save", "test")
+	dlg.call("stop")
+	chk(not bool(dlg.is_showing()), "stop 后结束")
+	dlg.call("_load", "test")
+	await _idle(1)
+	chk(bool(dlg.is_showing()), "读档后重新进入播放")
+	chk(int(dlg.get("_idx")) == idx_before,
+		"读档恢复到存档进度（index=%d，存档时=%d）" % [int(dlg.get("_idx")), idx_before])
+	_snap("dialogue_bar")
+	dlg.call("stop")
+
 	_done()
+
+
+func _count_buttons(box: Node) -> int:
+	var n := 0
+	for c in box.get_children():
+		if c is Button:
+			n += 1
+	return n
 
 
 func _snap(name: String) -> void:
