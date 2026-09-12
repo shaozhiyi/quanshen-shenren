@@ -306,9 +306,12 @@ func _enter_arena() -> void:
 	rotation.y = 0.0
 	if cam != null:
 		cam.rotation.x = 0.0
+	_reset_motion_state()      # 进战场不带冲刺/奔跑/减速/击退/突刺残留
 	_in_arena = true
 func _exit_arena() -> void:
 	## 离开 BOSS 空间：恢复大地图与 BOSS 原位、玩家位姿
+	if not _in_arena:
+		return                 # 幂等：击杀后的 3 秒自动退出定时器可能与手动/死亡退出撞车，二次进入直接返回
 	_in_arena = false
 	_battle_origin = Vector3.INF     # 回到大世界：坐标重新按世界算
 	_battle_anchored = false
@@ -330,6 +333,7 @@ func _exit_arena() -> void:
 	var cam := get_node_or_null("Camera3D") as Camera3D
 	if cam != null:
 		cam.rotation.x = _saved_pitch
+	_reset_motion_state()      # 撤退不带减速/击退/突刺/冲刺残留回大世界
 func _on_boss_died(b: Node = null) -> void:
 	## 某只 BOSS 在空间中被击败：按它名册里的档位掉落发奖，沉地动画播完后自动回大地图
 	if b == null or not is_instance_valid(b):
@@ -390,6 +394,8 @@ func _reset_motion_state() -> void:
 	_kb_left = 0.0
 	_kb_speed = 0.0
 	_kb_dir = Vector3.ZERO
+	_thrust_left = 0.0     # 突刺残留也要清，否则复活/进出空间后会凭空前冲一截
+	_thrust_dir = Vector3.ZERO
 	velocity.x = 0.0
 	velocity.z = 0.0
 func _try_pick_box() -> bool:
@@ -402,9 +408,15 @@ func _try_pick_box() -> bool:
 	if box == null:
 		return false
 	var n := int(box.get("item_count")) if box.get("item_count") != null else 1
-	if not _inv.call("add_item", String(box.item_id), n):
-		return true
-	box.queue_free()
+	var iid := String(box.item_id)
+	var before := int(_inv.call("count_of", iid))
+	_inv.call("add_item", iid, n)
+	var placed := int(_inv.call("count_of", iid)) - before   # 真正入库的数量
+	var remain := n - placed
+	if remain <= 0:
+		box.queue_free()                                    # 全部收下才销毁
+	else:
+		box.set("item_count", remain)                       # 背包放不下：箱子扣到剩余量，再按 E 继续收，避免重复刷物
 	return true
 func _nearest_box() -> Node:
 	var best: Node = null

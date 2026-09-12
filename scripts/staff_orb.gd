@@ -202,7 +202,7 @@ func _physics_process(delta: float) -> void:
 		# 命中收尾：缩掉再收，免得球"粘"在对方身上
 		_pop -= delta
 		var k := clampf(_pop / POP_TIME, 0.0, 1.0)
-		_core.scale = Vector3.ONE * (0.4 + 0.6 * (1.0 - k) + 0.6 * k)
+		_core.scale = Vector3.ONE * (0.4 + 0.6 * k)
 		_halo.scale = Vector3.ONE * (1.0 + 1.6 * (1.0 - k))
 		if _pop <= 0.0:
 			queue_free()

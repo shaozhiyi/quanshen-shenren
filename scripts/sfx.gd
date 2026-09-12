@@ -69,7 +69,9 @@ static func _play_one(stream: AudioStream, db: float, delay: float, id: String, 
 	if cut:
 		for c in host.get_children():
 			if c is AudioStreamPlayer and String((c as Node).get_meta("sfx", "")) == id:
-				(c as AudioStreamPlayer).stop()
+				var ap := c as AudioStreamPlayer
+				ap.stop()
+				ap.queue_free()   # stop() 不发 finished，被打断的播放器须手动回收
 	host.add_child(p)
 	p.finished.connect(p.queue_free)     # 播完即释放，不留垃圾节点
 	if delay > 0.0:

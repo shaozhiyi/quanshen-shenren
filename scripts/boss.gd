@@ -157,6 +157,9 @@ func set_arena_mode(b: bool) -> void:
 	_slam_hit = false
 	_slam_target = Vector3.ZERO
 	_stun_t = 0.0            # 进出战场都不带上一次的定身残留
+	_bleed_t = 0.0           # 也不带上一次的流血残留（伤害/tick 一起清）
+	_bleed_dps = 0.0
+	_bleed_tick = 0.0
 	_show_marker(false)
 	_hide_stars()
 	_reset_charge()        # 载具档：半截冲撞/预警带不能留到下一次开战
@@ -651,7 +654,7 @@ func take_damage(amount: int, weapon := "", quiet := false) -> void:
 func bleed(dps: float, seconds: float) -> void:
 	## 流血（剑·突刺附带）：每秒掉 dps 血、持续 seconds 秒，1 秒一跳。
 	## 再中一次取更高的每秒伤害、续上时长（不无限叠伤害）。
-	if _dead or dps <= 0.0 or seconds <= 0.0:
+	if _dead or not _arena_mode or dps <= 0.0 or seconds <= 0.0:
 		return
 	_bleed_dps = maxf(_bleed_dps, dps)
 	_bleed_t = maxf(_bleed_t, seconds)
@@ -677,6 +680,8 @@ func _die() -> void:
 	_label.text = "%s 已被缴获" % boss_name
 	_hp_label.visible = false
 	_music_tail = 0.0
+	_show_marker(false)  # 击杀瞬间收掉攻击红圈（星点/红圈不随 _visual 下沉，否则原地悬空发光到退出战场）
+	_hide_stars()
 	_reset_charge()      # 死在半截冲撞里：立刻收掉预警带，也别再往前滑
 	_halt_music()            # 击杀瞬间停乐（顺带解掉定身可能掐着的暂停）
 	died.emit(self)          # 先记账再通知，玩家侧按 reward_count() 发奖
@@ -695,6 +700,7 @@ func _process(delta: float) -> void:
 			take_damage(int(round(_bleed_dps)), "剑", true)
 		if _bleed_t <= 0.0:
 			_bleed_dps = 0.0
+			_bleed_tick = 0.0
 	if _stun_t > 0.0:
 		# 被法杖定住：整只冻在原地（相位/进度原样保留），正在放的歌也一起掐住，
 		# 时间一到接着打、接着唱（不是重头放，也不是把这一段跳过去）

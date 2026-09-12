@@ -44,6 +44,15 @@ func _audio_players() -> int:
 	return n
 
 
+func _sfx_players(id: String) -> int:
+	## 携带指定 sfx 标记、且尚未回收的一次性播放器数量（验证 cut 型打断后不泄露）
+	var n := 0
+	for c in root.get_children():
+		if c is AudioStreamPlayer and String((c as Node).get_meta("sfx", "")) == id:
+			n += 1
+	return n
+
+
 func _run() -> void:
 	var FX: GDScript = load("res://scripts/slam_fx.gd")
 	var SFXS: GDScript = load("res://scripts/sfx.gd")
@@ -217,16 +226,18 @@ func _run() -> void:
 			present += 1
 	chk(present == 4, "四个音效文件都已就位（挥剑×2 变体/拉弓/放箭，%d/4）" % present)
 
-	var n_players: int = _audio_players()
+	var swing_before := _sfx_players("swing")
 	SFXS.call("play", "swing")
 	await _frames(2)
-	var after: int = _audio_players()
-	chk(after > n_players or present == 0, "play(swing) 确实创建了一个播放器（%d → %d）" % [n_players, after])
+	var swing_after := _sfx_players("swing")
+	# cut 型：新播放器替换上一个同种，旧的被打断即回收——存活恰好 1 个，不再像以前那样泄露堆积
+	chk(swing_after == 1, "play(swing) 建出且仅留一个存活播放器（swing: %d → %d，不泄露）" % [swing_before, swing_after])
+	var before_multi := _audio_players()
 	SFXS.call("play", "draw")
 	SFXS.call("play", "shot")
 	SFXS.call("play", "不存在的id")     # 未登记的 id 必须安静返回，不报错
 	await _frames(2)
-	chk(_audio_players() >= after, "连续播放不崩（当前 %d 个播放器）" % _audio_players())
+	chk(_audio_players() <= before_multi + 2, "连续播放不崩且不无限累积（当前 %d 个播放器）" % _audio_players())
 
 	# ---- 8. Tab 打开背包 = 暂停整局 ----
 	chk(int(inv.process_mode) == Node.PROCESS_MODE_ALWAYS, "背包面板用 ALWAYS（暂停与平时都收输入）")
